@@ -35,7 +35,11 @@ pub async fn get(pool: &PgPool, name: &str) -> Result<Option<Endpoint>, sqlx::Er
     .await
 }
 
-pub async fn list(pool: &PgPool, cursor: Option<&str>, limit: i64) -> Result<Vec<Endpoint>, sqlx::Error> {
+pub async fn list(
+    pool: &PgPool,
+    cursor: Option<&str>,
+    limit: i64,
+) -> Result<Vec<Endpoint>, sqlx::Error> {
     match cursor {
         Some(c) => {
             sqlx::query_as::<_, Endpoint>(
@@ -96,11 +100,10 @@ pub async fn delete(pool: &PgPool, name: &str) -> Result<bool, sqlx::Error> {
 }
 
 pub async fn has_active_jobs(pool: &PgPool, name: &str) -> Result<bool, sqlx::Error> {
-    let row: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM jobs WHERE endpoint = $1 AND status = 'ACTIVE'"
-    )
-    .bind(name)
-    .fetch_one(pool)
-    .await?;
+    let row: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM jobs WHERE endpoint = $1 AND status = 'ACTIVE'")
+            .bind(name)
+            .fetch_one(pool)
+            .await?;
     Ok(row.0 > 0)
 }

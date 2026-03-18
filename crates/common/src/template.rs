@@ -111,7 +111,10 @@ mod tests {
         input.insert("user_id".into(), serde_json::json!("u_abc"));
 
         let mut config = HashMap::new();
-        config.insert("api_base_url".into(), serde_json::json!("https://api.example.com"));
+        config.insert(
+            "api_base_url".into(),
+            serde_json::json!("https://api.example.com"),
+        );
 
         let mut secrets = HashMap::new();
         secrets.insert("api_key".into(), "sk-123".into());

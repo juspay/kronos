@@ -1,12 +1,17 @@
+use super::DispatchResult;
 use redis::AsyncCommands;
 use serde_json::Value;
-use super::DispatchResult;
 
 pub async fn dispatch(spec: &Value) -> DispatchResult {
-    let redis_url = spec["redis_url"].as_str().unwrap_or("redis://127.0.0.1:6379");
+    let redis_url = spec["redis_url"]
+        .as_str()
+        .unwrap_or("redis://127.0.0.1:6379");
     let stream = spec["stream"].as_str().unwrap_or_default();
     let max_len = spec.get("max_len").and_then(|v| v.as_u64());
-    let approximate = spec.get("approximate_trimming").and_then(|v| v.as_bool()).unwrap_or(true);
+    let approximate = spec
+        .get("approximate_trimming")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
 
     let fields_template = match spec.get("fields_template").and_then(|v| v.as_object()) {
         Some(f) => f,
@@ -56,7 +61,10 @@ pub async fn dispatch(spec: &Value) -> DispatchResult {
         })
         .collect();
 
-    let field_refs: Vec<(&str, &str)> = fields.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let field_refs: Vec<(&str, &str)> = fields
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
 
     // XADD with optional MAXLEN trimming
     let result: Result<String, redis::RedisError> = if let Some(maxlen) = max_len {

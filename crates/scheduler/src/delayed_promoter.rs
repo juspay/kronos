@@ -5,7 +5,10 @@ use std::time::Duration;
 pub async fn run(pool: PgPool, config: &AppConfig) -> anyhow::Result<()> {
     let interval = Duration::from_millis(config.promote_interval_ms);
 
-    tracing::info!("Delayed promoter started (interval: {}ms)", config.promote_interval_ms);
+    tracing::info!(
+        "Delayed promoter started (interval: {}ms)",
+        config.promote_interval_ms
+    );
 
     loop {
         match db::executions::promote_pending(&pool).await {

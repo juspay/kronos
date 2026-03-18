@@ -35,7 +35,7 @@ pub async fn list_for_execution(
     execution_id: &str,
 ) -> Result<Vec<Attempt>, sqlx::Error> {
     sqlx::query_as::<_, Attempt>(
-        "SELECT * FROM attempts WHERE execution_id = $1 ORDER BY attempt_number ASC"
+        "SELECT * FROM attempts WHERE execution_id = $1 ORDER BY attempt_number ASC",
     )
     .bind(execution_id)
     .fetch_all(pool)

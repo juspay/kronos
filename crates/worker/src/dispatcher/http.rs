@@ -1,7 +1,7 @@
+use super::DispatchResult;
 use reqwest::Client;
 use serde_json::Value;
 use std::time::Duration;
-use super::DispatchResult;
 
 pub async fn dispatch(client: &Client, spec: &Value) -> DispatchResult {
     let url = spec["url"].as_str().unwrap_or_default();
@@ -9,7 +9,11 @@ pub async fn dispatch(client: &Client, spec: &Value) -> DispatchResult {
     let timeout_ms = spec["timeout_ms"].as_u64().unwrap_or(5000);
     let expected_statuses: Vec<u16> = spec["expected_status_codes"]
         .as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_u64().map(|n| n as u16)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_u64().map(|n| n as u16))
+                .collect()
+        })
         .unwrap_or_else(|| vec![200, 201, 202, 204]);
 
     let mut req = match method.to_uppercase().as_str() {

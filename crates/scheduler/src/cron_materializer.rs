@@ -6,8 +6,11 @@ use std::time::Duration;
 pub async fn run(pool: PgPool, config: &AppConfig) -> anyhow::Result<()> {
     let interval = Duration::from_secs(config.cron_tick_interval_sec);
 
-    tracing::info!("CRON materializer started (interval: {}s, batch: {})",
-        config.cron_tick_interval_sec, config.cron_batch_size);
+    tracing::info!(
+        "CRON materializer started (interval: {}s, batch: {})",
+        config.cron_tick_interval_sec,
+        config.cron_batch_size
+    );
 
     loop {
         match materialize_tick(&pool, config.cron_batch_size).await {
@@ -69,7 +72,8 @@ async fn materialize_tick(pool: &PgPool, batch_size: i64) -> anyhow::Result<u64>
             job.input.as_ref(),
             current_tick,
             max_attempts,
-        ).await?;
+        )
+        .await?;
 
         if created {
             materialized += 1;
@@ -85,7 +89,9 @@ async fn materialize_tick(pool: &PgPool, batch_size: i64) -> anyhow::Result<u64>
         };
 
         let current_tz = current_tick.with_timezone(&tz);
-        let next_tick = schedule.after(&current_tz).next()
+        let next_tick = schedule
+            .after(&current_tz)
+            .next()
             .map(|dt| dt.with_timezone(&Utc));
 
         if let Some(next) = next_tick {
