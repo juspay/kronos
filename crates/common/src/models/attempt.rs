@@ -20,7 +20,6 @@ impl AttemptStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Attempt {
     pub attempt_id: String,
-    pub crdb_region: String,
     pub execution_id: String,
     pub attempt_number: i64,
     pub status: String,

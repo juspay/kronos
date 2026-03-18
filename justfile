@@ -8,7 +8,7 @@ default:
 
 # ─── Environment ──────────────────────────────────────────────
 
-export TE_DATABASE_URL := env("TE_DATABASE_URL", "postgresql://root@localhost:26257/taskexecutor?sslmode=disable")
+export TE_DATABASE_URL := env("TE_DATABASE_URL", "postgresql://kronos:kronos@localhost:5432/taskexecutor")
 export TE_API_KEY := env("TE_API_KEY", "dev-api-key")
 export TE_ENCRYPTION_KEY := env("TE_ENCRYPTION_KEY", "0000000000000000000000000000000000000000000000000000000000000000")
 
@@ -24,19 +24,19 @@ init-env:
 
 # ─── Database ─────────────────────────────────────────────────
 
-# Start CockroachDB (and init container)
+# Start PostgreSQL
 db-up:
-    docker-compose up -d cockroachdb cockroach-init
-    @echo "Waiting for CockroachDB to be ready..."
-    @sleep 5
+    docker compose up -d postgres
+    @echo "Waiting for PostgreSQL to be ready..."
+    @sleep 3
 
-# Stop CockroachDB
+# Stop PostgreSQL
 db-down:
-    docker-compose down
+    docker compose down
 
-# Run SQL migrations (applied directly since CockroachDB doesn't support pg_advisory_lock)
+# Run SQL migrations
 db-migrate:
-    cockroach sql --insecure --host=localhost:26257 -d taskexecutor < migrations/20260317000000_initial.sql
+    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260317000000_initial.sql
 
 # Reset database (drop + recreate + migrate)
 db-reset:
@@ -46,7 +46,7 @@ db-reset:
 
 # Open a SQL shell
 db-shell:
-    cockroach sql --insecure --host=localhost:26257 -d taskexecutor
+    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor
 
 # ─── Build ────────────────────────────────────────────────────
 
@@ -163,6 +163,42 @@ test-e2e: build
     done
 
     cd cli && npx tsx src/test-immediate.ts && npx tsx src/test-delayed.ts && npx tsx src/test-cron.ts
+    EXIT_CODE=$?
+
+    echo "Shutting down services..."
+    exit $EXIT_CODE
+
+# Run the Haskell SDK example (requires db-up, db-migrate)
+test-haskell: build
+    #!/usr/bin/env bash
+    set -e
+    trap 'kill 0' EXIT
+
+    echo "Starting services for Haskell e2e test..."
+
+    cargo run -p kronos-api &
+    cargo run -p kronos-worker &
+    cargo run -p kronos-mock-server &
+
+    echo "Waiting for services to start..."
+    for i in $(seq 1 30); do
+        if curl -sf http://localhost:8080/health > /dev/null 2>&1 && \
+           curl -sf http://localhost:9999/health > /dev/null 2>&1; then
+            echo "Services ready."
+            break
+        fi
+        if [ "$i" -eq 30 ]; then
+            echo "ERROR: Services failed to start within 30s"
+            exit 1
+        fi
+        sleep 1
+    done
+
+    echo "Building and running Haskell example..."
+    cd haskell-example && nix-shell \
+        -p "haskell.packages.ghc96.ghcWithPackages (p: with p; [aeson text network-uri http-client http-types bytestring mtl time containers http-date case-insensitive])" \
+        cabal-install \
+        --run "cabal run kronos-example 2>&1"
     EXIT_CODE=$?
 
     echo "Shutting down services..."

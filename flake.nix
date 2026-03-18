@@ -30,13 +30,14 @@
             docker-compose
             sqlx-cli
             nodejs_22
+            yarn
             self.packages.${system}.smithy-cli
             just
           ];
 
           shellHook = ''
             echo "Kronos dev shell ready"
-            export DATABASE_URL="postgresql://root@localhost:26257/taskexecutor?sslmode=disable"
+            export DATABASE_URL="postgresql://kronos:kronos@localhost:5432/taskexecutor"
           '';
         };
       });
