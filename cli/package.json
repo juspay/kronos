@@ -1,0 +1,20 @@
+{
+  "name": "kronos-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:sdk": "cd ../smithy/build/smithy/source/typescript-client-codegen && npm install && npm run build",
+    "test:immediate": "npx tsx src/test-immediate.ts",
+    "test:delayed": "npx tsx src/test-delayed.ts",
+    "test:cron": "npx tsx src/test-cron.ts"
+  },
+  "dependencies": {
+    "kronos-sdk": "file:../smithy/build/smithy/source/typescript-client-codegen"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "~5.2.2",
+    "@types/node": "^22.0.0"
+  }
+}

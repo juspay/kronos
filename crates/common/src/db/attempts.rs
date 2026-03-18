@@ -5,11 +5,11 @@ use sqlx::PgPool;
 pub async fn insert(
     pool: &PgPool,
     execution_id: &str,
-    attempt_number: i32,
+    attempt_number: i64,
     status: &str,
     started_at: DateTime<Utc>,
     completed_at: DateTime<Utc>,
-    duration_ms: i32,
+    duration_ms: i64,
     output: Option<&serde_json::Value>,
     error: Option<&serde_json::Value>,
 ) -> Result<Attempt, sqlx::Error> {

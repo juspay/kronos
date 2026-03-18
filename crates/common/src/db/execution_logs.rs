@@ -4,7 +4,7 @@ use sqlx::PgPool;
 pub async fn insert(
     pool: &PgPool,
     execution_id: &str,
-    attempt_number: i32,
+    attempt_number: i64,
     level: &str,
     message: &str,
 ) -> Result<(), sqlx::Error> {

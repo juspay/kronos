@@ -15,7 +15,7 @@ pub async fn create_immediate(
     endpoint_type: &str,
     idempotency_key: &str,
     input: Option<&serde_json::Value>,
-    max_attempts: i32,
+    max_attempts: i64,
 ) -> Result<CreateJobResult, sqlx::Error> {
     let mut tx = pool.begin().await?;
 
@@ -62,7 +62,7 @@ pub async fn create_delayed(
     idempotency_key: &str,
     input: Option<&serde_json::Value>,
     run_at: DateTime<Utc>,
-    max_attempts: i32,
+    max_attempts: i64,
 ) -> Result<CreateJobResult, sqlx::Error> {
     let mut tx = pool.begin().await?;
 

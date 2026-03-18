@@ -8,12 +8,12 @@ pub struct ClaimedExecution {
     pub endpoint: String,
     pub endpoint_type: String,
     pub input: Option<serde_json::Value>,
-    pub attempt_count: i32,
-    pub max_attempts: i32,
+    pub attempt_count: i64,
+    pub max_attempts: i64,
 }
 
 impl ClaimedExecution {
-    fn from_row(row: (String, String, String, String, Option<serde_json::Value>, i32, i32)) -> Self {
+    fn from_row(row: (String, String, String, String, Option<serde_json::Value>, i64, i64)) -> Self {
         Self {
             execution_id: row.0,
             job_id: row.1,
@@ -27,7 +27,7 @@ impl ClaimedExecution {
 }
 
 pub async fn claim(pool: &PgPool, worker_id: &str) -> Result<Option<ClaimedExecution>, sqlx::Error> {
-    let row: Option<(String, String, String, String, Option<serde_json::Value>, i32, i32)> = sqlx::query_as(
+    let row: Option<(String, String, String, String, Option<serde_json::Value>, i64, i64)> = sqlx::query_as(
         "UPDATE executions
          SET status = 'RUNNING',
              worker_id = $1,
@@ -194,7 +194,7 @@ pub async fn create_cron_execution(
     idempotency_key: &str,
     input: Option<&serde_json::Value>,
     run_at: DateTime<Utc>,
-    max_attempts: i32,
+    max_attempts: i64,
 ) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
         "INSERT INTO executions (job_id, endpoint, endpoint_type, idempotency_key, status, input, run_at, max_attempts)

@@ -46,7 +46,7 @@ pub async fn create(
         _ => AppError::from(e),
     })?;
 
-    Ok(HttpResponse::Created().json(endpoint_to_json(&ep)))
+    Ok(HttpResponse::Created().json(serde_json::json!({ "data": endpoint_to_json(&ep) })))
 }
 
 pub async fn list(
@@ -61,9 +61,9 @@ pub async fn list(
     let has_more = items.len() as i64 > limit;
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
     let next_cursor = if has_more { items.last().map(|e| encode_cursor(&e.name)) } else { None };
-    let items: Vec<serde_json::Value> = items.into_iter().map(|e| endpoint_to_json(&e)).collect();
+    let data: Vec<serde_json::Value> = items.into_iter().map(|e| endpoint_to_json(&e)).collect();
 
-    Ok(HttpResponse::Ok().json(PaginatedResponse { items, cursor: next_cursor }))
+    Ok(HttpResponse::Ok().json(PaginatedResponse { data, cursor: next_cursor }))
 }
 
 pub async fn get(
@@ -74,7 +74,7 @@ pub async fn get(
     let name = path.into_inner();
     let ep = db::endpoints::get(&state.pool, &name).await?
         .ok_or_else(|| AppError::EndpointNotFound(name))?;
-    Ok(HttpResponse::Ok().json(endpoint_to_json(&ep)))
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": endpoint_to_json(&ep) })))
 }
 
 pub async fn update(
@@ -106,7 +106,7 @@ pub async fn update(
         retry_json.as_ref(),
     ).await?.ok_or_else(|| AppError::EndpointNotFound(name))?;
 
-    Ok(HttpResponse::Ok().json(endpoint_to_json(&ep)))
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": endpoint_to_json(&ep) })))
 }
 
 pub async fn delete(

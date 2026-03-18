@@ -4,3 +4,10 @@
 *.swo
 *~
 .DS_Store
+
+# Smithy build output
+smithy/build/
+
+# Node
+cli/node_modules/
+cli/dist/

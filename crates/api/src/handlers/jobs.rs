@@ -5,6 +5,7 @@ use kronos_common::{
     models::job::{CreateJob, TriggerType, UpdateJob},
     pagination::{encode_cursor, PaginatedResponse, PaginationParams},
 };
+use uuid::Uuid;
 use crate::extractors::AuthenticatedRequest;
 use crate::router::AppState;
 
@@ -32,14 +33,20 @@ pub async fn create(
     if let Some(ref key) = body.idempotency_key {
         if let Some(existing) = db::jobs::get_by_idempotency(&state.pool, &body.endpoint, key).await? {
             let exec = db::executions::get_for_job(&state.pool, &existing.job_id).await?;
-            return Ok(HttpResponse::Ok().json(job_response(&existing, exec.as_ref())));
+            return Ok(HttpResponse::Ok().json(serde_json::json!({ "data": job_response(&existing, exec.as_ref()) })));
         }
     }
 
     match trigger {
         TriggerType::IMMEDIATE => {
-            let key = body.idempotency_key.as_deref()
-                .ok_or_else(|| AppError::InvalidRequest("idempotency_key required for IMMEDIATE jobs".into()))?;
+            let generated_key;
+            let key = match body.idempotency_key.as_deref() {
+                Some(k) => k,
+                None => {
+                    generated_key = Uuid::new_v4().to_string();
+                    &generated_key
+                }
+            };
 
             let result = db::jobs::create_immediate(
                 &state.pool, &body.endpoint, &ep.endpoint_type,
@@ -51,7 +58,7 @@ pub async fn create(
                 _ => AppError::from(e),
             })?;
 
-            Ok(HttpResponse::Created().json(serde_json::json!({
+            Ok(HttpResponse::Created().json(serde_json::json!({ "data": {
                 "job_id": result.job.job_id,
                 "endpoint": result.job.endpoint,
                 "endpoint_type": result.job.endpoint_type,
@@ -66,7 +73,7 @@ pub async fn create(
                     "created_at": result.execution_created_at,
                 },
                 "created_at": result.job.created_at,
-            })))
+            }})))
         }
         TriggerType::DELAYED => {
             let key = body.idempotency_key.as_deref()
@@ -79,7 +86,7 @@ pub async fn create(
                 key, body.input.as_ref(), run_at, retry_policy.max_attempts,
             ).await?;
 
-            Ok(HttpResponse::Created().json(serde_json::json!({
+            Ok(HttpResponse::Created().json(serde_json::json!({ "data": {
                 "job_id": result.job.job_id,
                 "endpoint": result.job.endpoint,
                 "endpoint_type": result.job.endpoint_type,
@@ -95,7 +102,7 @@ pub async fn create(
                     "created_at": result.execution_created_at,
                 },
                 "created_at": result.job.created_at,
-            })))
+            }})))
         }
         TriggerType::CRON => {
             let cron_expr = body.cron.as_deref()
@@ -119,7 +126,7 @@ pub async fn create(
                 Some(starts_at), body.ends_at, next_run,
             ).await?;
 
-            Ok(HttpResponse::Created().json(serde_json::json!({
+            Ok(HttpResponse::Created().json(serde_json::json!({ "data": {
                 "job_id": job.job_id,
                 "endpoint": job.endpoint,
                 "endpoint_type": job.endpoint_type,
@@ -133,7 +140,7 @@ pub async fn create(
                 "next_run_at": job.cron_next_run_at,
                 "input": job.input,
                 "created_at": job.created_at,
-            })))
+            }})))
         }
     }
 }
@@ -150,9 +157,9 @@ pub async fn list(
     let has_more = items.len() as i64 > limit;
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
     let next_cursor = if has_more { items.last().map(|j| encode_cursor(&j.job_id)) } else { None };
-    let items: Vec<serde_json::Value> = items.into_iter().map(|j| job_summary(&j)).collect();
+    let data: Vec<serde_json::Value> = items.into_iter().map(|j| job_summary(&j)).collect();
 
-    Ok(HttpResponse::Ok().json(PaginatedResponse { items, cursor: next_cursor }))
+    Ok(HttpResponse::Ok().json(PaginatedResponse { data, cursor: next_cursor }))
 }
 
 pub async fn get(
@@ -164,7 +171,7 @@ pub async fn get(
     let job = db::jobs::get(&state.pool, &job_id).await?
         .ok_or_else(|| AppError::JobNotFound(job_id))?;
     let exec = db::executions::get_for_job(&state.pool, &job.job_id).await?;
-    Ok(HttpResponse::Ok().json(job_response(&job, exec.as_ref())))
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": job_response(&job, exec.as_ref()) })))
 }
 
 pub async fn update(
@@ -212,7 +219,7 @@ pub async fn update(
 
     let created = db::jobs::retire_and_replace(&state.pool, &job_id, &new_job).await?;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "job_id": created.job_id,
         "endpoint": created.endpoint,
         "endpoint_type": created.endpoint_type,
@@ -225,7 +232,7 @@ pub async fn update(
         "next_run_at": created.cron_next_run_at,
         "input": created.input,
         "created_at": created.created_at,
-    })))
+    }})))
 }
 
 pub async fn cancel(
@@ -248,7 +255,7 @@ pub async fn cancel(
     let cancelled = db::jobs::cancel(&state.pool, &job_id).await?
         .ok_or_else(|| AppError::Conflict("Job could not be cancelled".into()))?;
 
-    Ok(HttpResponse::Ok().json(job_summary(&cancelled)))
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": job_summary(&cancelled) })))
 }
 
 pub async fn status(
@@ -278,7 +285,7 @@ pub async fn status(
 
     let last_exec = execs.iter().find(|e| e.status == "SUCCESS" || e.status == "FAILED");
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "job_id": job.job_id,
         "endpoint": job.endpoint,
         "endpoint_type": job.endpoint_type,
@@ -302,7 +309,7 @@ pub async fn status(
             "next_run_at": job.cron_next_run_at,
             "last_tick_at": job.cron_last_tick_at,
         })) } else { None },
-    })))
+    }})))
 }
 
 pub async fn versions(
@@ -317,7 +324,7 @@ pub async fn versions(
     let versions = db::jobs::get_versions(&state.pool, &job_id).await?;
     let items: Vec<serde_json::Value> = versions.into_iter().map(|j| job_summary(&j)).collect();
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({ "items": items })))
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": items })))
 }
 
 pub async fn list_executions(
@@ -338,7 +345,7 @@ pub async fn list_executions(
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
     let next_cursor = if has_more { items.last().map(|e| encode_cursor(&e.execution_id)) } else { None };
 
-    let items: Vec<serde_json::Value> = items.into_iter().map(|e| serde_json::json!({
+    let data: Vec<serde_json::Value> = items.into_iter().map(|e| serde_json::json!({
         "execution_id": e.execution_id,
         "job_id": e.job_id,
         "status": e.status,
@@ -350,7 +357,7 @@ pub async fn list_executions(
         "created_at": e.created_at,
     })).collect();
 
-    Ok(HttpResponse::Ok().json(PaginatedResponse { items, cursor: next_cursor }))
+    Ok(HttpResponse::Ok().json(PaginatedResponse { data, cursor: next_cursor }))
 }
 
 fn validate_input(input: &serde_json::Value, schema: &serde_json::Value) -> Result<(), AppError> {

@@ -19,6 +19,8 @@
           extensions = [ "rust-src" "rust-analyzer" ];
         };
       in {
+        packages.smithy-cli = pkgs.callPackage ./nix/smithy-cli.nix { };
+
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             rustToolchain
@@ -27,6 +29,9 @@
             postgresql
             docker-compose
             sqlx-cli
+            nodejs_22
+            self.packages.${system}.smithy-cli
+            just
           ];
 
           shellHook = ''

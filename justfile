@@ -1,0 +1,201 @@
+# Kronos — Distributed Job Scheduling and Execution Engine
+
+set dotenv-load
+
+# Default: list all recipes
+default:
+    @just --list
+
+# ─── Environment ──────────────────────────────────────────────
+
+export TE_DATABASE_URL := env("TE_DATABASE_URL", "postgresql://root@localhost:26257/taskexecutor?sslmode=disable")
+export TE_API_KEY := env("TE_API_KEY", "dev-api-key")
+export TE_ENCRYPTION_KEY := env("TE_ENCRYPTION_KEY", "0000000000000000000000000000000000000000000000000000000000000000")
+
+# ─── Setup ────────────────────────────────────────────────────
+
+# One-time project setup: start DB, run migrations, build SDK, install CLI deps
+setup: db-up db-migrate build-sdk cli-install
+    @echo "Setup complete. Run 'just dev' to start all services."
+
+# Create .env from example if it doesn't exist
+init-env:
+    @[ -f .env ] || cp .env.example .env && echo ".env ready"
+
+# ─── Database ─────────────────────────────────────────────────
+
+# Start CockroachDB (and init container)
+db-up:
+    docker-compose up -d cockroachdb cockroach-init
+    @echo "Waiting for CockroachDB to be ready..."
+    @sleep 5
+
+# Stop CockroachDB
+db-down:
+    docker-compose down
+
+# Run SQL migrations (applied directly since CockroachDB doesn't support pg_advisory_lock)
+db-migrate:
+    cockroach sql --insecure --host=localhost:26257 -d taskexecutor < migrations/20260317000000_initial.sql
+
+# Reset database (drop + recreate + migrate)
+db-reset:
+    sqlx database drop --database-url "$TE_DATABASE_URL" -y || true
+    sqlx database create --database-url "$TE_DATABASE_URL"
+    just db-migrate
+
+# Open a SQL shell
+db-shell:
+    cockroach sql --insecure --host=localhost:26257 -d taskexecutor
+
+# ─── Build ────────────────────────────────────────────────────
+
+# Build all Rust crates
+build:
+    cargo build --workspace
+
+# Build in release mode
+build-release:
+    cargo build --workspace --release
+
+# Check all crates compile
+check:
+    cargo check --workspace
+
+# ─── Smithy + SDK ─────────────────────────────────────────────
+
+# Generate TypeScript SDK and OpenAPI spec from Smithy models
+smithy-build:
+    cd smithy && smithy build
+
+# Build the generated TypeScript SDK (npm install + compile)
+build-sdk: smithy-build
+    cd smithy/build/smithy/source/typescript-client-codegen && npm install && npm run build
+
+# Install CLI dependencies (links to built SDK)
+cli-install: build-sdk
+    cd cli && npm install
+
+# Regenerate SDK and reinstall CLI (after Smithy model changes)
+sdk-refresh: build-sdk cli-install
+
+# ─── Run Services ─────────────────────────────────────────────
+
+# Run the API server (port 8080)
+api:
+    cargo run -p kronos-api
+
+# Run the worker
+worker:
+    cargo run -p kronos-worker
+
+# Run the scheduler (cron materializer, delayed promoter, stuck reclaimer)
+scheduler:
+    cargo run -p kronos-scheduler
+
+# Run the mock HTTP server (port 9999)
+mock-server:
+    cargo run -p kronos-mock-server
+
+# Run all services in parallel (API + worker + scheduler + mock-server)
+dev:
+    #!/usr/bin/env bash
+    set -e
+    trap 'kill 0' EXIT
+
+    echo "Starting all Kronos services..."
+
+    cargo run -p kronos-api &
+    cargo run -p kronos-worker &
+    cargo run -p kronos-scheduler &
+    cargo run -p kronos-mock-server &
+
+    echo "All services starting. Press Ctrl+C to stop all."
+    wait
+
+# ─── Test ─────────────────────────────────────────────────────
+
+# Run the immediate execution end-to-end test
+test-immediate:
+    cd cli && npx tsx src/test-immediate.ts
+
+# Run the delayed execution end-to-end test (requires scheduler running)
+test-delayed:
+    cd cli && npx tsx src/test-delayed.ts
+
+# Run the CRON job end-to-end test (requires scheduler running)
+test-cron:
+    cd cli && npx tsx src/test-cron.ts
+
+# Full integration test: setup → dev services → run test
+test-e2e: build
+    #!/usr/bin/env bash
+    set -e
+    trap 'kill 0' EXIT
+
+    echo "Starting services for e2e test..."
+
+    cargo run -p kronos-api &
+    API_PID=$!
+
+    cargo run -p kronos-worker &
+    WORKER_PID=$!
+
+    cargo run -p kronos-scheduler &
+    SCHEDULER_PID=$!
+
+    cargo run -p kronos-mock-server &
+    MOCK_PID=$!
+
+    # Wait for services to be ready
+    echo "Waiting for services to start..."
+    for i in $(seq 1 30); do
+        if curl -sf http://localhost:8080/health > /dev/null 2>&1 && \
+           curl -sf http://localhost:9999/health > /dev/null 2>&1; then
+            echo "Services ready."
+            break
+        fi
+        if [ "$i" -eq 30 ]; then
+            echo "ERROR: Services failed to start within 30s"
+            exit 1
+        fi
+        sleep 1
+    done
+
+    cd cli && npx tsx src/test-immediate.ts && npx tsx src/test-delayed.ts && npx tsx src/test-cron.ts
+    EXIT_CODE=$?
+
+    echo "Shutting down services..."
+    exit $EXIT_CODE
+
+# ─── Cargo utilities ─────────────────────────────────────────
+
+# Run clippy lints
+lint:
+    cargo clippy --workspace -- -D warnings
+
+# Format code
+fmt:
+    cargo fmt --all
+
+# Format check (CI)
+fmt-check:
+    cargo fmt --all -- --check
+
+# ─── Docker ──────────────────────────────────────────────────
+
+# Start all infrastructure (DB + Kafka + Redis)
+infra-up:
+    docker-compose --profile kafka --profile redis up -d
+
+# Stop all infrastructure
+infra-down:
+    docker-compose --profile kafka --profile redis down
+
+# ─── Cleanup ─────────────────────────────────────────────────
+
+# Clean all build artifacts
+clean:
+    cargo clean
+    rm -rf smithy/build
+    rm -rf cli/node_modules cli/dist

@@ -27,8 +27,8 @@ pub async fn process_execution(
     endpoint_name: &str,
     endpoint_type: &str,
     input: Option<&serde_json::Value>,
-    attempt_count: i32,
-    max_attempts: i32,
+    attempt_count: i64,
+    max_attempts: i64,
 ) {
     let started_at = Utc::now();
 
@@ -107,12 +107,22 @@ pub async fn process_execution(
         }
     };
 
+    // 3. Inject job input as body if no body/body_template in resolved spec
+    let mut dispatch_spec = resolved_spec;
+    if dispatch_spec.get("body").is_none() && dispatch_spec.get("body_template").is_none() {
+        if let Some(input_val) = input {
+            if let Some(obj) = dispatch_spec.as_object_mut() {
+                obj.insert("body".to_string(), input_val.clone());
+            }
+        }
+    }
+
     // 3. Dispatch
     log_execution(&ctx.pool, execution_id, attempt_count, "INFO",
         &format!("Dispatching {} to {}", endpoint_type, endpoint_name)).await;
 
     let result = match endpoint_type {
-        "HTTP" => dispatcher::http::dispatch(&ctx.http_client, &resolved_spec).await,
+        "HTTP" => dispatcher::http::dispatch(&ctx.http_client, &dispatch_spec).await,
         #[cfg(feature = "kafka")]
         "KAFKA" => dispatcher::kafka::dispatch(&resolved_spec).await,
         #[cfg(feature = "redis-stream")]
@@ -126,7 +136,7 @@ pub async fn process_execution(
     };
 
     let completed_at = Utc::now();
-    let duration_ms = (completed_at - started_at).num_milliseconds() as i32;
+    let duration_ms = (completed_at - started_at).num_milliseconds();
 
     // 4. Record attempt + finalize
     match result {
@@ -215,14 +225,14 @@ fn flatten_json_object(value: &serde_json::Value) -> Result<HashMap<String, serd
 async fn record_attempt(
     pool: &PgPool,
     execution_id: &str,
-    attempt_number: i32,
+    attempt_number: i64,
     status: &str,
     started_at: chrono::DateTime<Utc>,
     output: Option<&serde_json::Value>,
     error: Option<&serde_json::Value>,
 ) {
     let completed_at = Utc::now();
-    let duration_ms = (completed_at - started_at).num_milliseconds() as i32;
+    let duration_ms = (completed_at - started_at).num_milliseconds();
     if let Err(e) = db::attempts::insert(
         pool, execution_id, attempt_number, status,
         started_at, completed_at, duration_ms, output, error,
@@ -231,7 +241,7 @@ async fn record_attempt(
     }
 }
 
-async fn log_execution(pool: &PgPool, execution_id: &str, attempt_number: i32, level: &str, message: &str) {
+async fn log_execution(pool: &PgPool, execution_id: &str, attempt_number: i64, level: &str, message: &str) {
     if let Err(e) = db::execution_logs::insert(pool, execution_id, attempt_number, level, message).await {
         tracing::error!(execution_id, "Failed to write execution log: {}", e);
     }

@@ -35,7 +35,7 @@ impl EndpointType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetryPolicy {
     #[serde(default = "default_max_attempts")]
-    pub max_attempts: i32,
+    pub max_attempts: i64,
     #[serde(default = "default_backoff")]
     pub backoff: String,
     #[serde(default = "default_initial_delay")]
@@ -44,7 +44,7 @@ pub struct RetryPolicy {
     pub max_delay_ms: i64,
 }
 
-fn default_max_attempts() -> i32 { 1 }
+fn default_max_attempts() -> i64 { 1 }
 fn default_backoff() -> String { "exponential".into() }
 fn default_initial_delay() -> i64 { 1000 }
 fn default_max_delay() -> i64 { 60000 }

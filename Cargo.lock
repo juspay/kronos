@@ -1641,6 +1641,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "kronos-mock-server"
+version = "0.1.0"
+dependencies = [
+ "actix-rt",
+ "actix-web",
+ "chrono",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "kronos-scheduler"
 version = "0.1.0"
 dependencies = [
