@@ -6,6 +6,9 @@ members = [
     "crates/scheduler",
     "crates/mock-server",
 ]
+exclude = [
+    "crates/dashboard",
+]
 resolver = "2"
 
 [workspace.package]

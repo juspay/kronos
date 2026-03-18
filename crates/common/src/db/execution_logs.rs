@@ -1,8 +1,8 @@
 use crate::models::ExecutionLog;
-use sqlx::PgPool;
+use sqlx::PgConnection;
 
 pub async fn insert(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     execution_id: &str,
     attempt_number: i64,
     level: &str,
@@ -16,19 +16,19 @@ pub async fn insert(
     .bind(attempt_number)
     .bind(level)
     .bind(message)
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     Ok(())
 }
 
 pub async fn list_for_execution(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     execution_id: &str,
 ) -> Result<Vec<ExecutionLog>, sqlx::Error> {
     sqlx::query_as::<_, ExecutionLog>(
         "SELECT * FROM execution_logs WHERE execution_id = $1 ORDER BY logged_at ASC",
     )
     .bind(execution_id)
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await
 }

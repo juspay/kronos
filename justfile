@@ -64,7 +64,9 @@ check:
 
 # ─── Smithy + SDK ─────────────────────────────────────────────
 
-# Generate TypeScript SDK and OpenAPI spec from Smithy models
+export SMITHY_MAVEN_REPOS := "https://repo.maven.apache.org/maven2|https://sandbox.assets.juspay.in/smithy/m2"
+
+# Generate TypeScript SDK, Rust SDK, and OpenAPI spec from Smithy models
 smithy-build:
     cd smithy && smithy build
 
@@ -228,6 +230,21 @@ infra-up:
 infra-down:
     docker-compose --profile kafka --profile redis down
 
+# ─── Dashboard ──────────────────────────────────────────────
+
+# Build the dashboard (requires trunk and wasm32 target)
+dashboard-build:
+    cd crates/dashboard && trunk build --release
+
+# Run the dashboard dev server (port 3000, proxies API to 8080)
+dashboard:
+    cd crates/dashboard && trunk serve
+
+# Install dashboard build tools
+dashboard-setup:
+    rustup target add wasm32-unknown-unknown
+    cargo install trunk
+
 # ─── Cleanup ─────────────────────────────────────────────────
 
 # Clean all build artifacts
@@ -235,3 +252,4 @@ clean:
     cargo clean
     rm -rf smithy/build
     rm -rf cli/node_modules cli/dist
+    rm -rf crates/dashboard/dist

@@ -10,7 +10,8 @@
       "software.amazon.smithy:smithy-validation-model:1.55.0",
       "software.amazon.smithy:smithy-openapi:1.55.0",
       "software.amazon.smithy.typescript:smithy-aws-typescript-codegen:0.26.0",
-      "in.juspay.smithy.haskell:client-codegen:0.0.4"
+      "in.juspay.smithy.haskell:client-codegen:0.0.4",
+      "software.amazon.smithy.rust.codegen:codegen-client:0.1.0"
     ]
   },
   "plugins": {
@@ -23,6 +24,24 @@
       "edition": "2010",
       "version": "0.0.1",
       "service": "com.kronos#KronosService"
+    },
+    "rust-client-codegen": {
+      "runtimeConfig": {
+        "version": "1.2.5"
+      },
+      "codegen": {
+        "addMessageToErrors": true,
+        "renameErrors": true,
+        "enableNewSmithyRuntime": "orchestrator"
+      },
+      "service": "com.kronos#KronosService",
+      "module": "kronos_sdk",
+      "moduleVersion": "0.1.0",
+      "minimumSupportedRustVersion": "1.82.0",
+      "moduleDescription": "Rust SDK for Kronos job scheduling service",
+      "moduleAuthors": [
+        "kronos@example.com"
+      ]
     },
     "openapi": {
       "service": "com.kronos#KronosService",

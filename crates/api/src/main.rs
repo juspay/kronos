@@ -1,6 +1,6 @@
+use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 use kronos_common::config::AppConfig;
-use sqlx::migrate::Migrator;
 use tracing_subscriber::EnvFilter;
 
 mod extractors;
@@ -37,8 +37,15 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("API server listening on {}", listen_addr);
 
     HttpServer::new(move || {
+        let cors = Cors::default()
+            .allow_any_origin()
+            .allow_any_method()
+            .allow_any_header()
+            .max_age(3600);
+
         App::new()
             .app_data(web::Data::new(app_state.clone()))
+            .wrap(cors)
             .wrap(crate::middleware::RequestId)
             .configure(router::configure)
     })

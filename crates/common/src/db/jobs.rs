@@ -1,6 +1,6 @@
 use crate::models::job::Job;
 use chrono::{DateTime, Utc};
-use sqlx::PgPool;
+use sqlx::PgConnection;
 
 pub struct CreateJobResult {
     pub job: Job,
@@ -10,15 +10,13 @@ pub struct CreateJobResult {
 }
 
 pub async fn create_immediate(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     endpoint: &str,
     endpoint_type: &str,
     idempotency_key: &str,
     input: Option<&serde_json::Value>,
     max_attempts: i64,
 ) -> Result<CreateJobResult, sqlx::Error> {
-    let mut tx = pool.begin().await?;
-
     let job = sqlx::query_as::<_, Job>(
         "INSERT INTO jobs (endpoint, endpoint_type, trigger_type, idempotency_key, input)
          VALUES ($1, $2, 'IMMEDIATE', $3, $4)
@@ -28,7 +26,7 @@ pub async fn create_immediate(
     .bind(endpoint_type)
     .bind(idempotency_key)
     .bind(input)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut *conn)
     .await?;
 
     let exec_row: (String, String, DateTime<Utc>) = sqlx::query_as(
@@ -42,10 +40,8 @@ pub async fn create_immediate(
     .bind(idempotency_key)
     .bind(input)
     .bind(max_attempts)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut *conn)
     .await?;
-
-    tx.commit().await?;
 
     Ok(CreateJobResult {
         job,
@@ -56,7 +52,7 @@ pub async fn create_immediate(
 }
 
 pub async fn create_delayed(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     endpoint: &str,
     endpoint_type: &str,
     idempotency_key: &str,
@@ -64,8 +60,6 @@ pub async fn create_delayed(
     run_at: DateTime<Utc>,
     max_attempts: i64,
 ) -> Result<CreateJobResult, sqlx::Error> {
-    let mut tx = pool.begin().await?;
-
     let job = sqlx::query_as::<_, Job>(
         "INSERT INTO jobs (endpoint, endpoint_type, trigger_type, idempotency_key, input, run_at)
          VALUES ($1, $2, 'DELAYED', $3, $4, $5)
@@ -76,7 +70,7 @@ pub async fn create_delayed(
     .bind(idempotency_key)
     .bind(input)
     .bind(run_at)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut *conn)
     .await?;
 
     let exec_row: (String, String, DateTime<Utc>) = sqlx::query_as(
@@ -91,10 +85,8 @@ pub async fn create_delayed(
     .bind(run_at)
     .bind(input)
     .bind(max_attempts)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut *conn)
     .await?;
-
-    tx.commit().await?;
 
     Ok(CreateJobResult {
         job,
@@ -105,7 +97,7 @@ pub async fn create_delayed(
 }
 
 pub async fn create_cron(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     endpoint: &str,
     endpoint_type: &str,
     input: Option<&serde_json::Value>,
@@ -128,31 +120,31 @@ pub async fn create_cron(
     .bind(starts_at)
     .bind(ends_at)
     .bind(next_run_at)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
 }
 
-pub async fn get(pool: &PgPool, job_id: &str) -> Result<Option<Job>, sqlx::Error> {
+pub async fn get(conn: &mut PgConnection, job_id: &str) -> Result<Option<Job>, sqlx::Error> {
     sqlx::query_as::<_, Job>("SELECT * FROM jobs WHERE job_id = $1")
         .bind(job_id)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *conn)
         .await
 }
 
 pub async fn get_by_idempotency(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     endpoint: &str,
     key: &str,
 ) -> Result<Option<Job>, sqlx::Error> {
     sqlx::query_as::<_, Job>("SELECT * FROM jobs WHERE endpoint = $1 AND idempotency_key = $2")
         .bind(endpoint)
         .bind(key)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *conn)
         .await
 }
 
 pub async fn list(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     cursor: Option<&str>,
     limit: i64,
 ) -> Result<Vec<Job>, sqlx::Error> {
@@ -163,42 +155,40 @@ pub async fn list(
         )
         .bind(c)
         .bind(limit)
-        .fetch_all(pool)
+        .fetch_all(&mut *conn)
         .await,
         None => {
             sqlx::query_as::<_, Job>("SELECT * FROM jobs ORDER BY created_at DESC LIMIT $1")
                 .bind(limit)
-                .fetch_all(pool)
+                .fetch_all(&mut *conn)
                 .await
         }
     }
 }
 
-pub async fn cancel(pool: &PgPool, job_id: &str) -> Result<Option<Job>, sqlx::Error> {
+pub async fn cancel(conn: &mut PgConnection, job_id: &str) -> Result<Option<Job>, sqlx::Error> {
     sqlx::query_as::<_, Job>(
         "UPDATE jobs SET status = 'RETIRED', retired_at = now()
          WHERE job_id = $1 AND status = 'ACTIVE'
          RETURNING *",
     )
     .bind(job_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await
 }
 
 pub async fn retire_and_replace(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     old_job_id: &str,
     new_job: &Job,
 ) -> Result<Job, sqlx::Error> {
-    let mut tx = pool.begin().await?;
-
     sqlx::query(
         "UPDATE jobs SET status = 'RETIRED', retired_at = now(), replaced_by_id = $2
          WHERE job_id = $1 AND status = 'ACTIVE'",
     )
     .bind(old_job_id)
     .bind(&new_job.job_id)
-    .execute(&mut *tx)
+    .execute(&mut *conn)
     .await?;
 
     let new = sqlx::query_as::<_, Job>(
@@ -216,15 +206,13 @@ pub async fn retire_and_replace(
     .bind(&new_job.cron_next_run_at)
     .bind(new_job.version)
     .bind(old_job_id)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut *conn)
     .await?;
 
-    tx.commit().await?;
     Ok(new)
 }
 
-pub async fn get_versions(pool: &PgPool, job_id: &str) -> Result<Vec<Job>, sqlx::Error> {
-    // Walk the version chain backward and forward
+pub async fn get_versions(conn: &mut PgConnection, job_id: &str) -> Result<Vec<Job>, sqlx::Error> {
     sqlx::query_as::<_, Job>(
         "WITH RECURSIVE chain AS (
             SELECT * FROM jobs WHERE job_id = $1
@@ -234,11 +222,11 @@ pub async fn get_versions(pool: &PgPool, job_id: &str) -> Result<Vec<Job>, sqlx:
          SELECT * FROM chain ORDER BY version ASC",
     )
     .bind(job_id)
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await
 }
 
-pub async fn get_due_cron_jobs(pool: &PgPool, limit: i64) -> Result<Vec<Job>, sqlx::Error> {
+pub async fn get_due_cron_jobs(conn: &mut PgConnection, limit: i64) -> Result<Vec<Job>, sqlx::Error> {
     sqlx::query_as::<_, Job>(
         "SELECT * FROM jobs
          WHERE trigger_type = 'CRON' AND status = 'ACTIVE'
@@ -247,12 +235,12 @@ pub async fn get_due_cron_jobs(pool: &PgPool, limit: i64) -> Result<Vec<Job>, sq
          LIMIT $1",
     )
     .bind(limit)
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await
 }
 
 pub async fn advance_cron_tick(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     job_id: &str,
     current_tick: DateTime<Utc>,
     next_tick: DateTime<Utc>,
@@ -264,7 +252,7 @@ pub async fn advance_cron_tick(
     .bind(job_id)
     .bind(next_tick)
     .bind(current_tick)
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     Ok(result.rows_affected() > 0)
 }

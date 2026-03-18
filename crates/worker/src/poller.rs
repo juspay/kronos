@@ -2,6 +2,7 @@ use kronos_common::{
     cache::{ConfigCache, SecretCache},
     config::AppConfig,
     db,
+    tenant::SchemaRegistry,
 };
 use reqwest::Client;
 use sqlx::PgPool;
@@ -16,6 +17,7 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
     let worker_id = format!("worker_{}", Uuid::new_v4().simple());
     let semaphore = Arc::new(Semaphore::new(config.worker_max_concurrent));
     let poll_interval = Duration::from_millis(config.worker_poll_interval_ms);
+    let schema_registry = SchemaRegistry::new(pool.clone(), 30);
 
     let ctx = Arc::new(PipelineContext {
         pool: pool.clone(),
@@ -34,10 +36,8 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
         tokio::select! {
             _ = &mut shutdown => {
                 tracing::info!("Shutting down worker, waiting for in-flight tasks...");
-                // Wait for all permits to be returned (all tasks done)
                 let timeout = Duration::from_secs(config.worker_shutdown_timeout_sec);
                 let _ = tokio::time::timeout(timeout, async {
-                    // Acquire all permits = all tasks done
                     let _all = semaphore.acquire_many(config.worker_max_concurrent as u32).await;
                 }).await;
                 tracing::info!("Worker shutdown complete");
@@ -46,12 +46,50 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
             permit = semaphore.clone().acquire_owned() => {
                 let permit = permit?;
 
-                match db::executions::claim(&pool, &worker_id).await {
-                    Ok(Some(exec)) => {
+                let schemas = match schema_registry.get_active_schemas().await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::error!("Failed to fetch active schemas: {}", e);
+                        drop(permit);
+                        tokio::time::sleep(poll_interval).await;
+                        continue;
+                    }
+                };
+
+                // Try to claim from any active schema
+                let claimed = {
+                    let mut result = None;
+                    for schema_name in &schemas {
+                        let mut conn = match db::scoped::scoped_connection(&pool, schema_name).await {
+                            Ok(c) => c,
+                            Err(e) => {
+                                tracing::error!(schema = %schema_name, "Failed to get scoped connection: {}", e);
+                                continue;
+                            }
+                        };
+
+                        match db::executions::claim(&mut *conn, &worker_id).await {
+                            Ok(Some(exec)) => {
+                                result = Some((schema_name.clone(), exec));
+                                break;
+                            }
+                            Ok(None) => continue,
+                            Err(e) => {
+                                tracing::error!(schema = %schema_name, "Failed to claim execution: {}", e);
+                                continue;
+                            }
+                        }
+                    }
+                    result
+                };
+
+                match claimed {
+                    Some((schema, exec)) => {
                         let ctx = ctx.clone();
                         tokio::spawn(async move {
                             pipeline::process_execution(
                                 &ctx,
+                                &schema,
                                 &exec.execution_id,
                                 &exec.job_id,
                                 &exec.endpoint,
@@ -63,12 +101,7 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
                             drop(permit);
                         });
                     }
-                    Ok(None) => {
-                        drop(permit);
-                        tokio::time::sleep(poll_interval).await;
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to claim execution: {}", e);
+                    None => {
                         drop(permit);
                         tokio::time::sleep(poll_interval).await;
                     }

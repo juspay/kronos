@@ -4,8 +4,10 @@ pub mod endpoint;
 pub mod execution;
 pub mod execution_log;
 pub mod job;
+pub mod organization;
 pub mod payload_spec;
 pub mod secret;
+pub mod workspace;
 
 pub use attempt::{Attempt, AttemptStatus};
 pub use config::Config;
@@ -13,5 +15,7 @@ pub use endpoint::{Endpoint, EndpointType, RetryPolicy};
 pub use execution::{Execution, ExecutionStatus};
 pub use execution_log::ExecutionLog;
 pub use job::{Job, JobStatus, TriggerType};
+pub use organization::Organization;
 pub use payload_spec::PayloadSpec;
 pub use secret::Secret;
+pub use workspace::Workspace;

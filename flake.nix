@@ -17,6 +17,7 @@
         pkgs = import nixpkgs { inherit system overlays; };
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
           extensions = [ "rust-src" "rust-analyzer" ];
+          targets = [ "wasm32-unknown-unknown" ];
         };
       in {
         packages.smithy-cli = pkgs.callPackage ./nix/smithy-cli.nix { };
@@ -33,6 +34,8 @@
             yarn
             self.packages.${system}.smithy-cli
             just
+            trunk
+            wasm-bindgen-cli
           ];
 
           shellHook = ''

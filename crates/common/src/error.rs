@@ -1,6 +1,5 @@
 use actix_web::{http::StatusCode, HttpResponse, ResponseError};
 use serde::Serialize;
-use std::fmt;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
@@ -20,6 +19,10 @@ pub enum AppError {
     JobNotFound(String),
     #[error("Execution not found: {0}")]
     ExecutionNotFound(String),
+    #[error("Organization not found: {0}")]
+    OrgNotFound(String),
+    #[error("Workspace not found: {0}")]
+    WorkspaceNotFound(String),
     #[error("Conflict: {0}")]
     Conflict(String),
     #[error("Job not updatable: {0}")]
@@ -67,6 +70,8 @@ impl AppError {
             Self::EndpointNotFound(_) => (StatusCode::NOT_FOUND, "ENDPOINT_NOT_FOUND"),
             Self::JobNotFound(_) => (StatusCode::NOT_FOUND, "JOB_NOT_FOUND"),
             Self::ExecutionNotFound(_) => (StatusCode::NOT_FOUND, "EXECUTION_NOT_FOUND"),
+            Self::OrgNotFound(_) => (StatusCode::NOT_FOUND, "ORG_NOT_FOUND"),
+            Self::WorkspaceNotFound(_) => (StatusCode::NOT_FOUND, "WORKSPACE_NOT_FOUND"),
             Self::Conflict(_) => (StatusCode::CONFLICT, "CONFLICT"),
             Self::JobNotUpdatable(_) => (StatusCode::CONFLICT, "JOB_NOT_UPDATABLE"),
             Self::ExecutionNotCancellable(_) => (StatusCode::CONFLICT, "EXECUTION_NOT_CANCELLABLE"),

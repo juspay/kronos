@@ -2,5 +2,7 @@ pub mod configs;
 pub mod endpoints;
 pub mod executions;
 pub mod jobs;
+pub mod organizations;
 pub mod payload_specs;
 pub mod secrets;
+pub mod workspaces;

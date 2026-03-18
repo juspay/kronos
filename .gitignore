@@ -1,13 +1,38 @@
-/target
+# Rust
+**/target
+**/*.rs.bk
+
+# Environment
 .env
-*.swp
-*.swo
-*~
-.DS_Store
+.env.local
+.env.*.local
+
+# Nix / direnv
+.direnv/
+result
 
 # Smithy build output
 smithy/build/
 
 # Node
-cli/node_modules/
-cli/dist/
+node_modules/
+dist/
+
+# Editor / IDE
+*.swp
+*.swo
+*~
+.DS_Store
+.vscode/
+.idea/
+*.iml
+
+# Haskell
+haskell-example/dist-newstyle/
+haskell-example/.cabal/
+
+# Docker volumes
+docker-data/
+
+# SQLx offline query cache (regenerate with `cargo sqlx prepare`)
+.sqlx/

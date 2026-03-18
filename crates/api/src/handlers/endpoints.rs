@@ -1,4 +1,4 @@
-use crate::extractors::AuthenticatedRequest;
+use crate::extractors::{AuthenticatedRequest, Workspace};
 use crate::router::AppState;
 use actix_web::{web, HttpResponse};
 use kronos_common::{
@@ -11,6 +11,7 @@ use kronos_common::{
 pub async fn create(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
+    ws: Workspace,
     body: web::Json<CreateEndpoint>,
 ) -> Result<HttpResponse, AppError> {
     if EndpointType::from_str_val(&body.endpoint_type).is_none() {
@@ -20,13 +21,17 @@ pub async fn create(
         )));
     }
 
+    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
+
     if let Some(ref ps) = body.payload_spec {
-        if db::payload_specs::get(&state.pool, ps).await?.is_none() {
+        if db::payload_specs::get(&mut *conn, ps).await?.is_none() {
             return Err(AppError::InvalidPayloadSpecRef(ps.clone()));
         }
     }
     if let Some(ref cfg) = body.config {
-        if db::configs::get(&state.pool, cfg).await?.is_none() {
+        if db::configs::get(&mut *conn, cfg).await?.is_none() {
             return Err(AppError::InvalidConfigRef(cfg.clone()));
         }
     }
@@ -37,7 +42,7 @@ pub async fn create(
         .map(|rp| serde_json::to_value(rp).unwrap());
 
     let ep = db::endpoints::create(
-        &state.pool,
+        &mut *conn,
         &body.name,
         &body.endpoint_type,
         body.payload_spec.as_deref(),
@@ -59,11 +64,15 @@ pub async fn create(
 pub async fn list(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
+    ws: Workspace,
     params: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, AppError> {
+    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
-    let items = db::endpoints::list(&state.pool, cursor.as_deref(), limit + 1).await?;
+    let items = db::endpoints::list(&mut *conn, cursor.as_deref(), limit + 1).await?;
 
     let has_more = items.len() as i64 > limit;
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
@@ -83,10 +92,14 @@ pub async fn list(
 pub async fn get(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
+    ws: Workspace,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
+    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
     let name = path.into_inner();
-    let ep = db::endpoints::get(&state.pool, &name)
+    let ep = db::endpoints::get(&mut *conn, &name)
         .await?
         .ok_or_else(|| AppError::EndpointNotFound(name))?;
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": endpoint_to_json(&ep) })))
@@ -95,17 +108,21 @@ pub async fn get(
 pub async fn update(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
+    ws: Workspace,
     path: web::Path<String>,
     body: web::Json<UpdateEndpoint>,
 ) -> Result<HttpResponse, AppError> {
+    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
     let name = path.into_inner();
     if let Some(ref ps) = body.payload_spec {
-        if db::payload_specs::get(&state.pool, ps).await?.is_none() {
+        if db::payload_specs::get(&mut *conn, ps).await?.is_none() {
             return Err(AppError::InvalidPayloadSpecRef(ps.clone()));
         }
     }
     if let Some(ref cfg) = body.config {
-        if db::configs::get(&state.pool, cfg).await?.is_none() {
+        if db::configs::get(&mut *conn, cfg).await?.is_none() {
             return Err(AppError::InvalidConfigRef(cfg.clone()));
         }
     }
@@ -116,7 +133,7 @@ pub async fn update(
         .map(|rp| serde_json::to_value(rp).unwrap());
 
     let ep = db::endpoints::update(
-        &state.pool,
+        &mut *conn,
         &name,
         body.spec.as_ref(),
         body.config.as_deref(),
@@ -132,16 +149,20 @@ pub async fn update(
 pub async fn delete(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
+    ws: Workspace,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
+    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
     let name = path.into_inner();
-    if db::endpoints::has_active_jobs(&state.pool, &name).await? {
+    if db::endpoints::has_active_jobs(&mut *conn, &name).await? {
         return Err(AppError::Conflict(format!(
             "Endpoint '{}' has active jobs",
             name
         )));
     }
-    if !db::endpoints::delete(&state.pool, &name).await? {
+    if !db::endpoints::delete(&mut *conn, &name).await? {
         return Err(AppError::EndpointNotFound(name));
     }
     Ok(HttpResponse::NoContent().finish())

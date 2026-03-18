@@ -24,3 +24,4 @@ anyhow.workspace = true
 jsonschema.workspace = true
 cron.workspace = true
 chrono-tz.workspace = true
+actix-cors = "0.7"
