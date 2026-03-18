@@ -1,0 +1,3 @@
+packages:
+  .
+  ../smithy/build/smithy/source/haskell-client-codegen/

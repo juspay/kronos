@@ -30,7 +30,6 @@ impl ExecutionStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Execution {
     pub execution_id: String,
-    pub crdb_region: String,
     pub job_id: String,
     pub endpoint: String,
     pub endpoint_type: String,

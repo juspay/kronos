@@ -46,7 +46,6 @@ impl JobStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Job {
     pub job_id: String,
-    pub crdb_region: String,
     pub endpoint: String,
     pub endpoint_type: String,
     pub trigger_type: String,

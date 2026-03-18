@@ -1,0 +1,17 @@
+cabal-version: 3.0
+name:          haskell-example
+version:       0.1.0
+build-type:    Simple
+
+executable kronos-example
+    main-is:          Main.hs
+    hs-source-dirs:   app
+    default-language: Haskell2010
+    build-depends:
+        base             >= 4.14 && < 4.19,
+        SuperpositionSDK,
+        text             >= 1.2.3 && < 2.1,
+        aeson            >= 2.0.0 && < 2.3.0,
+        network-uri      >= 2.6   && < 2.7,
+        http-client      >= 0.5.14 && < 0.8,
+        bytestring       >= 0.10.12 && < 0.12.0

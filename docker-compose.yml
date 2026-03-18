@@ -1,24 +1,16 @@
 version: "3.9"
 
 services:
-  cockroachdb:
-    image: cockroachdb/cockroach:v23.2.0
-    command: start-single-node --insecure --store=attrs=ssd,path=/cockroach/cockroach-data --http-port=28080
+  postgres:
+    image: postgres:16-alpine
     ports:
-      - "26257:26257"
-      - "28080:28080"
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: kronos
+      POSTGRES_PASSWORD: kronos
+      POSTGRES_DB: taskexecutor
     volumes:
-      - cockroach-data:/cockroach/cockroach-data
-
-  cockroach-init:
-    image: cockroachdb/cockroach:v23.2.0
-    depends_on:
-      - cockroachdb
-    entrypoint: >
-      /bin/sh -c "
-        sleep 5 &&
-        cockroach sql --insecure --host=cockroachdb:26257 -e 'CREATE DATABASE IF NOT EXISTS taskexecutor;'
-      "
+      - postgres-data:/var/lib/postgresql/data
 
   # Kafka (for kafka feature)
   kafka:
@@ -49,6 +41,6 @@ services:
       - redis
 
 volumes:
-  cockroach-data:
+  postgres-data:
   kafka-data:
   redis-data:

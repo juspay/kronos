@@ -1,7 +1,9 @@
 -- Task Executor initial schema
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS payload_specs (
-    name          STRING        NOT NULL,
+    name          TEXT          NOT NULL,
     schema_json   JSONB         NOT NULL,
     created_at    TIMESTAMPTZ   NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ   NOT NULL DEFAULT now(),
@@ -9,7 +11,7 @@ CREATE TABLE IF NOT EXISTS payload_specs (
 );
 
 CREATE TABLE IF NOT EXISTS configs (
-    name          STRING        NOT NULL,
+    name          TEXT          NOT NULL,
     values_json   JSONB         NOT NULL,
     created_at    TIMESTAMPTZ   NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ   NOT NULL DEFAULT now(),
@@ -17,18 +19,18 @@ CREATE TABLE IF NOT EXISTS configs (
 );
 
 CREATE TABLE IF NOT EXISTS secrets (
-    name              STRING        NOT NULL,
-    encrypted_value   BYTES         NOT NULL,
+    name              TEXT          NOT NULL,
+    encrypted_value   BYTEA         NOT NULL,
     created_at        TIMESTAMPTZ   NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ   NOT NULL DEFAULT now(),
     CONSTRAINT pk_secrets PRIMARY KEY (name)
 );
 
 CREATE TABLE IF NOT EXISTS endpoints (
-    name              STRING        NOT NULL,
-    endpoint_type     STRING        NOT NULL,
-    payload_spec_ref  STRING,
-    config_ref        STRING,
+    name              TEXT          NOT NULL,
+    endpoint_type     TEXT          NOT NULL,
+    payload_spec_ref  TEXT,
+    config_ref        TEXT,
     spec              JSONB         NOT NULL,
     retry_policy      JSONB,
     created_at        TIMESTAMPTZ   NOT NULL DEFAULT now(),
@@ -42,20 +44,19 @@ CREATE TABLE IF NOT EXISTS endpoints (
 CREATE INDEX IF NOT EXISTS idx_endpoints_type ON endpoints (endpoint_type);
 
 CREATE TABLE IF NOT EXISTS jobs (
-    job_id                STRING        NOT NULL DEFAULT gen_random_uuid()::STRING,
-    crdb_region           STRING        NOT NULL DEFAULT 'default',
-    endpoint              STRING        NOT NULL,
-    endpoint_type         STRING        NOT NULL,
-    trigger_type          STRING        NOT NULL,
-    status                STRING        NOT NULL DEFAULT 'ACTIVE',
-    version               INT           NOT NULL DEFAULT 1,
-    previous_version_id   STRING,
-    replaced_by_id        STRING,
-    idempotency_key       STRING,
+    job_id                TEXT          NOT NULL DEFAULT gen_random_uuid()::TEXT,
+    endpoint              TEXT          NOT NULL,
+    endpoint_type         TEXT          NOT NULL,
+    trigger_type          TEXT          NOT NULL,
+    status                TEXT          NOT NULL DEFAULT 'ACTIVE',
+    version               BIGINT        NOT NULL DEFAULT 1,
+    previous_version_id   TEXT,
+    replaced_by_id        TEXT,
+    idempotency_key       TEXT,
     input                 JSONB,
     run_at                TIMESTAMPTZ,
-    cron_expression       STRING,
-    cron_timezone         STRING,
+    cron_expression       TEXT,
+    cron_timezone         TEXT,
     cron_starts_at        TIMESTAMPTZ,
     cron_ends_at          TIMESTAMPTZ,
     cron_next_run_at      TIMESTAMPTZ,
@@ -84,22 +85,21 @@ CREATE INDEX IF NOT EXISTS idx_jobs_status
     ON jobs (status, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS executions (
-    execution_id    STRING        NOT NULL DEFAULT gen_random_uuid()::STRING,
-    crdb_region     STRING        NOT NULL DEFAULT 'default',
-    job_id          STRING        NOT NULL,
-    endpoint        STRING        NOT NULL,
-    endpoint_type   STRING        NOT NULL,
-    idempotency_key STRING,
-    status          STRING        NOT NULL DEFAULT 'PENDING',
+    execution_id    TEXT          NOT NULL DEFAULT gen_random_uuid()::TEXT,
+    job_id          TEXT          NOT NULL,
+    endpoint        TEXT          NOT NULL,
+    endpoint_type   TEXT          NOT NULL,
+    idempotency_key TEXT,
+    status          TEXT          NOT NULL DEFAULT 'PENDING',
     input           JSONB,
     output          JSONB,
-    attempt_count   INT           NOT NULL DEFAULT 0,
-    max_attempts    INT           NOT NULL DEFAULT 1,
-    worker_id       STRING,
+    attempt_count   BIGINT        NOT NULL DEFAULT 0,
+    max_attempts    BIGINT        NOT NULL DEFAULT 1,
+    worker_id       TEXT,
     run_at          TIMESTAMPTZ   NOT NULL DEFAULT now(),
     started_at      TIMESTAMPTZ,
     completed_at    TIMESTAMPTZ,
-    duration_ms     INT,
+    duration_ms     BIGINT,
     created_at      TIMESTAMPTZ   NOT NULL DEFAULT now(),
     CONSTRAINT pk_executions PRIMARY KEY (execution_id),
     CONSTRAINT fk_executions_job FOREIGN KEY (job_id) REFERENCES jobs (job_id),
@@ -124,14 +124,13 @@ CREATE INDEX IF NOT EXISTS idx_executions_running
     WHERE status = 'RUNNING';
 
 CREATE TABLE IF NOT EXISTS attempts (
-    attempt_id      STRING        NOT NULL DEFAULT gen_random_uuid()::STRING,
-    crdb_region     STRING        NOT NULL DEFAULT 'default',
-    execution_id    STRING        NOT NULL,
-    attempt_number  INT           NOT NULL,
-    status          STRING        NOT NULL,
+    attempt_id      TEXT          NOT NULL DEFAULT gen_random_uuid()::TEXT,
+    execution_id    TEXT          NOT NULL,
+    attempt_number  BIGINT        NOT NULL,
+    status          TEXT          NOT NULL,
     started_at      TIMESTAMPTZ   NOT NULL,
     completed_at    TIMESTAMPTZ,
-    duration_ms     INT,
+    duration_ms     BIGINT,
     output          JSONB,
     error           JSONB,
     created_at      TIMESTAMPTZ   NOT NULL DEFAULT now(),
@@ -145,12 +144,11 @@ CREATE INDEX IF NOT EXISTS idx_attempts_by_execution
     ON attempts (execution_id, attempt_number ASC);
 
 CREATE TABLE IF NOT EXISTS execution_logs (
-    log_id          STRING        NOT NULL DEFAULT gen_random_uuid()::STRING,
-    crdb_region     STRING        NOT NULL DEFAULT 'default',
-    execution_id    STRING        NOT NULL,
-    attempt_number  INT           NOT NULL,
-    level           STRING        NOT NULL,
-    message         STRING        NOT NULL,
+    log_id          TEXT          NOT NULL DEFAULT gen_random_uuid()::TEXT,
+    execution_id    TEXT          NOT NULL,
+    attempt_number  BIGINT        NOT NULL,
+    level           TEXT          NOT NULL,
+    message         TEXT          NOT NULL,
     logged_at       TIMESTAMPTZ   NOT NULL DEFAULT now(),
     CONSTRAINT pk_execution_logs PRIMARY KEY (log_id),
     CONSTRAINT fk_logs_execution FOREIGN KEY (execution_id) REFERENCES executions (execution_id),
@@ -164,19 +162,19 @@ CREATE INDEX IF NOT EXISTS idx_logs_by_attempt
     ON execution_logs (execution_id, attempt_number, logged_at ASC);
 
 CREATE TABLE IF NOT EXISTS region_heartbeats (
-    region        STRING        NOT NULL,
-    component     STRING        NOT NULL,
+    region        TEXT          NOT NULL,
+    component     TEXT          NOT NULL,
     last_beat_at  TIMESTAMPTZ   NOT NULL DEFAULT now(),
-    status        STRING        NOT NULL DEFAULT 'ALIVE',
+    status        TEXT          NOT NULL DEFAULT 'ALIVE',
     metadata      JSONB,
     CONSTRAINT pk_region_heartbeats PRIMARY KEY (region, component)
 );
 
 CREATE TABLE IF NOT EXISTS region_status (
-    region        STRING        NOT NULL,
+    region        TEXT          NOT NULL,
     alive         BOOL          NOT NULL DEFAULT true,
     failed_at     TIMESTAMPTZ,
-    adopted_by    STRING,
+    adopted_by    TEXT,
     updated_at    TIMESTAMPTZ   NOT NULL DEFAULT now(),
     CONSTRAINT pk_region_status PRIMARY KEY (region)
 );

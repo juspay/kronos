@@ -20,14 +20,13 @@ async fn main() -> anyhow::Result<()> {
     let config = AppConfig::from_env()?;
     let pool = sqlx::PgPool::connect(&config.database_url).await?;
 
-    // CockroachDB doesn't support pg_advisory_lock, so disable locking.
     // CARGO_MANIFEST_DIR is resolved at compile time so the path works regardless of cwd.
-    let mut migrator = Migrator::new(std::path::Path::new(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../migrations"
-    )))
-    .await?;
-    migrator.set_locking(false).run(&pool).await?;
+    // let migrator = Migrator::new(std::path::Path::new(concat!(
+    //     env!("CARGO_MANIFEST_DIR"),
+    //     "/../../migrations"
+    // )))
+    // .await?;
+    // migrator.run(&pool).await?;
 
     let listen_addr = config.listen_addr.clone();
     let app_state = router::AppState {
