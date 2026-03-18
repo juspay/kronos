@@ -33,7 +33,7 @@ pub fn encode_cursor(value: &str) -> String {
 
 #[derive(Debug, Serialize)]
 pub struct PaginatedResponse<T: Serialize> {
-    pub items: Vec<T>,
+    pub data: Vec<T>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
 }

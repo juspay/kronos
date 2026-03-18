@@ -51,7 +51,7 @@ pub struct Job {
     pub endpoint_type: String,
     pub trigger_type: String,
     pub status: String,
-    pub version: i32,
+    pub version: i64,
     pub previous_version_id: Option<String>,
     pub replaced_by_id: Option<String>,
     pub idempotency_key: Option<String>,

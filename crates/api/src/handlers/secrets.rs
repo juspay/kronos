@@ -25,9 +25,9 @@ pub async fn create(
         })?;
 
     let resp = SecretResponse::from(secret);
-    Ok(HttpResponse::Created().json(serde_json::json!({
+    Ok(HttpResponse::Created().json(serde_json::json!({ "data": {
         "name": resp.name, "created_at": resp.created_at, "updated_at": resp.updated_at,
-    })))
+    }})))
 }
 
 pub async fn list(
@@ -43,11 +43,11 @@ pub async fn list(
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
     let next_cursor = if has_more { items.last().map(|s| encode_cursor(&s.name)) } else { None };
 
-    let items: Vec<serde_json::Value> = items.into_iter().map(|s| serde_json::json!({
+    let data: Vec<serde_json::Value> = items.into_iter().map(|s| serde_json::json!({
         "name": s.name, "created_at": s.created_at, "updated_at": s.updated_at,
     })).collect();
 
-    Ok(HttpResponse::Ok().json(PaginatedResponse { items, cursor: next_cursor }))
+    Ok(HttpResponse::Ok().json(PaginatedResponse { data, cursor: next_cursor }))
 }
 
 pub async fn get(
@@ -59,9 +59,9 @@ pub async fn get(
     let secret = db::secrets::get(&state.pool, &name).await?
         .ok_or_else(|| AppError::SecretNotFound(name))?;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "name": secret.name, "created_at": secret.created_at, "updated_at": secret.updated_at,
-    })))
+    }})))
 }
 
 pub async fn update(
@@ -77,9 +77,9 @@ pub async fn update(
     let secret = db::secrets::update(&state.pool, &name, &encrypted).await?
         .ok_or_else(|| AppError::SecretNotFound(name))?;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "name": secret.name, "created_at": secret.created_at, "updated_at": secret.updated_at,
-    })))
+    }})))
 }
 
 pub async fn delete(

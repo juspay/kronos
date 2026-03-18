@@ -1,10 +1,10 @@
 use kronos_common::models::endpoint::RetryPolicy;
 use rand::Rng;
 
-pub fn compute_backoff(policy: &RetryPolicy, attempt: i32) -> i64 {
+pub fn compute_backoff(policy: &RetryPolicy, attempt: i64) -> i64 {
     let delay = match policy.backoff.as_str() {
         "fixed" => policy.initial_delay_ms,
-        "linear" => policy.initial_delay_ms * attempt as i64,
+        "linear" => policy.initial_delay_ms * attempt,
         "exponential" | _ => policy.initial_delay_ms * 2_i64.pow((attempt - 1).max(0) as u32),
     };
 

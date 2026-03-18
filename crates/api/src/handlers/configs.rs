@@ -25,10 +25,10 @@ pub async fn create(
             _ => AppError::from(e),
         })?;
 
-    Ok(HttpResponse::Created().json(serde_json::json!({
+    Ok(HttpResponse::Created().json(serde_json::json!({ "data": {
         "name": config.name, "values": config.values_json,
         "created_at": config.created_at, "updated_at": config.updated_at,
-    })))
+    }})))
 }
 
 pub async fn list(
@@ -44,12 +44,12 @@ pub async fn list(
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
     let next_cursor = if has_more { items.last().map(|c| encode_cursor(&c.name)) } else { None };
 
-    let items: Vec<serde_json::Value> = items.into_iter().map(|c| serde_json::json!({
+    let data: Vec<serde_json::Value> = items.into_iter().map(|c| serde_json::json!({
         "name": c.name, "values": c.values_json,
         "created_at": c.created_at, "updated_at": c.updated_at,
     })).collect();
 
-    Ok(HttpResponse::Ok().json(PaginatedResponse { items, cursor: next_cursor }))
+    Ok(HttpResponse::Ok().json(PaginatedResponse { data, cursor: next_cursor }))
 }
 
 pub async fn get(
@@ -61,10 +61,10 @@ pub async fn get(
     let config = db::configs::get(&state.pool, &name).await?
         .ok_or_else(|| AppError::ConfigNotFound(name))?;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "name": config.name, "values": config.values_json,
         "created_at": config.created_at, "updated_at": config.updated_at,
-    })))
+    }})))
 }
 
 pub async fn update(
@@ -81,10 +81,10 @@ pub async fn update(
     let config = db::configs::update(&state.pool, &name, &body.values).await?
         .ok_or_else(|| AppError::ConfigNotFound(name))?;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "name": config.name, "values": config.values_json,
         "created_at": config.created_at, "updated_at": config.updated_at,
-    })))
+    }})))
 }
 
 pub async fn delete(

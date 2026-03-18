@@ -4,6 +4,7 @@ members = [
     "crates/api",
     "crates/worker",
     "crates/scheduler",
+    "crates/mock-server",
 ]
 resolver = "2"
 

@@ -25,12 +25,12 @@ pub async fn create(
             _ => AppError::from(e),
         })?;
 
-    Ok(HttpResponse::Created().json(serde_json::json!({
+    Ok(HttpResponse::Created().json(serde_json::json!({ "data": {
         "name": spec.name,
         "schema": spec.schema_json,
         "created_at": spec.created_at,
         "updated_at": spec.updated_at,
-    })))
+    }})))
 }
 
 pub async fn list(
@@ -48,12 +48,12 @@ pub async fn list(
         items.last().map(|s| encode_cursor(&s.name))
     } else { None };
 
-    let items: Vec<serde_json::Value> = items.into_iter().map(|s| serde_json::json!({
+    let data: Vec<serde_json::Value> = items.into_iter().map(|s| serde_json::json!({
         "name": s.name, "schema": s.schema_json,
         "created_at": s.created_at, "updated_at": s.updated_at,
     })).collect();
 
-    Ok(HttpResponse::Ok().json(PaginatedResponse { items, cursor: next_cursor }))
+    Ok(HttpResponse::Ok().json(PaginatedResponse { data, cursor: next_cursor }))
 }
 
 pub async fn get(
@@ -65,10 +65,10 @@ pub async fn get(
     let spec = db::payload_specs::get(&state.pool, &name).await?
         .ok_or_else(|| AppError::PayloadSpecNotFound(name))?;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "name": spec.name, "schema": spec.schema_json,
         "created_at": spec.created_at, "updated_at": spec.updated_at,
-    })))
+    }})))
 }
 
 pub async fn update(
@@ -85,10 +85,10 @@ pub async fn update(
     let spec = db::payload_specs::update(&state.pool, &name, &body.schema).await?
         .ok_or_else(|| AppError::PayloadSpecNotFound(name))?;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "name": spec.name, "schema": spec.schema_json,
         "created_at": spec.created_at, "updated_at": spec.updated_at,
-    })))
+    }})))
 }
 
 pub async fn delete(

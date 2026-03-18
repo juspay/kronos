@@ -32,8 +32,8 @@ pub async fn dispatch(client: &Client, spec: &Value) -> DispatchResult {
         }
     }
 
-    // Set body
-    if let Some(body) = spec.get("body_template") {
+    // Set body: use body_template if present, otherwise use body, otherwise send empty JSON object
+    if let Some(body) = spec.get("body_template").or_else(|| spec.get("body")) {
         if !body.is_null() {
             req = req.json(body);
         }

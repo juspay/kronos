@@ -12,7 +12,7 @@ pub async fn get(
     let exec = db::executions::get(&state.pool, &execution_id).await?
         .ok_or_else(|| AppError::ExecutionNotFound(execution_id))?;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "execution_id": exec.execution_id,
         "job_id": exec.job_id,
         "endpoint": exec.endpoint,
@@ -28,7 +28,7 @@ pub async fn get(
         "completed_at": exec.completed_at,
         "duration_ms": exec.duration_ms,
         "created_at": exec.created_at,
-    })))
+    }})))
 }
 
 pub async fn cancel(
@@ -44,10 +44,10 @@ pub async fn cancel(
         "PENDING" | "QUEUED" => {
             let cancelled = db::executions::cancel(&state.pool, &execution_id).await?
                 .ok_or_else(|| AppError::ExecutionNotCancellable("Could not cancel".into()))?;
-            Ok(HttpResponse::Ok().json(serde_json::json!({
+            Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
                 "execution_id": cancelled.execution_id,
                 "status": cancelled.status,
-            })))
+            }})))
         }
         _ => Err(AppError::ExecutionNotCancellable(format!(
             "Execution is in {} state", exec.status
@@ -76,7 +76,7 @@ pub async fn list_attempts(
         "error": a.error,
     })).collect();
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({ "items": items })))
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": items })))
 }
 
 pub async fn list_logs(
@@ -97,5 +97,5 @@ pub async fn list_logs(
         "logged_at": l.logged_at,
     })).collect();
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({ "items": items })))
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": items })))
 }
