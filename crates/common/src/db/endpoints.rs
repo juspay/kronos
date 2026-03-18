@@ -1,8 +1,8 @@
 use crate::models::Endpoint;
-use sqlx::PgPool;
+use sqlx::PgConnection;
 
 pub async fn create(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     name: &str,
     endpoint_type: &str,
     payload_spec_ref: Option<&str>,
@@ -21,22 +21,22 @@ pub async fn create(
     .bind(config_ref)
     .bind(spec)
     .bind(retry_policy)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
 }
 
-pub async fn get(pool: &PgPool, name: &str) -> Result<Option<Endpoint>, sqlx::Error> {
+pub async fn get(conn: &mut PgConnection, name: &str) -> Result<Option<Endpoint>, sqlx::Error> {
     sqlx::query_as::<_, Endpoint>(
         "SELECT name, endpoint_type, payload_spec_ref, config_ref, spec, retry_policy, created_at, updated_at
          FROM endpoints WHERE name = $1"
     )
     .bind(name)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await
 }
 
 pub async fn list(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     cursor: Option<&str>,
     limit: i64,
 ) -> Result<Vec<Endpoint>, sqlx::Error> {
@@ -48,7 +48,7 @@ pub async fn list(
             )
             .bind(c)
             .bind(limit)
-            .fetch_all(pool)
+            .fetch_all(&mut *conn)
             .await
         }
         None => {
@@ -57,21 +57,20 @@ pub async fn list(
                  FROM endpoints ORDER BY name ASC LIMIT $1"
             )
             .bind(limit)
-            .fetch_all(pool)
+            .fetch_all(&mut *conn)
             .await
         }
     }
 }
 
 pub async fn update(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     name: &str,
     spec: Option<&serde_json::Value>,
     config_ref: Option<&str>,
     payload_spec_ref: Option<&str>,
     retry_policy: Option<&serde_json::Value>,
 ) -> Result<Option<Endpoint>, sqlx::Error> {
-    // Build dynamic update - for simplicity, update all provided fields
     sqlx::query_as::<_, Endpoint>(
         "UPDATE endpoints SET
             spec = COALESCE($2, spec),
@@ -87,23 +86,23 @@ pub async fn update(
     .bind(config_ref)
     .bind(payload_spec_ref)
     .bind(retry_policy)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await
 }
 
-pub async fn delete(pool: &PgPool, name: &str) -> Result<bool, sqlx::Error> {
+pub async fn delete(conn: &mut PgConnection, name: &str) -> Result<bool, sqlx::Error> {
     let result = sqlx::query("DELETE FROM endpoints WHERE name = $1")
         .bind(name)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
     Ok(result.rows_affected() > 0)
 }
 
-pub async fn has_active_jobs(pool: &PgPool, name: &str) -> Result<bool, sqlx::Error> {
+pub async fn has_active_jobs(conn: &mut PgConnection, name: &str) -> Result<bool, sqlx::Error> {
     let row: (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM jobs WHERE endpoint = $1 AND status = 'ACTIVE'")
             .bind(name)
-            .fetch_one(pool)
+            .fetch_one(&mut *conn)
             .await?;
     Ok(row.0 > 0)
 }

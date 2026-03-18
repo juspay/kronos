@@ -1,6 +1,6 @@
 use crate::models::Execution;
 use chrono::{DateTime, Utc};
-use sqlx::PgPool;
+use sqlx::PgConnection;
 
 pub struct ClaimedExecution {
     pub execution_id: String,
@@ -37,7 +37,7 @@ impl ClaimedExecution {
 }
 
 pub async fn claim(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     worker_id: &str,
 ) -> Result<Option<ClaimedExecution>, sqlx::Error> {
     let row: Option<(String, String, String, String, Option<serde_json::Value>, i64, i64)> = sqlx::query_as(
@@ -58,32 +58,32 @@ pub async fn claim(
          RETURNING execution_id, job_id, endpoint, endpoint_type, input, attempt_count, max_attempts"
     )
     .bind(worker_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await?;
 
     Ok(row.map(ClaimedExecution::from_row))
 }
 
 pub async fn complete_success(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     execution_id: &str,
     output: &serde_json::Value,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "UPDATE executions
          SET status = 'SUCCESS', output = $2, completed_at = now(),
-             duration_ms = (EXTRACT(EPOCH FROM (now() - started_at)) * 1000)::INT
+             duration_ms = (EXTRACT(EPOCH FROM (now() - started_at)) * 1000)::BIGINT
          WHERE execution_id = $1 AND status = 'RUNNING'",
     )
     .bind(execution_id)
     .bind(output)
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     Ok(())
 }
 
 pub async fn complete_retry(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     execution_id: &str,
     backoff_ms: i64,
 ) -> Result<(), sqlx::Error> {
@@ -95,49 +95,49 @@ pub async fn complete_retry(
              worker_id = NULL,
              completed_at = CASE WHEN attempt_count >= max_attempts THEN now() ELSE NULL END,
              duration_ms = CASE WHEN attempt_count >= max_attempts
-                           THEN (EXTRACT(EPOCH FROM (now() - started_at)) * 1000)::INT
+                           THEN (EXTRACT(EPOCH FROM (now() - started_at)) * 1000)::BIGINT
                            ELSE NULL END
          WHERE execution_id = $1 AND status = 'RUNNING'",
     )
     .bind(execution_id)
     .bind(backoff_ms)
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     Ok(())
 }
 
-pub async fn complete_failed(pool: &PgPool, execution_id: &str) -> Result<(), sqlx::Error> {
+pub async fn complete_failed(conn: &mut PgConnection, execution_id: &str) -> Result<(), sqlx::Error> {
     sqlx::query(
         "UPDATE executions
          SET status = 'FAILED', completed_at = now(),
-             duration_ms = (EXTRACT(EPOCH FROM (now() - started_at)) * 1000)::INT,
+             duration_ms = (EXTRACT(EPOCH FROM (now() - started_at)) * 1000)::BIGINT,
              worker_id = NULL
          WHERE execution_id = $1 AND status = 'RUNNING'",
     )
     .bind(execution_id)
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     Ok(())
 }
 
-pub async fn get(pool: &PgPool, execution_id: &str) -> Result<Option<Execution>, sqlx::Error> {
+pub async fn get(conn: &mut PgConnection, execution_id: &str) -> Result<Option<Execution>, sqlx::Error> {
     sqlx::query_as::<_, Execution>("SELECT * FROM executions WHERE execution_id = $1")
         .bind(execution_id)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *conn)
         .await
 }
 
-pub async fn get_for_job(pool: &PgPool, job_id: &str) -> Result<Option<Execution>, sqlx::Error> {
+pub async fn get_for_job(conn: &mut PgConnection, job_id: &str) -> Result<Option<Execution>, sqlx::Error> {
     sqlx::query_as::<_, Execution>(
         "SELECT * FROM executions WHERE job_id = $1 ORDER BY created_at DESC LIMIT 1",
     )
     .bind(job_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await
 }
 
 pub async fn list_for_job(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     job_id: &str,
     cursor: Option<&str>,
     limit: i64,
@@ -152,7 +152,7 @@ pub async fn list_for_job(
             .bind(job_id)
             .bind(c)
             .bind(limit)
-            .fetch_all(pool)
+            .fetch_all(&mut *conn)
             .await
         }
         None => {
@@ -161,34 +161,34 @@ pub async fn list_for_job(
             )
             .bind(job_id)
             .bind(limit)
-            .fetch_all(pool)
+            .fetch_all(&mut *conn)
             .await
         }
     }
 }
 
-pub async fn cancel(pool: &PgPool, execution_id: &str) -> Result<Option<Execution>, sqlx::Error> {
+pub async fn cancel(conn: &mut PgConnection, execution_id: &str) -> Result<Option<Execution>, sqlx::Error> {
     sqlx::query_as::<_, Execution>(
         "UPDATE executions SET status = 'CANCELLED', completed_at = now()
          WHERE execution_id = $1 AND status IN ('PENDING', 'QUEUED')
          RETURNING *",
     )
     .bind(execution_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await
 }
 
-pub async fn promote_pending(pool: &PgPool) -> Result<u64, sqlx::Error> {
+pub async fn promote_pending(conn: &mut PgConnection) -> Result<u64, sqlx::Error> {
     let result = sqlx::query(
         "UPDATE executions SET status = 'QUEUED'
          WHERE status = 'PENDING' AND run_at <= now()",
     )
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     Ok(result.rows_affected())
 }
 
-pub async fn reclaim_stuck(pool: &PgPool, timeout_secs: i64) -> Result<u64, sqlx::Error> {
+pub async fn reclaim_stuck(conn: &mut PgConnection, timeout_secs: i64) -> Result<u64, sqlx::Error> {
     let result = sqlx::query(
         "UPDATE executions
          SET status = CASE WHEN attempt_count >= max_attempts THEN 'FAILED' ELSE 'RETRYING' END,
@@ -196,13 +196,13 @@ pub async fn reclaim_stuck(pool: &PgPool, timeout_secs: i64) -> Result<u64, sqlx
          WHERE status = 'RUNNING' AND started_at < now() - ($1 * interval '1 second')",
     )
     .bind(timeout_secs)
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     Ok(result.rows_affected())
 }
 
 pub async fn create_cron_execution(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     job_id: &str,
     endpoint: &str,
     endpoint_type: &str,
@@ -223,18 +223,18 @@ pub async fn create_cron_execution(
     .bind(input)
     .bind(run_at)
     .bind(max_attempts)
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     Ok(result.rows_affected() > 0)
 }
 
-pub async fn cancel_pending_for_job(pool: &PgPool, job_id: &str) -> Result<u64, sqlx::Error> {
+pub async fn cancel_pending_for_job(conn: &mut PgConnection, job_id: &str) -> Result<u64, sqlx::Error> {
     let result = sqlx::query(
         "UPDATE executions SET status = 'CANCELLED', completed_at = now()
          WHERE job_id = $1 AND status IN ('PENDING', 'QUEUED')",
     )
     .bind(job_id)
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     Ok(result.rows_affected())
 }

@@ -1,4 +1,4 @@
-use crate::extractors::AuthenticatedRequest;
+use crate::extractors::{AuthenticatedRequest, Workspace};
 use crate::router::AppState;
 use actix_web::{web, HttpResponse};
 use chrono::Utc;
@@ -13,12 +13,17 @@ use uuid::Uuid;
 pub async fn create(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
+    ws: Workspace,
     body: web::Json<CreateJob>,
 ) -> Result<HttpResponse, AppError> {
     let trigger = TriggerType::from_str_val(&body.trigger)
         .ok_or_else(|| AppError::InvalidRequest(format!("Invalid trigger: {}", body.trigger)))?;
 
-    let ep = db::endpoints::get(&state.pool, &body.endpoint)
+    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
+
+    let ep = db::endpoints::get(&mut *conn, &body.endpoint)
         .await?
         .ok_or_else(|| AppError::EndpointNotFound(body.endpoint.clone()))?;
 
@@ -26,7 +31,7 @@ pub async fn create(
 
     if let Some(ref ps_name) = ep.payload_spec_ref {
         if let Some(ref input) = body.input {
-            let spec = db::payload_specs::get(&state.pool, ps_name)
+            let spec = db::payload_specs::get(&mut *conn, ps_name)
                 .await?
                 .ok_or_else(|| AppError::InvalidPayloadSpecRef(ps_name.clone()))?;
             validate_input(input, &spec.schema_json)?;
@@ -35,13 +40,16 @@ pub async fn create(
 
     if let Some(ref key) = body.idempotency_key {
         if let Some(existing) =
-            db::jobs::get_by_idempotency(&state.pool, &body.endpoint, key).await?
+            db::jobs::get_by_idempotency(&mut *conn, &body.endpoint, key).await?
         {
-            let exec = db::executions::get_for_job(&state.pool, &existing.job_id).await?;
+            let exec = db::executions::get_for_job(&mut *conn, &existing.job_id).await?;
             return Ok(HttpResponse::Ok()
                 .json(serde_json::json!({ "data": job_response(&existing, exec.as_ref()) })));
         }
     }
+
+    // Drop the scoped connection before starting transactions for IMMEDIATE/DELAYED
+    drop(conn);
 
     match trigger {
         TriggerType::IMMEDIATE => {
@@ -54,8 +62,15 @@ pub async fn create(
                 }
             };
 
-            let result = db::jobs::create_immediate(
+            let mut tx = kronos_common::db::scoped::scoped_transaction(
                 &state.pool,
+                &ws.0.schema_name,
+            )
+            .await
+            .map_err(AppError::from)?;
+
+            let result = db::jobs::create_immediate(
+                &mut *tx,
                 &body.endpoint,
                 &ep.endpoint_type,
                 key,
@@ -69,6 +84,8 @@ pub async fn create(
                 }
                 _ => AppError::from(e),
             })?;
+
+            tx.commit().await.map_err(AppError::from)?;
 
             Ok(HttpResponse::Created().json(serde_json::json!({ "data": {
                 "job_id": result.job.job_id,
@@ -95,8 +112,15 @@ pub async fn create(
                 AppError::InvalidRequest("run_at required for DELAYED jobs".into())
             })?;
 
-            let result = db::jobs::create_delayed(
+            let mut tx = kronos_common::db::scoped::scoped_transaction(
                 &state.pool,
+                &ws.0.schema_name,
+            )
+            .await
+            .map_err(AppError::from)?;
+
+            let result = db::jobs::create_delayed(
+                &mut *tx,
                 &body.endpoint,
                 &ep.endpoint_type,
                 key,
@@ -105,6 +129,8 @@ pub async fn create(
                 retry_policy.max_attempts,
             )
             .await?;
+
+            tx.commit().await.map_err(AppError::from)?;
 
             Ok(HttpResponse::Created().json(serde_json::json!({ "data": {
                 "job_id": result.job.job_id,
@@ -146,8 +172,13 @@ pub async fn create(
                 AppError::InvalidCron("No upcoming run for this cron schedule".into())
             })?;
 
+            let mut conn =
+                kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+                    .await
+                    .map_err(AppError::from)?;
+
             let job = db::jobs::create_cron(
-                &state.pool,
+                &mut *conn,
                 &body.endpoint,
                 &ep.endpoint_type,
                 body.input.as_ref(),
@@ -181,11 +212,15 @@ pub async fn create(
 pub async fn list(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
+    ws: Workspace,
     params: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, AppError> {
+    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
-    let items = db::jobs::list(&state.pool, cursor.as_deref(), limit + 1).await?;
+    let items = db::jobs::list(&mut *conn, cursor.as_deref(), limit + 1).await?;
 
     let has_more = items.len() as i64 > limit;
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
@@ -205,24 +240,32 @@ pub async fn list(
 pub async fn get(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
+    ws: Workspace,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
+    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
     let job_id = path.into_inner();
-    let job = db::jobs::get(&state.pool, &job_id)
+    let job = db::jobs::get(&mut *conn, &job_id)
         .await?
         .ok_or_else(|| AppError::JobNotFound(job_id))?;
-    let exec = db::executions::get_for_job(&state.pool, &job.job_id).await?;
+    let exec = db::executions::get_for_job(&mut *conn, &job.job_id).await?;
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": job_response(&job, exec.as_ref()) })))
 }
 
 pub async fn update(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
+    ws: Workspace,
     path: web::Path<String>,
     body: web::Json<UpdateJob>,
 ) -> Result<HttpResponse, AppError> {
+    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
     let job_id = path.into_inner();
-    let old_job = db::jobs::get(&state.pool, &job_id)
+    let old_job = db::jobs::get(&mut *conn, &job_id)
         .await?
         .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?;
 
@@ -267,7 +310,16 @@ pub async fn update(
     }
     new_job.cron_ends_at = body.ends_at.or(old_job.cron_ends_at);
 
-    let created = db::jobs::retire_and_replace(&state.pool, &job_id, &new_job).await?;
+    // Drop the scoped connection before starting a transaction
+    drop(conn);
+
+    let mut tx = kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
+
+    let created = db::jobs::retire_and_replace(&mut *tx, &job_id, &new_job).await?;
+
+    tx.commit().await.map_err(AppError::from)?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "job_id": created.job_id,
@@ -288,10 +340,14 @@ pub async fn update(
 pub async fn cancel(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
+    ws: Workspace,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
+    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
     let job_id = path.into_inner();
-    let job = db::jobs::get(&state.pool, &job_id)
+    let job = db::jobs::get(&mut *conn, &job_id)
         .await?
         .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?;
 
@@ -300,10 +356,10 @@ pub async fn cancel(
     }
 
     if job.trigger_type != "CRON" {
-        db::executions::cancel_pending_for_job(&state.pool, &job_id).await?;
+        db::executions::cancel_pending_for_job(&mut *conn, &job_id).await?;
     }
 
-    let cancelled = db::jobs::cancel(&state.pool, &job_id)
+    let cancelled = db::jobs::cancel(&mut *conn, &job_id)
         .await?
         .ok_or_else(|| AppError::Conflict("Job could not be cancelled".into()))?;
 
@@ -313,14 +369,18 @@ pub async fn cancel(
 pub async fn status(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
+    ws: Workspace,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
+    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
     let job_id = path.into_inner();
-    let job = db::jobs::get(&state.pool, &job_id)
+    let job = db::jobs::get(&mut *conn, &job_id)
         .await?
         .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?;
 
-    let execs = db::executions::list_for_job(&state.pool, &job_id, None, 200).await?;
+    let execs = db::executions::list_for_job(&mut *conn, &job_id, None, 200).await?;
 
     let active = execs
         .iter()
@@ -378,14 +438,18 @@ pub async fn status(
 pub async fn versions(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
+    ws: Workspace,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
+    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
     let job_id = path.into_inner();
-    let _ = db::jobs::get(&state.pool, &job_id)
+    let _ = db::jobs::get(&mut *conn, &job_id)
         .await?
         .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?;
 
-    let versions = db::jobs::get_versions(&state.pool, &job_id).await?;
+    let versions = db::jobs::get_versions(&mut *conn, &job_id).await?;
     let items: Vec<serde_json::Value> = versions.into_iter().map(|j| job_summary(&j)).collect();
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": items })))
@@ -394,18 +458,22 @@ pub async fn versions(
 pub async fn list_executions(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
+    ws: Workspace,
     path: web::Path<String>,
     params: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, AppError> {
+    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
     let job_id = path.into_inner();
-    let _ = db::jobs::get(&state.pool, &job_id)
+    let _ = db::jobs::get(&mut *conn, &job_id)
         .await?
         .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?;
 
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
     let items =
-        db::executions::list_for_job(&state.pool, &job_id, cursor.as_deref(), limit + 1).await?;
+        db::executions::list_for_job(&mut *conn, &job_id, cursor.as_deref(), limit + 1).await?;
 
     let has_more = items.len() as i64 > limit;
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();

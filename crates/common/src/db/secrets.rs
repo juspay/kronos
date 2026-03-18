@@ -1,8 +1,8 @@
 use crate::models::secret::Secret;
-use sqlx::PgPool;
+use sqlx::PgConnection;
 
 pub async fn create(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     name: &str,
     encrypted_value: &[u8],
 ) -> Result<Secret, sqlx::Error> {
@@ -12,21 +12,21 @@ pub async fn create(
     )
     .bind(name)
     .bind(encrypted_value)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
 }
 
-pub async fn get(pool: &PgPool, name: &str) -> Result<Option<Secret>, sqlx::Error> {
+pub async fn get(conn: &mut PgConnection, name: &str) -> Result<Option<Secret>, sqlx::Error> {
     sqlx::query_as::<_, Secret>(
         "SELECT name, encrypted_value, created_at, updated_at FROM secrets WHERE name = $1",
     )
     .bind(name)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await
 }
 
 pub async fn list(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     cursor: Option<&str>,
     limit: i64,
 ) -> Result<Vec<Secret>, sqlx::Error> {
@@ -38,7 +38,7 @@ pub async fn list(
             )
             .bind(c)
             .bind(limit)
-            .fetch_all(pool)
+            .fetch_all(&mut *conn)
             .await
         }
         None => {
@@ -47,14 +47,14 @@ pub async fn list(
                  ORDER BY name ASC LIMIT $1",
             )
             .bind(limit)
-            .fetch_all(pool)
+            .fetch_all(&mut *conn)
             .await
         }
     }
 }
 
 pub async fn update(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     name: &str,
     encrypted_value: &[u8],
 ) -> Result<Option<Secret>, sqlx::Error> {
@@ -65,26 +65,24 @@ pub async fn update(
     )
     .bind(name)
     .bind(encrypted_value)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await
 }
 
-pub async fn delete(pool: &PgPool, name: &str) -> Result<bool, sqlx::Error> {
+pub async fn delete(conn: &mut PgConnection, name: &str) -> Result<bool, sqlx::Error> {
     let result = sqlx::query("DELETE FROM secrets WHERE name = $1")
         .bind(name)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
     Ok(result.rows_affected() > 0)
 }
 
-pub async fn has_dependent_endpoints(pool: &PgPool, name: &str) -> Result<bool, sqlx::Error> {
-    // Secrets are referenced in endpoint spec templates, not via FK.
-    // For now, check if any endpoint spec contains the secret name in a template.
+pub async fn has_dependent_endpoints(conn: &mut PgConnection, name: &str) -> Result<bool, sqlx::Error> {
     let row: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM endpoints WHERE spec::TEXT LIKE '%{{secret.' || $1 || '}}%'",
     )
     .bind(name)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
     Ok(row.0 > 0)
 }

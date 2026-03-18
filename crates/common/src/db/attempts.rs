@@ -1,9 +1,9 @@
 use crate::models::Attempt;
 use chrono::{DateTime, Utc};
-use sqlx::PgPool;
+use sqlx::PgConnection;
 
 pub async fn insert(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     execution_id: &str,
     attempt_number: i64,
     status: &str,
@@ -26,18 +26,18 @@ pub async fn insert(
     .bind(duration_ms)
     .bind(output)
     .bind(error)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
 }
 
 pub async fn list_for_execution(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     execution_id: &str,
 ) -> Result<Vec<Attempt>, sqlx::Error> {
     sqlx::query_as::<_, Attempt>(
         "SELECT * FROM attempts WHERE execution_id = $1 ORDER BY attempt_number ASC",
     )
     .bind(execution_id)
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await
 }

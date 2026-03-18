@@ -1,4 +1,4 @@
-use crate::extractors::AuthenticatedRequest;
+use crate::extractors::{AuthenticatedRequest, Workspace};
 use crate::router::AppState;
 use actix_web::{web, HttpResponse};
 use kronos_common::{db, error::AppError};
@@ -6,10 +6,14 @@ use kronos_common::{db, error::AppError};
 pub async fn get(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
+    ws: Workspace,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
+    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
     let execution_id = path.into_inner();
-    let exec = db::executions::get(&state.pool, &execution_id)
+    let exec = db::executions::get(&mut *conn, &execution_id)
         .await?
         .ok_or_else(|| AppError::ExecutionNotFound(execution_id))?;
 
@@ -35,16 +39,20 @@ pub async fn get(
 pub async fn cancel(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
+    ws: Workspace,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
+    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
     let execution_id = path.into_inner();
-    let exec = db::executions::get(&state.pool, &execution_id)
+    let exec = db::executions::get(&mut *conn, &execution_id)
         .await?
         .ok_or_else(|| AppError::ExecutionNotFound(execution_id.clone()))?;
 
     match exec.status.as_str() {
         "PENDING" | "QUEUED" => {
-            let cancelled = db::executions::cancel(&state.pool, &execution_id)
+            let cancelled = db::executions::cancel(&mut *conn, &execution_id)
                 .await?
                 .ok_or_else(|| AppError::ExecutionNotCancellable("Could not cancel".into()))?;
             Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
@@ -62,14 +70,18 @@ pub async fn cancel(
 pub async fn list_attempts(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
+    ws: Workspace,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
+    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
     let execution_id = path.into_inner();
-    let _ = db::executions::get(&state.pool, &execution_id)
+    let _ = db::executions::get(&mut *conn, &execution_id)
         .await?
         .ok_or_else(|| AppError::ExecutionNotFound(execution_id.clone()))?;
 
-    let attempts = db::attempts::list_for_execution(&state.pool, &execution_id).await?;
+    let attempts = db::attempts::list_for_execution(&mut *conn, &execution_id).await?;
     let items: Vec<serde_json::Value> = attempts
         .into_iter()
         .map(|a| {
@@ -92,14 +104,18 @@ pub async fn list_attempts(
 pub async fn list_logs(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
+    ws: Workspace,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
+    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+        .await
+        .map_err(AppError::from)?;
     let execution_id = path.into_inner();
-    let _ = db::executions::get(&state.pool, &execution_id)
+    let _ = db::executions::get(&mut *conn, &execution_id)
         .await?
         .ok_or_else(|| AppError::ExecutionNotFound(execution_id.clone()))?;
 
-    let logs = db::execution_logs::list_for_execution(&state.pool, &execution_id).await?;
+    let logs = db::execution_logs::list_for_execution(&mut *conn, &execution_id).await?;
     let items: Vec<serde_json::Value> = logs
         .into_iter()
         .map(|l| {
