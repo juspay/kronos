@@ -22,7 +22,7 @@
       "packageName": "SuperpositionSDK",
       "edition": "2010",
       "version": "0.0.1",
-      "service": "io.superposition#Superposition"
+      "service": "com.kronos#KronosService"
     },
     "openapi": {
       "service": "com.kronos#KronosService",

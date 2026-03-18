@@ -22,9 +22,11 @@ async fn main() -> anyhow::Result<()> {
 
     // CockroachDB doesn't support pg_advisory_lock, so disable locking.
     // CARGO_MANIFEST_DIR is resolved at compile time so the path works regardless of cwd.
-    let mut migrator = Migrator::new(
-        std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../migrations"))
-    ).await?;
+    let mut migrator = Migrator::new(std::path::Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations"
+    )))
+    .await?;
     migrator.set_locking(false).run(&pool).await?;
 
     let listen_addr = config.listen_addr.clone();

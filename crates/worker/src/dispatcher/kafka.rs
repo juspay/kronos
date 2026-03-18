@@ -1,8 +1,8 @@
+use super::DispatchResult;
 use rdkafka::config::ClientConfig;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use serde_json::Value;
 use std::time::Duration;
-use super::DispatchResult;
 
 pub async fn dispatch(spec: &Value) -> DispatchResult {
     let bootstrap_servers = spec["bootstrap_servers"].as_str().unwrap_or_default();
@@ -10,11 +10,13 @@ pub async fn dispatch(spec: &Value) -> DispatchResult {
     let timeout_ms = spec["timeout_ms"].as_u64().unwrap_or(10000);
     let acks = spec["acks"].as_str().unwrap_or("all");
 
-    let key = spec.get("key_template")
+    let key = spec
+        .get("key_template")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    let value = spec.get("value_template")
+    let value = spec
+        .get("value_template")
         .map(|v| v.to_string())
         .unwrap_or_else(|| "{}".to_string());
 
@@ -45,13 +47,19 @@ pub async fn dispatch(spec: &Value) -> DispatchResult {
         let mut headers = rdkafka::message::OwnedHeaders::new();
         for (k, v) in headers_obj {
             if let Some(val) = v.as_str() {
-                headers = headers.insert(rdkafka::message::Header { key: k, value: Some(val) });
+                headers = headers.insert(rdkafka::message::Header {
+                    key: k,
+                    value: Some(val),
+                });
             }
         }
         record = record.headers(headers);
     }
 
-    match producer.send(record, Duration::from_millis(timeout_ms)).await {
+    match producer
+        .send(record, Duration::from_millis(timeout_ms))
+        .await
+    {
         Ok((partition, offset)) => DispatchResult::Success {
             output: serde_json::json!({
                 "partition": partition,

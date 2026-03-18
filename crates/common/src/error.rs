@@ -1,4 +1,4 @@
-use actix_web::{HttpResponse, ResponseError, http::StatusCode};
+use actix_web::{http::StatusCode, HttpResponse, ResponseError};
 use serde::Serialize;
 use std::fmt;
 
@@ -72,10 +72,17 @@ impl AppError {
             Self::ExecutionNotCancellable(_) => (StatusCode::CONFLICT, "EXECUTION_NOT_CANCELLABLE"),
             Self::InvalidCron(_) => (StatusCode::UNPROCESSABLE_ENTITY, "INVALID_CRON"),
             Self::InvalidSchema(_) => (StatusCode::UNPROCESSABLE_ENTITY, "INVALID_SCHEMA"),
-            Self::InvalidPayloadSpecRef(_) => (StatusCode::UNPROCESSABLE_ENTITY, "INVALID_PAYLOAD_SPEC_REF"),
+            Self::InvalidPayloadSpecRef(_) => {
+                (StatusCode::UNPROCESSABLE_ENTITY, "INVALID_PAYLOAD_SPEC_REF")
+            }
             Self::InvalidConfigRef(_) => (StatusCode::UNPROCESSABLE_ENTITY, "INVALID_CONFIG_REF"),
-            Self::InputValidationFailed(_) => (StatusCode::UNPROCESSABLE_ENTITY, "INPUT_VALIDATION_FAILED"),
-            Self::TemplateResolutionFailed(_) => (StatusCode::UNPROCESSABLE_ENTITY, "TEMPLATE_RESOLUTION_FAILED"),
+            Self::InputValidationFailed(_) => {
+                (StatusCode::UNPROCESSABLE_ENTITY, "INPUT_VALIDATION_FAILED")
+            }
+            Self::TemplateResolutionFailed(_) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "TEMPLATE_RESOLUTION_FAILED",
+            ),
             Self::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED"),
             Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
         }

@@ -1,4 +1,4 @@
-use actix_web::{dev::Payload, web, FromRequest, HttpRequest, HttpResponse, Error};
+use actix_web::{dev::Payload, web, Error, FromRequest, HttpRequest, HttpResponse};
 use std::future::{self, Ready};
 
 use crate::router::AppState;
@@ -28,7 +28,8 @@ impl FromRequest for AuthenticatedRequest {
                         HttpResponse::Unauthorized().json(serde_json::json!({
                             "error": { "code": "UNAUTHORIZED", "message": "Invalid API key" }
                         })),
-                    ).into())
+                    )
+                    .into())
                 }
             }
             _ => Err(actix_web::error::InternalError::from_response(
@@ -36,7 +37,8 @@ impl FromRequest for AuthenticatedRequest {
                 HttpResponse::Unauthorized().json(serde_json::json!({
                     "error": { "code": "UNAUTHORIZED", "message": "Missing Authorization header" }
                 })),
-            ).into()),
+            )
+            .into()),
         };
 
         future::ready(result)

@@ -1,6 +1,6 @@
 use crate::models::job::Job;
-use sqlx::PgPool;
 use chrono::{DateTime, Utc};
+use sqlx::PgPool;
 
 pub struct CreateJobResult {
     pub job: Job,
@@ -22,7 +22,7 @@ pub async fn create_immediate(
     let job = sqlx::query_as::<_, Job>(
         "INSERT INTO jobs (endpoint, endpoint_type, trigger_type, idempotency_key, input)
          VALUES ($1, $2, 'IMMEDIATE', $3, $4)
-         RETURNING *"
+         RETURNING *",
     )
     .bind(endpoint)
     .bind(endpoint_type)
@@ -69,7 +69,7 @@ pub async fn create_delayed(
     let job = sqlx::query_as::<_, Job>(
         "INSERT INTO jobs (endpoint, endpoint_type, trigger_type, idempotency_key, input, run_at)
          VALUES ($1, $2, 'DELAYED', $3, $4, $5)
-         RETURNING *"
+         RETURNING *",
     )
     .bind(endpoint)
     .bind(endpoint_type)
@@ -139,35 +139,37 @@ pub async fn get(pool: &PgPool, job_id: &str) -> Result<Option<Job>, sqlx::Error
         .await
 }
 
-pub async fn get_by_idempotency(pool: &PgPool, endpoint: &str, key: &str) -> Result<Option<Job>, sqlx::Error> {
-    sqlx::query_as::<_, Job>(
-        "SELECT * FROM jobs WHERE endpoint = $1 AND idempotency_key = $2"
-    )
-    .bind(endpoint)
-    .bind(key)
-    .fetch_optional(pool)
-    .await
+pub async fn get_by_idempotency(
+    pool: &PgPool,
+    endpoint: &str,
+    key: &str,
+) -> Result<Option<Job>, sqlx::Error> {
+    sqlx::query_as::<_, Job>("SELECT * FROM jobs WHERE endpoint = $1 AND idempotency_key = $2")
+        .bind(endpoint)
+        .bind(key)
+        .fetch_optional(pool)
+        .await
 }
 
-pub async fn list(pool: &PgPool, cursor: Option<&str>, limit: i64) -> Result<Vec<Job>, sqlx::Error> {
+pub async fn list(
+    pool: &PgPool,
+    cursor: Option<&str>,
+    limit: i64,
+) -> Result<Vec<Job>, sqlx::Error> {
     match cursor {
-        Some(c) => {
-            sqlx::query_as::<_, Job>(
-                "SELECT * FROM jobs WHERE created_at < (SELECT created_at FROM jobs WHERE job_id = $1)
-                 ORDER BY created_at DESC LIMIT $2"
-            )
-            .bind(c)
-            .bind(limit)
-            .fetch_all(pool)
-            .await
-        }
+        Some(c) => sqlx::query_as::<_, Job>(
+            "SELECT * FROM jobs WHERE created_at < (SELECT created_at FROM jobs WHERE job_id = $1)
+                 ORDER BY created_at DESC LIMIT $2",
+        )
+        .bind(c)
+        .bind(limit)
+        .fetch_all(pool)
+        .await,
         None => {
-            sqlx::query_as::<_, Job>(
-                "SELECT * FROM jobs ORDER BY created_at DESC LIMIT $1"
-            )
-            .bind(limit)
-            .fetch_all(pool)
-            .await
+            sqlx::query_as::<_, Job>("SELECT * FROM jobs ORDER BY created_at DESC LIMIT $1")
+                .bind(limit)
+                .fetch_all(pool)
+                .await
         }
     }
 }
@@ -176,7 +178,7 @@ pub async fn cancel(pool: &PgPool, job_id: &str) -> Result<Option<Job>, sqlx::Er
     sqlx::query_as::<_, Job>(
         "UPDATE jobs SET status = 'RETIRED', retired_at = now()
          WHERE job_id = $1 AND status = 'ACTIVE'
-         RETURNING *"
+         RETURNING *",
     )
     .bind(job_id)
     .fetch_optional(pool)
@@ -192,7 +194,7 @@ pub async fn retire_and_replace(
 
     sqlx::query(
         "UPDATE jobs SET status = 'RETIRED', retired_at = now(), replaced_by_id = $2
-         WHERE job_id = $1 AND status = 'ACTIVE'"
+         WHERE job_id = $1 AND status = 'ACTIVE'",
     )
     .bind(old_job_id)
     .bind(&new_job.job_id)
@@ -229,7 +231,7 @@ pub async fn get_versions(pool: &PgPool, job_id: &str) -> Result<Vec<Job>, sqlx:
             UNION ALL
             SELECT j.* FROM jobs j JOIN chain c ON j.job_id = c.previous_version_id
          )
-         SELECT * FROM chain ORDER BY version ASC"
+         SELECT * FROM chain ORDER BY version ASC",
     )
     .bind(job_id)
     .fetch_all(pool)
@@ -242,7 +244,7 @@ pub async fn get_due_cron_jobs(pool: &PgPool, limit: i64) -> Result<Vec<Job>, sq
          WHERE trigger_type = 'CRON' AND status = 'ACTIVE'
            AND cron_next_run_at <= now()
            AND (cron_ends_at IS NULL OR cron_ends_at > now())
-         LIMIT $1"
+         LIMIT $1",
     )
     .bind(limit)
     .fetch_all(pool)
@@ -257,7 +259,7 @@ pub async fn advance_cron_tick(
 ) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
         "UPDATE jobs SET cron_next_run_at = $2, cron_last_tick_at = $3
-         WHERE job_id = $1 AND cron_next_run_at = $3"
+         WHERE job_id = $1 AND cron_next_run_at = $3",
     )
     .bind(job_id)
     .bind(next_tick)

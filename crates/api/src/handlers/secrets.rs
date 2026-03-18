@@ -1,11 +1,12 @@
+use crate::extractors::AuthenticatedRequest;
+use crate::router::AppState;
 use actix_web::{web, HttpResponse};
 use kronos_common::{
-    crypto, db, error::AppError,
+    crypto, db,
+    error::AppError,
     models::secret::{CreateSecret, SecretResponse, UpdateSecret},
     pagination::{encode_cursor, PaginatedResponse, PaginationParams},
 };
-use crate::extractors::AuthenticatedRequest;
-use crate::router::AppState;
 
 pub async fn create(
     state: web::Data<AppState>,
@@ -41,13 +42,25 @@ pub async fn list(
 
     let has_more = items.len() as i64 > limit;
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
-    let next_cursor = if has_more { items.last().map(|s| encode_cursor(&s.name)) } else { None };
+    let next_cursor = if has_more {
+        items.last().map(|s| encode_cursor(&s.name))
+    } else {
+        None
+    };
 
-    let data: Vec<serde_json::Value> = items.into_iter().map(|s| serde_json::json!({
-        "name": s.name, "created_at": s.created_at, "updated_at": s.updated_at,
-    })).collect();
+    let data: Vec<serde_json::Value> = items
+        .into_iter()
+        .map(|s| {
+            serde_json::json!({
+                "name": s.name, "created_at": s.created_at, "updated_at": s.updated_at,
+            })
+        })
+        .collect();
 
-    Ok(HttpResponse::Ok().json(PaginatedResponse { data, cursor: next_cursor }))
+    Ok(HttpResponse::Ok().json(PaginatedResponse {
+        data,
+        cursor: next_cursor,
+    }))
 }
 
 pub async fn get(
@@ -56,7 +69,8 @@ pub async fn get(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let name = path.into_inner();
-    let secret = db::secrets::get(&state.pool, &name).await?
+    let secret = db::secrets::get(&state.pool, &name)
+        .await?
         .ok_or_else(|| AppError::SecretNotFound(name))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
@@ -74,7 +88,8 @@ pub async fn update(
     let encrypted = crypto::encrypt(&body.value, &state.config.encryption_key)
         .map_err(|e| AppError::Internal(format!("Encryption failed: {}", e)))?;
 
-    let secret = db::secrets::update(&state.pool, &name, &encrypted).await?
+    let secret = db::secrets::update(&state.pool, &name, &encrypted)
+        .await?
         .ok_or_else(|| AppError::SecretNotFound(name))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
@@ -89,7 +104,10 @@ pub async fn delete(
 ) -> Result<HttpResponse, AppError> {
     let name = path.into_inner();
     if db::secrets::has_dependent_endpoints(&state.pool, &name).await? {
-        return Err(AppError::Conflict(format!("Secret '{}' is referenced by endpoints", name)));
+        return Err(AppError::Conflict(format!(
+            "Secret '{}' is referenced by endpoints",
+            name
+        )));
     }
     if !db::secrets::delete(&state.pool, &name).await? {
         return Err(AppError::SecretNotFound(name));

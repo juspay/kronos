@@ -44,10 +44,18 @@ pub struct RetryPolicy {
     pub max_delay_ms: i64,
 }
 
-fn default_max_attempts() -> i64 { 1 }
-fn default_backoff() -> String { "exponential".into() }
-fn default_initial_delay() -> i64 { 1000 }
-fn default_max_delay() -> i64 { 60000 }
+fn default_max_attempts() -> i64 {
+    1
+}
+fn default_backoff() -> String {
+    "exponential".into()
+}
+fn default_initial_delay() -> i64 {
+    1000
+}
+fn default_max_delay() -> i64 {
+    60000
+}
 
 impl Default for RetryPolicy {
     fn default() -> Self {

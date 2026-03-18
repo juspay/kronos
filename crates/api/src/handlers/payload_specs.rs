@@ -1,11 +1,12 @@
+use crate::extractors::AuthenticatedRequest;
+use crate::router::AppState;
 use actix_web::{web, HttpResponse};
 use kronos_common::{
-    db, error::AppError,
+    db,
+    error::AppError,
     models::payload_spec::{CreatePayloadSpec, UpdatePayloadSpec},
     pagination::{encode_cursor, PaginatedResponse, PaginationParams},
 };
-use crate::extractors::AuthenticatedRequest;
-use crate::router::AppState;
 
 pub async fn create(
     state: web::Data<AppState>,
@@ -13,7 +14,9 @@ pub async fn create(
     body: web::Json<CreatePayloadSpec>,
 ) -> Result<HttpResponse, AppError> {
     if !body.schema.is_object() {
-        return Err(AppError::InvalidSchema("Schema must be a JSON object".into()));
+        return Err(AppError::InvalidSchema(
+            "Schema must be a JSON object".into(),
+        ));
     }
 
     let spec = db::payload_specs::create(&state.pool, &body.name, &body.schema)
@@ -46,14 +49,24 @@ pub async fn list(
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
     let next_cursor = if has_more {
         items.last().map(|s| encode_cursor(&s.name))
-    } else { None };
+    } else {
+        None
+    };
 
-    let data: Vec<serde_json::Value> = items.into_iter().map(|s| serde_json::json!({
-        "name": s.name, "schema": s.schema_json,
-        "created_at": s.created_at, "updated_at": s.updated_at,
-    })).collect();
+    let data: Vec<serde_json::Value> = items
+        .into_iter()
+        .map(|s| {
+            serde_json::json!({
+                "name": s.name, "schema": s.schema_json,
+                "created_at": s.created_at, "updated_at": s.updated_at,
+            })
+        })
+        .collect();
 
-    Ok(HttpResponse::Ok().json(PaginatedResponse { data, cursor: next_cursor }))
+    Ok(HttpResponse::Ok().json(PaginatedResponse {
+        data,
+        cursor: next_cursor,
+    }))
 }
 
 pub async fn get(
@@ -62,7 +75,8 @@ pub async fn get(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let name = path.into_inner();
-    let spec = db::payload_specs::get(&state.pool, &name).await?
+    let spec = db::payload_specs::get(&state.pool, &name)
+        .await?
         .ok_or_else(|| AppError::PayloadSpecNotFound(name))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
@@ -79,10 +93,13 @@ pub async fn update(
 ) -> Result<HttpResponse, AppError> {
     let name = path.into_inner();
     if !body.schema.is_object() {
-        return Err(AppError::InvalidSchema("Schema must be a JSON object".into()));
+        return Err(AppError::InvalidSchema(
+            "Schema must be a JSON object".into(),
+        ));
     }
 
-    let spec = db::payload_specs::update(&state.pool, &name, &body.schema).await?
+    let spec = db::payload_specs::update(&state.pool, &name, &body.schema)
+        .await?
         .ok_or_else(|| AppError::PayloadSpecNotFound(name))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
@@ -98,7 +115,10 @@ pub async fn delete(
 ) -> Result<HttpResponse, AppError> {
     let name = path.into_inner();
     if db::payload_specs::has_dependent_endpoints(&state.pool, &name).await? {
-        return Err(AppError::Conflict(format!("Payload spec '{}' has dependent endpoints", name)));
+        return Err(AppError::Conflict(format!(
+            "Payload spec '{}' has dependent endpoints",
+            name
+        )));
     }
     if !db::payload_specs::delete(&state.pool, &name).await? {
         return Err(AppError::PayloadSpecNotFound(name));

@@ -65,10 +65,7 @@ async fn fail(query: web::Query<FailQuery>) -> HttpResponse {
 }
 
 /// Responds after a configurable delay. Use ?ms=2000 for 2-second delay.
-async fn slow(
-    query: web::Query<DelayQuery>,
-    body: web::Json<serde_json::Value>,
-) -> HttpResponse {
+async fn slow(query: web::Query<DelayQuery>, body: web::Json<serde_json::Value>) -> HttpResponse {
     let delay = query.ms.unwrap_or(3000);
     tokio::time::sleep(Duration::from_millis(delay)).await;
     HttpResponse::Ok().json(serde_json::json!({
@@ -137,8 +134,7 @@ async fn health() -> HttpResponse {
 async fn main() -> std::io::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .json()
         .init();
