@@ -37,6 +37,7 @@ db-down:
 # Run SQL migrations
 db-migrate:
     PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260317000000_initial.sql
+    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260318000000_multi_tenancy.sql
 
 # Reset database (drop + recreate + migrate)
 db-reset:
@@ -116,6 +117,21 @@ dev:
     wait
 
 # ─── Test ─────────────────────────────────────────────────────
+
+# Run HTTP dispatcher tests (requires mock-server running)
+test-http:
+    cargo test -p kronos-worker --lib dispatcher::http::tests
+
+# Run Kafka dispatcher tests (requires: docker compose --profile kafka up -d)
+test-kafka:
+    cargo test -p kronos-worker --features kafka --lib dispatcher::kafka::tests -- --test-threads=1
+
+# Run Redis stream dispatcher tests (requires: docker compose --profile redis up -d)
+test-redis:
+    cargo test -p kronos-worker --features redis-stream --lib dispatcher::redis_stream::tests -- --test-threads=1
+
+# Run all dispatcher tests (requires kafka, redis, and mock-server)
+test-dispatchers: test-http test-kafka test-redis
 
 # Run the immediate execution end-to-end test
 test-immediate:

@@ -1,4 +1,4 @@
-use kronos_common::{config::AppConfig, db, tenant::SchemaRegistry};
+use kronos_common::{config::AppConfig, db, metrics as m, tenant::SchemaRegistry};
 use sqlx::PgPool;
 use std::time::Duration;
 
@@ -28,6 +28,10 @@ pub async fn run(pool: PgPool, config: &AppConfig) -> anyhow::Result<()> {
                 Ok(count) => {
                     if count > 0 {
                         tracing::info!(schema = %schema_name, "Reclaimed {} stuck executions", count);
+                        metrics::counter!(m::EXECUTIONS_RECLAIMED_TOTAL,
+                            "schema" => schema_name.clone(),
+                        )
+                        .increment(count);
                     }
                 }
                 Err(e) => {

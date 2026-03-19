@@ -2,6 +2,7 @@ use kronos_common::{
     cache::{ConfigCache, SecretCache},
     config::AppConfig,
     db,
+    metrics as m,
     tenant::SchemaRegistry,
 };
 use reqwest::Client;
@@ -85,6 +86,16 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
 
                 match claimed {
                     Some((schema, exec)) => {
+                        metrics::counter!(m::EXECUTIONS_CLAIMED_TOTAL,
+                            "schema" => schema.clone(),
+                            "endpoint_type" => exec.endpoint_type.clone(),
+                        )
+                        .increment(1);
+
+                        let wid = worker_id.clone();
+                        metrics::gauge!(m::WORKER_INFLIGHT, "worker_id" => wid.clone())
+                            .increment(1.0);
+
                         let ctx = ctx.clone();
                         tokio::spawn(async move {
                             pipeline::process_execution(
@@ -98,10 +109,16 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
                                 exec.attempt_count,
                                 exec.max_attempts,
                             ).await;
+                            metrics::gauge!(m::WORKER_INFLIGHT, "worker_id" => wid)
+                                .decrement(1.0);
                             drop(permit);
                         });
                     }
                     None => {
+                        metrics::counter!(m::WORKER_POLL_IDLE_TOTAL,
+                            "worker_id" => worker_id.clone(),
+                        )
+                        .increment(1);
                         drop(permit);
                         tokio::time::sleep(poll_interval).await;
                     }

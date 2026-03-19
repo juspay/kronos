@@ -1,5 +1,5 @@
 use chrono::Utc;
-use kronos_common::{config::AppConfig, db, tenant::SchemaRegistry};
+use kronos_common::{config::AppConfig, db, metrics as m, tenant::SchemaRegistry};
 use sqlx::PgPool;
 use std::time::Duration;
 
@@ -46,6 +46,10 @@ async fn materialize_tick(pool: &PgPool, schema_name: &str, batch_size: i64) -> 
             None => continue,
         };
 
+        let lag_secs = (Utc::now() - current_tick).num_milliseconds() as f64 / 1000.0;
+        metrics::histogram!(m::CRON_TICK_LAG_SECONDS, "schema" => schema_name.to_string())
+            .record(lag_secs);
+
         let cron_expr = match &job.cron_expression {
             Some(e) => e.clone(),
             None => continue,
@@ -84,6 +88,10 @@ async fn materialize_tick(pool: &PgPool, schema_name: &str, batch_size: i64) -> 
 
         if created {
             materialized += 1;
+            metrics::counter!(m::CRON_TICKS_MATERIALIZED_TOTAL,
+                "schema" => schema_name.to_string(),
+            )
+            .increment(1);
         }
 
         // Compute next tick from current tick (not now!) for catch-up

@@ -10,3 +10,14 @@ pub enum DispatchResult {
     Success { output: Value },
     Failure { error: Value },
 }
+
+#[cfg(test)]
+impl DispatchResult {
+    pub fn is_success(&self) -> bool {
+        matches!(self, DispatchResult::Success { .. })
+    }
+
+    pub fn is_failure(&self) -> bool {
+        matches!(self, DispatchResult::Failure { .. })
+    }
+}

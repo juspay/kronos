@@ -1,4 +1,4 @@
-use kronos_common::{config::AppConfig, db, tenant::SchemaRegistry};
+use kronos_common::{config::AppConfig, db, metrics as m, tenant::SchemaRegistry};
 use sqlx::PgPool;
 use std::time::Duration;
 
@@ -24,9 +24,17 @@ pub async fn run(pool: PgPool, config: &AppConfig) -> anyhow::Result<()> {
             };
 
             match db::executions::promote_pending(&mut *conn).await {
-                Ok(count) => {
-                    if count > 0 {
-                        tracing::debug!(schema = %schema_name, "Promoted {} pending executions to QUEUED", count);
+                Ok(result) => {
+                    if result.count > 0 {
+                        tracing::debug!(schema = %schema_name, "Promoted {} pending executions to QUEUED", result.count);
+                        metrics::counter!(m::EXECUTIONS_PROMOTED_TOTAL,
+                            "schema" => schema_name.clone(),
+                        )
+                        .increment(result.count as u64);
+                        metrics::histogram!(m::DELAYED_JOB_LAG_SECONDS,
+                            "schema" => schema_name.clone(),
+                        )
+                        .record(result.max_lag_seconds);
                     }
                 }
                 Err(e) => {

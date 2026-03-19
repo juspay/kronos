@@ -23,3 +23,5 @@ jsonschema.workspace = true
 cron.workspace = true
 chrono-tz.workspace = true
 dotenvy.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true

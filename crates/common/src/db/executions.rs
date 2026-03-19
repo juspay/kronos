@@ -178,14 +178,28 @@ pub async fn cancel(conn: &mut PgConnection, execution_id: &str) -> Result<Optio
     .await
 }
 
-pub async fn promote_pending(conn: &mut PgConnection) -> Result<u64, sqlx::Error> {
-    let result = sqlx::query(
-        "UPDATE executions SET status = 'QUEUED'
-         WHERE status = 'PENDING' AND run_at <= now()",
+pub struct PromotionResult {
+    pub count: i64,
+    pub max_lag_seconds: f64,
+}
+
+pub async fn promote_pending(conn: &mut PgConnection) -> Result<PromotionResult, sqlx::Error> {
+    let row: (i64, f64) = sqlx::query_as(
+        "WITH promoted AS (
+            UPDATE executions SET status = 'QUEUED'
+            WHERE status = 'PENDING' AND run_at <= now()
+            RETURNING EXTRACT(EPOCH FROM (now() - run_at)) AS lag_secs
+        )
+        SELECT COALESCE(COUNT(*), 0)::BIGINT,
+               COALESCE(MAX(lag_secs), 0)::FLOAT8
+        FROM promoted",
     )
-    .execute(&mut *conn)
+    .fetch_one(&mut *conn)
     .await?;
-    Ok(result.rows_affected())
+    Ok(PromotionResult {
+        count: row.0,
+        max_lag_seconds: row.1,
+    })
 }
 
 pub async fn reclaim_stuck(conn: &mut PgConnection, timeout_secs: i64) -> Result<u64, sqlx::Error> {

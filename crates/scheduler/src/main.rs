@@ -17,7 +17,9 @@ async fn main() -> anyhow::Result<()> {
     let config = AppConfig::from_env()?;
     let pool = sqlx::PgPool::connect(&config.database_url).await?;
 
-    tracing::info!("Scheduler starting");
+    kronos_common::metrics::install_recorder_with_listener(config.metrics_port);
+
+    tracing::info!("Scheduler starting (metrics on port {})", config.metrics_port);
 
     tokio::select! {
         r = cron_materializer::run(pool.clone(), &config) => r?,

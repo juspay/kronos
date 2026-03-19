@@ -28,10 +28,13 @@ async fn main() -> anyhow::Result<()> {
     // .await?;
     // migrator.run(&pool).await?;
 
+    let metrics_handle = kronos_common::metrics::install_recorder();
+
     let listen_addr = config.listen_addr.clone();
     let app_state = router::AppState {
         pool: pool.clone(),
         config: config.clone(),
+        metrics_handle,
     };
 
     tracing::info!("API server listening on {}", listen_addr);

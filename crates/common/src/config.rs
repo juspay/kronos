@@ -36,6 +36,10 @@ pub struct AppConfig {
     pub reclaim_interval_sec: u64,
     #[serde(default = "default_stuck_timeout")]
     pub stuck_execution_timeout_sec: i64,
+
+    // Metrics
+    #[serde(default = "default_metrics_port")]
+    pub metrics_port: u16,
 }
 
 fn default_listen_addr() -> String {
@@ -79,6 +83,9 @@ fn default_reclaim_interval() -> u64 {
 }
 fn default_stuck_timeout() -> i64 {
     300
+}
+fn default_metrics_port() -> u16 {
+    9090
 }
 
 impl AppConfig {
@@ -134,6 +141,10 @@ impl AppConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or_else(default_stuck_timeout),
+            metrics_port: std::env::var("TE_METRICS_PORT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or_else(default_metrics_port),
         };
         Ok(config)
     }

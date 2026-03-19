@@ -1,7 +1,9 @@
 use chrono::Utc;
 use kronos_common::{
     cache::{ConfigCache, SecretCache},
-    crypto, db, template,
+    crypto, db,
+    metrics as m,
+    template,
 };
 use reqwest::Client;
 use sqlx::PgPool;
@@ -185,9 +187,9 @@ pub async fn process_execution(
     let result = match endpoint_type {
         "HTTP" => dispatcher::http::dispatch(&ctx.http_client, &dispatch_spec).await,
         #[cfg(feature = "kafka")]
-        "KAFKA" => dispatcher::kafka::dispatch(&resolved_spec).await,
+        "KAFKA" => dispatcher::kafka::dispatch(&dispatch_spec).await,
         #[cfg(feature = "redis-stream")]
-        "REDIS_STREAM" => dispatcher::redis_stream::dispatch(&resolved_spec).await,
+        "REDIS_STREAM" => dispatcher::redis_stream::dispatch(&dispatch_spec).await,
         _ => {
             tracing::error!(execution_id, "Unsupported endpoint type: {}", endpoint_type);
             DispatchResult::Failure {
@@ -198,10 +200,24 @@ pub async fn process_execution(
 
     let completed_at = Utc::now();
     let duration_ms = (completed_at - started_at).num_milliseconds();
+    let duration_secs = duration_ms as f64 / 1000.0;
 
     // 4. Record attempt + finalize
     match result {
         DispatchResult::Success { output } => {
+            metrics::counter!(m::EXECUTIONS_COMPLETED_TOTAL,
+                "status" => "SUCCESS",
+                "schema" => schema_name.to_string(),
+                "endpoint" => endpoint_name.to_string(),
+            )
+            .increment(1);
+            metrics::histogram!(m::EXECUTION_DURATION_SECONDS,
+                "status" => "SUCCESS",
+                "endpoint" => endpoint_name.to_string(),
+                "endpoint_type" => endpoint_type.to_string(),
+            )
+            .record(duration_secs);
+
             record_attempt(
                 &mut *conn,
                 execution_id,
@@ -249,6 +265,19 @@ pub async fn process_execution(
                 )
                 .await;
             } else {
+                metrics::counter!(m::EXECUTIONS_COMPLETED_TOTAL,
+                    "status" => "FAILED",
+                    "schema" => schema_name.to_string(),
+                    "endpoint" => endpoint_name.to_string(),
+                )
+                .increment(1);
+                metrics::histogram!(m::EXECUTION_DURATION_SECONDS,
+                    "status" => "FAILED",
+                    "endpoint" => endpoint_name.to_string(),
+                    "endpoint_type" => endpoint_type.to_string(),
+                )
+                .record(duration_secs);
+
                 let _ = db::executions::complete_failed(&mut *conn, execution_id).await;
                 log_execution(
                     &mut *conn,

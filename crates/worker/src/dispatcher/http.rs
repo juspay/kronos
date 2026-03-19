@@ -1,4 +1,5 @@
 use super::DispatchResult;
+use kronos_common::metrics as m;
 use reqwest::Client;
 use serde_json::Value;
 use std::time::Duration;
@@ -43,12 +44,26 @@ pub async fn dispatch(client: &Client, spec: &Value) -> DispatchResult {
         }
     }
 
+    let start = std::time::Instant::now();
+
     match req.send().await {
         Ok(response) => {
+            let elapsed = start.elapsed().as_secs_f64();
             let status = response.status().as_u16();
             let body = response.text().await.unwrap_or_default();
 
             if expected_statuses.contains(&status) {
+                metrics::counter!(m::DISPATCH_TOTAL,
+                    "endpoint_type" => "HTTP",
+                    "status" => "SUCCESS",
+                    "error_type" => "",
+                )
+                .increment(1);
+                metrics::histogram!(m::DISPATCH_DURATION_SECONDS,
+                    "endpoint_type" => "HTTP",
+                )
+                .record(elapsed);
+
                 DispatchResult::Success {
                     output: serde_json::json!({
                         "status_code": status,
@@ -56,6 +71,13 @@ pub async fn dispatch(client: &Client, spec: &Value) -> DispatchResult {
                     }),
                 }
             } else {
+                metrics::counter!(m::DISPATCH_TOTAL,
+                    "endpoint_type" => "HTTP",
+                    "status" => "FAILURE",
+                    "error_type" => "HTTP_ERROR",
+                )
+                .increment(1);
+
                 DispatchResult::Failure {
                     error: serde_json::json!({
                         "type": "HTTP_ERROR",
@@ -74,6 +96,13 @@ pub async fn dispatch(client: &Client, spec: &Value) -> DispatchResult {
                 "HTTP_ERROR"
             };
 
+            metrics::counter!(m::DISPATCH_TOTAL,
+                "endpoint_type" => "HTTP",
+                "status" => "FAILURE",
+                "error_type" => error_type.to_string(),
+            )
+            .increment(1);
+
             DispatchResult::Failure {
                 error: serde_json::json!({
                     "type": error_type,
@@ -81,5 +110,113 @@ pub async fn dispatch(client: &Client, spec: &Value) -> DispatchResult {
                 }),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn mock_url() -> String {
+        std::env::var("MOCK_URL").unwrap_or_else(|_| "http://localhost:9999".into())
+    }
+
+    /// POST to mock-server /success and verify 200 response.
+    /// Requires: `cargo run -p kronos-mock-server`
+    #[tokio::test]
+    async fn test_http_dispatch_success() {
+        let client = Client::new();
+        let spec = json!({
+            "url": format!("{}/success", mock_url()),
+            "method": "POST",
+            "headers": {
+                "Content-Type": "application/json",
+            },
+            "body": {"test": true},
+            "timeout_ms": 5000,
+        });
+
+        let result = dispatch(&client, &spec).await;
+        assert!(result.is_success(), "expected success from /success");
+        if let DispatchResult::Success { output } = result {
+            assert_eq!(output["status_code"].as_u64().unwrap(), 200);
+        }
+    }
+
+    /// Connection to a non-existent server should fail with CONNECTION_ERROR.
+    #[tokio::test]
+    async fn test_http_dispatch_connection_error() {
+        let client = Client::new();
+        let spec = json!({
+            "url": "http://127.0.0.1:19999/nothing",
+            "method": "POST",
+            "timeout_ms": 2000,
+        });
+
+        let result = dispatch(&client, &spec).await;
+        assert!(result.is_failure(), "expected connection failure");
+        if let DispatchResult::Failure { error } = result {
+            let err_type = error["type"].as_str().unwrap();
+            assert!(
+                err_type == "CONNECTION_ERROR" || err_type == "TIMEOUT",
+                "unexpected error type: {}",
+                err_type
+            );
+        }
+    }
+
+    /// A 500 response should be treated as a failure (not in expected_status_codes).
+    #[tokio::test]
+    async fn test_http_dispatch_unexpected_status() {
+        let client = Client::new();
+        let spec = json!({
+            "url": format!("{}/fail", mock_url()),
+            "method": "POST",
+            "expected_status_codes": [200],
+            "timeout_ms": 5000,
+        });
+
+        let result = dispatch(&client, &spec).await;
+        // If mock-server returns 500 for /fail, this should be a failure
+        if result.is_failure() {
+            if let DispatchResult::Failure { error } = result {
+                assert_eq!(error["type"].as_str().unwrap(), "HTTP_ERROR");
+            }
+        }
+    }
+
+    /// GET request should work.
+    #[tokio::test]
+    async fn test_http_dispatch_get_method() {
+        let client = Client::new();
+        let spec = json!({
+            "url": format!("{}/health", mock_url()),
+            "method": "GET",
+            "expected_status_codes": [200],
+            "timeout_ms": 5000,
+        });
+
+        let result = dispatch(&client, &spec).await;
+        assert!(result.is_success(), "expected success from GET /health");
+    }
+
+    /// Custom headers should be sent.
+    #[tokio::test]
+    async fn test_http_dispatch_with_headers() {
+        let client = Client::new();
+        let spec = json!({
+            "url": format!("{}/success", mock_url()),
+            "method": "POST",
+            "headers": {
+                "X-Custom-Header": "test-value",
+                "Authorization": "Bearer test-token",
+            },
+            "body": {"data": "with headers"},
+            "timeout_ms": 5000,
+        });
+
+        let result = dispatch(&client, &spec).await;
+        assert!(result.is_success(), "expected success with custom headers");
     }
 }

@@ -25,3 +25,5 @@ jsonschema.workspace = true
 cron.workspace = true
 chrono-tz.workspace = true
 actix-cors = "0.7"
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true

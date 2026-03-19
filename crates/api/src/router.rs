@@ -1,5 +1,6 @@
-use actix_web::web;
+use actix_web::{web, HttpResponse};
 use kronos_common::config::AppConfig;
+use metrics_exporter_prometheus::PrometheusHandle;
 use sqlx::PgPool;
 
 use crate::handlers;
@@ -8,10 +9,12 @@ use crate::handlers;
 pub struct AppState {
     pub pool: PgPool,
     pub config: AppConfig,
+    pub metrics_handle: PrometheusHandle,
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.route("/health", web::get().to(health))
+        .route("/metrics", web::get().to(metrics_handler))
         // Management routes (no workspace context needed)
         .route("/v1/orgs", web::post().to(handlers::organizations::create))
         .route("/v1/orgs", web::get().to(handlers::organizations::list))
@@ -131,4 +134,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 
 async fn health() -> &'static str {
     "OK"
+}
+
+async fn metrics_handler(state: web::Data<AppState>) -> HttpResponse {
+    HttpResponse::Ok()
+        .content_type("text/plain; version=0.0.4")
+        .body(state.metrics_handle.render())
 }

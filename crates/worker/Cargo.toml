@@ -27,5 +27,7 @@ rand.workspace = true
 dotenvy.workspace = true
 anyhow.workspace = true
 
+metrics.workspace = true
+
 rdkafka = { workspace = true, optional = true }
 redis = { workspace = true, optional = true }

@@ -8,6 +8,7 @@ use kronos_common::{
     models::job::{CreateJob, TriggerType, UpdateJob},
     pagination::{encode_cursor, PaginatedResponse, PaginationParams},
 };
+use kronos_common::metrics as m;
 use uuid::Uuid;
 
 pub async fn create(
@@ -87,6 +88,13 @@ pub async fn create(
 
             tx.commit().await.map_err(AppError::from)?;
 
+            metrics::counter!(m::JOBS_CREATED_TOTAL,
+                "trigger_type" => "IMMEDIATE",
+                "endpoint" => body.endpoint.clone(),
+                "schema" => ws.0.schema_name.clone(),
+            )
+            .increment(1);
+
             Ok(HttpResponse::Created().json(serde_json::json!({ "data": {
                 "job_id": result.job.job_id,
                 "endpoint": result.job.endpoint,
@@ -131,6 +139,13 @@ pub async fn create(
             .await?;
 
             tx.commit().await.map_err(AppError::from)?;
+
+            metrics::counter!(m::JOBS_CREATED_TOTAL,
+                "trigger_type" => "DELAYED",
+                "endpoint" => body.endpoint.clone(),
+                "schema" => ws.0.schema_name.clone(),
+            )
+            .increment(1);
 
             Ok(HttpResponse::Created().json(serde_json::json!({ "data": {
                 "job_id": result.job.job_id,
@@ -189,6 +204,13 @@ pub async fn create(
                 next_run,
             )
             .await?;
+
+            metrics::counter!(m::JOBS_CREATED_TOTAL,
+                "trigger_type" => "CRON",
+                "endpoint" => body.endpoint.clone(),
+                "schema" => ws.0.schema_name.clone(),
+            )
+            .increment(1);
 
             Ok(HttpResponse::Created().json(serde_json::json!({ "data": {
                 "job_id": job.job_id,
