@@ -17,9 +17,11 @@ pub async fn create(
     ws: Workspace,
     body: web::Json<CreateJob>,
 ) -> Result<HttpResponse, AppError> {
+    // TODO 2: this can be removed after doing TODO 1
     let trigger = TriggerType::from_str_val(&body.trigger)
         .ok_or_else(|| AppError::InvalidRequest(format!("Invalid trigger: {}", body.trigger)))?;
 
+    // TODO 3: this can be moved to a middleware, so that we can scope each req to a schema directly
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;

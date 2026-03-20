@@ -31,6 +31,8 @@ import {
 const KRONOS_URL = process.env.KRONOS_URL ?? "http://localhost:8080";
 const MOCK_URL = process.env.MOCK_URL ?? "http://localhost:9999";
 const API_KEY = process.env.KRONOS_API_KEY ?? "dev-api-key";
+const ORG_ID = process.env.KRONOS_ORG_ID ?? "e336afd5-c291-477a-80f4-2cc1c9a072f6";
+const WORKSPACE_ID = process.env.KRONOS_WORKSPACE_ID ?? "60f0a1ef-0e07-4fb6-a590-d41ae1068785";
 const CONCURRENCY = parseInt(process.env.LOAD_TEST_CONCURRENCY ?? "10", 10);
 const POLL_INTERVAL_MS = 500;
 const POLL_TIMEOUT_MS = 120_000;
@@ -94,6 +96,7 @@ async function main() {
     token: { token: API_KEY },
   });
 
+  const tenant = { org_id: ORG_ID, workspace_id: WORKSPACE_ID };
   const runId = Date.now().toString(36);
   const epImmediate = `load-imm-${runId}`;
   const epDelayed = `load-del-${runId}`;
@@ -114,6 +117,7 @@ async function main() {
 
   const endpointSpec = (name: string) =>
     new CreateEndpointCommand({
+      ...tenant,
       name,
       endpoint_type: "HTTP",
       spec: {
@@ -147,6 +151,7 @@ async function main() {
   const immTasks = Array.from({ length: N }, (_, i) => async () => {
     const resp = await client.send(
       new CreateJobCommand({
+        ...tenant,
         endpoint: epImmediate,
         trigger: "IMMEDIATE",
         input: {
@@ -180,6 +185,7 @@ async function main() {
     const runAt = new Date(Date.now() + delaySec * 1000);
     const resp = await client.send(
       new CreateJobCommand({
+        ...tenant,
         endpoint: epDelayed,
         trigger: "DELAYED",
         run_at: runAt,
@@ -214,6 +220,7 @@ async function main() {
   const cronTasks = Array.from({ length: N }, (_, i) => async () => {
     const resp = await client.send(
       new CreateJobCommand({
+        ...tenant,
         endpoint: epCron,
         trigger: "CRON",
         cron: "0/10 * * * * *",
@@ -266,7 +273,7 @@ async function main() {
       const checks = batch.map(async (j) => {
         try {
           const resp = await client.send(
-            new ListJobExecutionsCommand({ job_id: j.jobId }),
+            new ListJobExecutionsCommand({ ...tenant, job_id: j.jobId }),
           );
           const execs = resp.data ?? [];
           if (execs.length > 0) {
@@ -355,7 +362,7 @@ async function main() {
   // Cancel remaining cron jobs
   const cancelTasks = cronJobIds.map((id) => async () => {
     try {
-      await client.send(new CancelJobCommand({ job_id: id }));
+      await client.send(new CancelJobCommand({ ...tenant, job_id: id }));
     } catch {
       // already cancelled or retired
     }
@@ -365,7 +372,7 @@ async function main() {
   // Delete endpoints
   for (const ep of [epImmediate, epDelayed, epCron]) {
     try {
-      await client.send(new DeleteEndpointCommand({ name: ep }));
+      await client.send(new DeleteEndpointCommand({ ...tenant, name: ep }));
     } catch {
       // may have active references
     }

@@ -12,7 +12,11 @@ pub async fn run(pool: PgPool, config: &AppConfig) -> anyhow::Result<()> {
     );
 
     loop {
-        let schemas = schema_registry.get_active_schemas().await.unwrap_or_default();
+        // fetches all the workspaces
+        let schemas = schema_registry
+            .get_active_schemas()
+            .await
+            .unwrap_or_default();
 
         for schema_name in &schemas {
             let mut conn = match db::scoped::scoped_connection(&pool, schema_name).await {

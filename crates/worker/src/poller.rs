@@ -1,8 +1,7 @@
 use kronos_common::{
     cache::{ConfigCache, SecretCache},
     config::AppConfig,
-    db,
-    metrics as m,
+    db, metrics as m,
     tenant::SchemaRegistry,
 };
 use reqwest::Client;
@@ -58,6 +57,7 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
                 };
 
                 // Try to claim from any active schema
+                // TODO 4: A more active workspace (more jobs) can starve other workspaces
                 let claimed = {
                     let mut result = None;
                     for schema_name in &schemas {
@@ -97,6 +97,7 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
                             .increment(1.0);
 
                         let ctx = ctx.clone();
+                        // TODO 5: What if the worker dies midway, what happens to the permit? Should we have a monitor for these process_executions
                         tokio::spawn(async move {
                             pipeline::process_execution(
                                 &ctx,

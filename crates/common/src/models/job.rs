@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+// TODO 1: Use strum macros and serde to automatically make enums from strings
 pub enum TriggerType {
     IMMEDIATE,
     DELAYED,
