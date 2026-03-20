@@ -113,7 +113,8 @@ list ExecutionLogList {
 
 // ─── Get Execution ───────────────────────────────────────────────
 
-structure GetExecutionInput {
+@input
+structure GetExecutionInput with [WorkspaceHeaders] {
     @required
     @httpLabel
     execution_id: String
@@ -134,7 +135,8 @@ operation GetExecution {
 
 // ─── Cancel Execution ────────────────────────────────────────────
 
-structure CancelExecutionInput {
+@input
+structure CancelExecutionInput with [WorkspaceHeaders] {
     @required
     @httpLabel
     execution_id: String
@@ -155,7 +157,7 @@ operation CancelExecution {
 // ─── List Attempts ───────────────────────────────────────────────
 
 @input
-structure ListExecutionAttemptsInput with [PaginationQuery] {
+structure ListExecutionAttemptsInput with [WorkspaceHeaders, PaginationQuery] {
     @required
     @httpLabel
     execution_id: String
@@ -179,7 +181,7 @@ operation ListExecutionAttempts {
 // ─── List Execution Logs ─────────────────────────────────────────
 
 @input
-structure ListExecutionLogsInput with [PaginationQuery] {
+structure ListExecutionLogsInput with [WorkspaceHeaders, PaginationQuery] {
     @required
     @httpLabel
     execution_id: String

@@ -111,7 +111,8 @@ structure ExecutionSummary {
 
 // ─── Create ──────────────────────────────────────────────────────
 
-structure CreateJobInput {
+@input
+structure CreateJobInput with [WorkspaceHeaders] {
     @required
     endpoint: String
 
@@ -148,7 +149,7 @@ operation CreateJob {
 // ─── List ────────────────────────────────────────────────────────
 
 @input
-structure ListJobsInput with [PaginationQuery] {
+structure ListJobsInput with [WorkspaceHeaders, PaginationQuery] {
     @httpQuery("endpoint")
     endpoint: String
 
@@ -175,7 +176,8 @@ operation ListJobs {
 
 // ─── Get ─────────────────────────────────────────────────────────
 
-structure GetJobInput {
+@input
+structure GetJobInput with [WorkspaceHeaders] {
     @required
     @httpLabel
     job_id: String
@@ -196,7 +198,8 @@ operation GetJob {
 
 // ─── Update ──────────────────────────────────────────────────────
 
-structure UpdateJobInput {
+@input
+structure UpdateJobInput with [WorkspaceHeaders] {
     @required
     @httpLabel
     job_id: String
@@ -227,7 +230,8 @@ operation UpdateJob {
 
 // ─── Cancel ──────────────────────────────────────────────────────
 
-structure CancelJobInput {
+@input
+structure CancelJobInput with [WorkspaceHeaders] {
     @required
     @httpLabel
     job_id: String
@@ -247,7 +251,8 @@ operation CancelJob {
 
 // ─── Get Status ──────────────────────────────────────────────────
 
-structure GetJobStatusInput {
+@input
+structure GetJobStatusInput with [WorkspaceHeaders] {
     @required
     @httpLabel
     job_id: String
@@ -268,7 +273,8 @@ operation GetJobStatus {
 
 // ─── Get Versions ────────────────────────────────────────────────
 
-structure GetJobVersionsInput {
+@input
+structure GetJobVersionsInput with [WorkspaceHeaders] {
     @required
     @httpLabel
     job_id: String
@@ -290,7 +296,7 @@ operation GetJobVersions {
 // ─── List Job Executions ─────────────────────────────────────────
 
 @input
-structure ListJobExecutionsInput with [PaginationQuery] {
+structure ListJobExecutionsInput with [WorkspaceHeaders, PaginationQuery] {
     @required
     @httpLabel
     job_id: String

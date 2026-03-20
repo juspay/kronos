@@ -2,6 +2,19 @@ $version: "2"
 
 namespace com.kronos
 
+// ─── Workspace Headers ─────────────────────────────────────
+
+@mixin
+structure WorkspaceHeaders {
+    @required
+    @httpHeader("x-org-id")
+    org_id: String
+
+    @required
+    @httpHeader("x-workspace-id")
+    workspace_id: String
+}
+
 // ─── Pagination ────────────────────────────────────────────
 
 @mixin

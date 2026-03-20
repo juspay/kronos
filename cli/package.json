@@ -7,7 +7,8 @@
     "build:sdk": "cd ../smithy/build/smithy/source/typescript-client-codegen && npm install && npm run build",
     "test:immediate": "npx tsx src/test-immediate.ts",
     "test:delayed": "npx tsx src/test-delayed.ts",
-    "test:cron": "npx tsx src/test-cron.ts"
+    "test:cron": "npx tsx src/test-cron.ts",
+    "load-test": "npx tsx src/load-test.ts"
   },
   "dependencies": {
     "kronos-sdk": "file:../smithy/build/smithy/source/typescript-client-codegen"

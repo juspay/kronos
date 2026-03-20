@@ -34,7 +34,8 @@ list EndpointList {
 
 // ─── Create ──────────────────────────────────────────────────────
 
-structure CreateEndpointInput {
+@input
+structure CreateEndpointInput with [WorkspaceHeaders] {
     @required
     name: String
 
@@ -68,7 +69,7 @@ operation CreateEndpoint {
 // ─── List ────────────────────────────────────────────────────────
 
 @input
-structure ListEndpointsInput with [PaginationQuery] {}
+structure ListEndpointsInput with [WorkspaceHeaders, PaginationQuery] {}
 
 structure ListEndpointsOutput {
     @required
@@ -86,7 +87,8 @@ operation ListEndpoints {
 
 // ─── Get ─────────────────────────────────────────────────────────
 
-structure GetEndpointInput {
+@input
+structure GetEndpointInput with [WorkspaceHeaders] {
     @required
     @httpLabel
     name: String
@@ -107,7 +109,8 @@ operation GetEndpoint {
 
 // ─── Update ──────────────────────────────────────────────────────
 
-structure UpdateEndpointInput {
+@input
+structure UpdateEndpointInput with [WorkspaceHeaders] {
     @required
     @httpLabel
     name: String
@@ -136,7 +139,8 @@ operation UpdateEndpoint {
 
 // ─── Delete ──────────────────────────────────────────────────────
 
-structure DeleteEndpointInput {
+@input
+structure DeleteEndpointInput with [WorkspaceHeaders] {
     @required
     @httpLabel
     name: String

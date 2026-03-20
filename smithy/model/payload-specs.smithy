@@ -31,7 +31,8 @@ structure PaginatedPayloadSpecs {
 
 // ─── Create ──────────────────────────────────────────────────────
 
-structure CreatePayloadSpecInput {
+@input
+structure CreatePayloadSpecInput with [WorkspaceHeaders] {
     @required
     name: String
 
@@ -55,7 +56,7 @@ operation CreatePayloadSpec {
 // ─── List ────────────────────────────────────────────────────────
 
 @input
-structure ListPayloadSpecsInput with [PaginationQuery] {}
+structure ListPayloadSpecsInput with [WorkspaceHeaders, PaginationQuery] {}
 
 structure ListPayloadSpecsOutput {
     @required
@@ -73,7 +74,8 @@ operation ListPayloadSpecs {
 
 // ─── Get ─────────────────────────────────────────────────────────
 
-structure GetPayloadSpecInput {
+@input
+structure GetPayloadSpecInput with [WorkspaceHeaders] {
     @required
     @httpLabel
     name: String
@@ -94,7 +96,8 @@ operation GetPayloadSpec {
 
 // ─── Update ──────────────────────────────────────────────────────
 
-structure UpdatePayloadSpecInput {
+@input
+structure UpdatePayloadSpecInput with [WorkspaceHeaders] {
     @required
     @httpLabel
     name: String
@@ -118,7 +121,8 @@ operation UpdatePayloadSpec {
 
 // ─── Delete ──────────────────────────────────────────────────────
 
-structure DeletePayloadSpecInput {
+@input
+structure DeletePayloadSpecInput with [WorkspaceHeaders] {
     @required
     @httpLabel
     name: String

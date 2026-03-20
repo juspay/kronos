@@ -107,10 +107,14 @@ dev:
     trap 'kill 0' EXIT
 
     echo "Starting all Kronos services..."
+    echo "  API:       http://localhost:8080  (metrics at /metrics)"
+    echo "  Worker:    metrics on :9090"
+    echo "  Scheduler: metrics on :9091"
+    echo "  Mock:      http://localhost:9999"
 
     cargo run -p kronos-api &
-    cargo run -p kronos-worker &
-    cargo run -p kronos-scheduler &
+    TE_METRICS_PORT=9090 cargo run -p kronos-worker &
+    TE_METRICS_PORT=9091 cargo run -p kronos-scheduler &
     cargo run -p kronos-mock-server &
 
     echo "All services starting. Press Ctrl+C to stop all."
@@ -132,6 +136,15 @@ test-redis:
 
 # Run all dispatcher tests (requires kafka, redis, and mock-server)
 test-dispatchers: test-http test-kafka test-redis
+
+# Load test: create N jobs of each type (IMMEDIATE, DELAYED, CRON) and track completion
+# Usage: just load-test 50
+load-test N="10":
+    cd cli && npx tsx src/load-test.ts {{N}}
+
+# Load test (fire-and-forget, no polling)
+load-test-nw N="10":
+    cd cli && npx tsx src/load-test.ts {{N}} --no-wait
 
 # Run the immediate execution end-to-end test
 test-immediate:
@@ -240,11 +253,34 @@ fmt-check:
 
 # Start all infrastructure (DB + Kafka + Redis)
 infra-up:
-    docker-compose --profile kafka --profile redis up -d
+    docker compose --profile kafka --profile redis up -d
 
 # Stop all infrastructure
 infra-down:
-    docker-compose --profile kafka --profile redis down
+    docker compose --profile kafka --profile redis down
+
+# ─── Monitoring ─────────────────────────────────────────────
+
+# Start Prometheus + Grafana (Grafana at http://localhost:3001, admin/kronos)
+monitoring-up:
+    docker compose --profile monitoring up -d
+    @echo "Prometheus: http://localhost:9099"
+    @echo "Grafana:    http://localhost:3001  (admin / kronos)"
+
+# Stop monitoring stack
+monitoring-down:
+    docker compose --profile monitoring down
+
+# Start everything: infra + monitoring
+all-up:
+    docker compose --profile kafka --profile redis --profile monitoring up -d
+    @echo "All infrastructure started."
+    @echo "Prometheus: http://localhost:9099"
+    @echo "Grafana:    http://localhost:3001  (admin / kronos)"
+
+# Stop everything
+all-down:
+    docker compose --profile kafka --profile redis --profile monitoring down
 
 # ─── Dashboard ──────────────────────────────────────────────
 
