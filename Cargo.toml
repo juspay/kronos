@@ -3,7 +3,6 @@ members = [
     "crates/common",
     "crates/api",
     "crates/worker",
-    "crates/scheduler",
     "crates/mock-server",
 ]
 exclude = [

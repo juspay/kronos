@@ -1,15 +1,15 @@
-use kronos_common::{config::AppConfig, db, metrics as m, tenant::SchemaRegistry};
+use kronos_common::{db, metrics as m, tenant::SchemaRegistry};
 use sqlx::PgPool;
 use std::time::Duration;
 
-pub async fn run(pool: PgPool, config: &AppConfig) -> anyhow::Result<()> {
-    let interval = Duration::from_secs(config.reclaim_interval_sec);
+pub async fn run(pool: PgPool, reclaim_interval_sec: u64, stuck_timeout_sec: i64) -> anyhow::Result<()> {
+    let interval = Duration::from_secs(reclaim_interval_sec);
     let schema_registry = SchemaRegistry::new(pool.clone(), 30);
 
     tracing::info!(
         "Stuck reclaimer started (interval: {}s, timeout: {}s)",
-        config.reclaim_interval_sec,
-        config.stuck_execution_timeout_sec
+        reclaim_interval_sec,
+        stuck_timeout_sec
     );
 
     loop {
@@ -24,7 +24,7 @@ pub async fn run(pool: PgPool, config: &AppConfig) -> anyhow::Result<()> {
                 }
             };
 
-            match db::executions::reclaim_stuck(&mut *conn, config.stuck_execution_timeout_sec).await {
+            match db::executions::reclaim_stuck(&mut *conn, stuck_timeout_sec).await {
                 Ok(count) => {
                     if count > 0 {
                         tracing::info!(schema = %schema_name, "Reclaimed {} stuck executions", count);

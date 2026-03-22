@@ -6,7 +6,7 @@ use kronos_common::{
     template,
 };
 use reqwest::Client;
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 use std::collections::HashMap;
 
 use crate::backoff;
@@ -22,6 +22,7 @@ pub struct PipelineContext {
 
 pub async fn process_execution(
     ctx: &PipelineContext,
+    conn: &mut PgConnection,
     schema_name: &str,
     execution_id: &str,
     _job_id: &str,
@@ -31,14 +32,6 @@ pub async fn process_execution(
     attempt_count: i64,
     max_attempts: i64,
 ) {
-    let mut conn = match db::scoped::scoped_connection(&ctx.pool, schema_name).await {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!(execution_id, "Failed to get scoped connection: {}", e);
-            return;
-        }
-    };
-
     let started_at = Utc::now();
 
     // 1. Load endpoint

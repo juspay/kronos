@@ -1730,25 +1730,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kronos-scheduler"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "chrono-tz",
- "cron",
- "dotenvy",
- "kronos-common",
- "metrics",
- "serde",
- "serde_json",
- "sqlx",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "kronos-worker"
 version = "0.1.0"
 dependencies = [

@@ -4,8 +4,6 @@ use metrics_exporter_prometheus::PrometheusHandle;
 pub const JOBS_CREATED_TOTAL: &str = "kronos_jobs_created_total";
 pub const EXECUTIONS_CLAIMED_TOTAL: &str = "kronos_executions_claimed_total";
 pub const EXECUTIONS_COMPLETED_TOTAL: &str = "kronos_executions_completed_total";
-pub const EXECUTIONS_PROMOTED_TOTAL: &str = "kronos_executions_promoted_total";
-pub const CRON_TICKS_MATERIALIZED_TOTAL: &str = "kronos_cron_ticks_materialized_total";
 pub const EXECUTIONS_RECLAIMED_TOTAL: &str = "kronos_executions_reclaimed_total";
 pub const WORKER_POLL_IDLE_TOTAL: &str = "kronos_worker_poll_idle_total";
 
@@ -16,8 +14,6 @@ pub const REDIS_STREAM_MESSAGES_SENT_TOTAL: &str = "kronos_redis_stream_messages
 
 // --- Histograms ---
 pub const EXECUTION_DURATION_SECONDS: &str = "kronos_execution_duration_seconds";
-pub const DELAYED_JOB_LAG_SECONDS: &str = "kronos_delayed_job_lag_seconds";
-pub const CRON_TICK_LAG_SECONDS: &str = "kronos_cron_tick_lag_seconds";
 pub const DISPATCH_DURATION_SECONDS: &str = "kronos_dispatch_duration_seconds";
 
 // --- Gauges ---

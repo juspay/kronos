@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS executions (
 
 CREATE INDEX IF NOT EXISTS idx_executions_pickup
     ON executions (status, run_at ASC)
-    WHERE status IN ('QUEUED', 'RETRYING');
+    WHERE status IN ('QUEUED', 'RETRYING', 'PENDING');
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_executions_cron_dedup
     ON executions (job_id, idempotency_key)

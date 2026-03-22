@@ -207,6 +207,18 @@ pub async fn create(
             )
             .await?;
 
+            // Register with pg_cron for automatic execution materialization
+            if let Err(e) = db::jobs::register_pg_cron(
+                &state.pool,
+                &ws.0.schema_name,
+                &job.job_id,
+                cron_expr,
+            )
+            .await
+            {
+                tracing::error!(job_id = %job.job_id, "Failed to register pg_cron job: {}", e);
+            }
+
             metrics::counter!(m::JOBS_CREATED_TOTAL,
                 "trigger_type" => "CRON",
                 "endpoint" => body.endpoint.clone(),
@@ -345,6 +357,23 @@ pub async fn update(
 
     tx.commit().await.map_err(AppError::from)?;
 
+    // Unschedule old pg_cron job and register new one
+    if let Err(e) =
+        db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await
+    {
+        tracing::error!(job_id = %job_id, "Failed to unregister old pg_cron job: {}", e);
+    }
+    if let Err(e) = db::jobs::register_pg_cron(
+        &state.pool,
+        &ws.0.schema_name,
+        &created.job_id,
+        cron_expr,
+    )
+    .await
+    {
+        tracing::error!(job_id = %created.job_id, "Failed to register new pg_cron job: {}", e);
+    }
+
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "job_id": created.job_id,
         "endpoint": created.endpoint,
@@ -386,6 +415,15 @@ pub async fn cancel(
     let cancelled = db::jobs::cancel(&mut *conn, &job_id)
         .await?
         .ok_or_else(|| AppError::Conflict("Job could not be cancelled".into()))?;
+
+    // Unregister from pg_cron if this was a CRON job
+    if job.trigger_type == "CRON" {
+        if let Err(e) =
+            db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await
+        {
+            tracing::error!(job_id = %job_id, "Failed to unregister pg_cron job: {}", e);
+        }
+    }
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": job_summary(&cancelled) })))
 }

@@ -6,6 +6,7 @@ use kronos_common::{
 };
 use reqwest::Client;
 use sqlx::PgPool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Semaphore;
@@ -29,10 +30,16 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
 
     tracing::info!(worker_id = %worker_id, "Worker polling started");
 
+    let idle = Arc::new(AtomicBool::new(false));
     let shutdown = tokio::signal::ctrl_c();
     tokio::pin!(shutdown);
 
     loop {
+        if idle.load(Ordering::Relaxed) {
+            tokio::time::sleep(poll_interval).await;
+            idle.store(false, Ordering::Relaxed);
+        }
+
         tokio::select! {
             _ = &mut shutdown => {
                 tracing::info!("Shutting down worker, waiting for in-flight tasks...");
@@ -56,75 +63,86 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
                     }
                 };
 
-                // Try to claim from any active schema
-                // TODO 4: A more active workspace (more jobs) can starve other workspaces
-                let claimed = {
-                    let mut result = None;
-                    for schema_name in &schemas {
-                        let mut conn = match db::scoped::scoped_connection(&pool, schema_name).await {
-                            Ok(c) => c,
-                            Err(e) => {
-                                tracing::error!(schema = %schema_name, "Failed to get scoped connection: {}", e);
-                                continue;
-                            }
-                        };
+                let pool = pool.clone();
+                let ctx = ctx.clone();
+                let wid = worker_id.clone();
+                let idle = idle.clone();
 
-                        match db::executions::claim(&mut *conn, &worker_id).await {
-                            Ok(Some(exec)) => {
-                                result = Some((schema_name.clone(), exec));
-                                break;
-                            }
-                            Ok(None) => continue,
-                            Err(e) => {
-                                tracing::error!(schema = %schema_name, "Failed to claim execution: {}", e);
-                                continue;
-                            }
-                        }
-                    }
-                    result
-                };
-
-                match claimed {
-                    Some((schema, exec)) => {
-                        metrics::counter!(m::EXECUTIONS_CLAIMED_TOTAL,
-                            "schema" => schema.clone(),
-                            "endpoint_type" => exec.endpoint_type.clone(),
-                        )
-                        .increment(1);
-
-                        let wid = worker_id.clone();
-                        metrics::gauge!(m::WORKER_INFLIGHT, "worker_id" => wid.clone())
-                            .increment(1.0);
-
-                        let ctx = ctx.clone();
-                        // TODO 5: What if the worker dies midway, what happens to the permit? Should we have a monitor for these process_executions
-                        tokio::spawn(async move {
-                            pipeline::process_execution(
-                                &ctx,
-                                &schema,
-                                &exec.execution_id,
-                                &exec.job_id,
-                                &exec.endpoint,
-                                &exec.endpoint_type,
-                                exec.input.as_ref(),
-                                exec.attempt_count,
-                                exec.max_attempts,
-                            ).await;
-                            metrics::gauge!(m::WORKER_INFLIGHT, "worker_id" => wid)
-                                .decrement(1.0);
-                            drop(permit);
-                        });
-                    }
-                    None => {
+                tokio::spawn(async move {
+                    let found = claim_and_process(&pool, &ctx, &schemas, &wid).await;
+                    if !found {
                         metrics::counter!(m::WORKER_POLL_IDLE_TOTAL,
-                            "worker_id" => worker_id.clone(),
+                            "worker_id" => wid,
                         )
                         .increment(1);
-                        drop(permit);
-                        tokio::time::sleep(poll_interval).await;
+                        idle.store(true, Ordering::Relaxed);
                     }
-                }
+                    drop(permit);
+                });
             }
         }
     }
+}
+
+async fn claim_and_process(
+    pool: &PgPool,
+    ctx: &PipelineContext,
+    schemas: &[String],
+    worker_id: &str,
+) -> bool {
+    for schema_name in schemas {
+        let mut tx = match db::scoped::scoped_transaction(pool, schema_name).await {
+            Ok(tx) => tx,
+            Err(e) => {
+                tracing::error!(schema = %schema_name, "Failed to begin scoped transaction: {}", e);
+                continue;
+            }
+        };
+
+        let exec = match db::executions::claim(&mut *tx, worker_id).await {
+            Ok(Some(exec)) => exec,
+            Ok(None) => continue,
+            Err(e) => {
+                tracing::error!(schema = %schema_name, "Failed to claim execution: {}", e);
+                continue;
+            }
+        };
+
+        metrics::counter!(m::EXECUTIONS_CLAIMED_TOTAL,
+            "schema" => schema_name.clone(),
+            "endpoint_type" => exec.endpoint_type.clone(),
+        )
+        .increment(1);
+
+        metrics::gauge!(m::WORKER_INFLIGHT, "worker_id" => worker_id.to_string())
+            .increment(1.0);
+
+        pipeline::process_execution(
+            ctx,
+            &mut *tx,
+            schema_name,
+            &exec.execution_id,
+            &exec.job_id,
+            &exec.endpoint,
+            &exec.endpoint_type,
+            exec.input.as_ref(),
+            exec.attempt_count,
+            exec.max_attempts,
+        )
+        .await;
+
+        if let Err(e) = tx.commit().await {
+            tracing::error!(
+                execution_id = %exec.execution_id,
+                "Failed to commit transaction: {}", e
+            );
+        }
+
+        metrics::gauge!(m::WORKER_INFLIGHT, "worker_id" => worker_id.to_string())
+            .decrement(1.0);
+
+        return true;
+    }
+
+    false
 }

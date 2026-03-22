@@ -1,6 +1,6 @@
 use crate::models::job::Job;
 use chrono::{DateTime, Utc};
-use sqlx::PgConnection;
+use sqlx::{PgConnection, PgPool};
 
 pub struct CreateJobResult {
     pub job: Job,
@@ -255,4 +255,57 @@ pub async fn advance_cron_tick(
     .execute(&mut *conn)
     .await?;
     Ok(result.rows_affected() > 0)
+}
+
+/// Register a CRON job with pg_cron. The pg_cron job will directly INSERT
+/// execution rows when the cron schedule fires.
+pub async fn register_pg_cron(
+    pool: &PgPool,
+    schema_name: &str,
+    job_id: &str,
+    cron_expression: &str,
+) -> Result<(), sqlx::Error> {
+    let cron_job_name = format!("kronos_{}_{}", schema_name, job_id);
+
+    // The SQL command that pg_cron will execute on each tick.
+    // It creates a QUEUED execution by joining with the jobs and endpoints tables.
+    let command = format!(
+        "INSERT INTO \"{schema}\".executions \
+            (job_id, endpoint, endpoint_type, idempotency_key, status, input, run_at, max_attempts) \
+         SELECT j.job_id, j.endpoint, j.endpoint_type, \
+                'cron_' || j.job_id || '_' || (EXTRACT(EPOCH FROM now()) * 1000)::BIGINT, \
+                'QUEUED', j.input, now(), \
+                COALESCE((e.retry_policy->>'max_attempts')::BIGINT, 1) \
+         FROM \"{schema}\".jobs j \
+         JOIN \"{schema}\".endpoints e ON e.name = j.endpoint \
+         WHERE j.job_id = '{job_id}' AND j.status = 'ACTIVE' \
+         ON CONFLICT (job_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING",
+        schema = schema_name,
+        job_id = job_id,
+    );
+
+    sqlx::query("SELECT cron.schedule($1, $2, $3)")
+        .bind(&cron_job_name)
+        .bind(cron_expression)
+        .bind(&command)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Unregister a CRON job from pg_cron.
+pub async fn unregister_pg_cron(
+    pool: &PgPool,
+    schema_name: &str,
+    job_id: &str,
+) -> Result<(), sqlx::Error> {
+    let cron_job_name = format!("kronos_{}_{}", schema_name, job_id);
+
+    sqlx::query("SELECT cron.unschedule($1)")
+        .bind(&cron_job_name)
+        .execute(pool)
+        .await?;
+
+    Ok(())
 }

@@ -26,12 +26,6 @@ pub struct AppConfig {
     pub worker_shutdown_timeout_sec: u64,
 
     // Scheduler
-    #[serde(default = "default_cron_tick_interval")]
-    pub cron_tick_interval_sec: u64,
-    #[serde(default = "default_cron_batch_size")]
-    pub cron_batch_size: i64,
-    #[serde(default = "default_promote_interval")]
-    pub promote_interval_ms: u64,
     #[serde(default = "default_reclaim_interval")]
     pub reclaim_interval_sec: u64,
     #[serde(default = "default_stuck_timeout")]
@@ -46,7 +40,7 @@ fn default_listen_addr() -> String {
     "0.0.0.0:8080".into()
 }
 fn default_db_pool_size() -> u32 {
-    20
+    50
 }
 fn default_api_key() -> String {
     "dev-api-key".into()
@@ -68,15 +62,6 @@ fn default_secret_cache_ttl() -> u64 {
 }
 fn default_shutdown_timeout() -> u64 {
     30
-}
-fn default_cron_tick_interval() -> u64 {
-    1
-}
-fn default_cron_batch_size() -> i64 {
-    100
-}
-fn default_promote_interval() -> u64 {
-    500
 }
 fn default_reclaim_interval() -> u64 {
     30
@@ -121,18 +106,6 @@ impl AppConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or_else(default_shutdown_timeout),
-            cron_tick_interval_sec: std::env::var("TE_CRON_TICK_INTERVAL_SEC")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or_else(default_cron_tick_interval),
-            cron_batch_size: std::env::var("TE_CRON_BATCH_SIZE")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or_else(default_cron_batch_size),
-            promote_interval_ms: std::env::var("TE_PROMOTE_INTERVAL_MS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or_else(default_promote_interval),
             reclaim_interval_sec: std::env::var("TE_RECLAIM_INTERVAL_SEC")
                 .ok()
                 .and_then(|v| v.parse().ok())
