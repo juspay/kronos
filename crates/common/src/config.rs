@@ -25,12 +25,6 @@ pub struct AppConfig {
     #[serde(default = "default_shutdown_timeout")]
     pub worker_shutdown_timeout_sec: u64,
 
-    // Scheduler
-    #[serde(default = "default_reclaim_interval")]
-    pub reclaim_interval_sec: u64,
-    #[serde(default = "default_stuck_timeout")]
-    pub stuck_execution_timeout_sec: i64,
-
     // Metrics
     #[serde(default = "default_metrics_port")]
     pub metrics_port: u16,
@@ -62,12 +56,6 @@ fn default_secret_cache_ttl() -> u64 {
 }
 fn default_shutdown_timeout() -> u64 {
     30
-}
-fn default_reclaim_interval() -> u64 {
-    30
-}
-fn default_stuck_timeout() -> i64 {
-    300
 }
 fn default_metrics_port() -> u16 {
     9090
@@ -106,14 +94,6 @@ impl AppConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or_else(default_shutdown_timeout),
-            reclaim_interval_sec: std::env::var("TE_RECLAIM_INTERVAL_SEC")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or_else(default_reclaim_interval),
-            stuck_execution_timeout_sec: std::env::var("TE_STUCK_EXECUTION_TIMEOUT_SEC")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or_else(default_stuck_timeout),
             metrics_port: std::env::var("TE_METRICS_PORT")
                 .ok()
                 .and_then(|v| v.parse().ok())

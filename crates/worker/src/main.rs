@@ -17,13 +17,6 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("Worker starting (metrics on port {})", config.metrics_port);
 
-    // Run stuck reclaimer as a background safety net
-    tokio::spawn(kronos_worker::stuck_reclaimer::run(
-        pool.clone(),
-        config.reclaim_interval_sec,
-        config.stuck_execution_timeout_sec,
-    ));
-
     kronos_worker::poller::run(pool, config).await?;
 
     Ok(())

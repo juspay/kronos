@@ -427,10 +427,6 @@
           "expr": "sum(rate(kronos_cron_ticks_materialized_total[1m]))",
           "legendFormat": "Cron materialized"
         },
-        {
-          "expr": "sum(rate(kronos_executions_reclaimed_total[1m]))",
-          "legendFormat": "Stuck reclaimed"
-        }
       ],
       "title": "Scheduler Operations (rate/min)",
       "type": "timeseries"

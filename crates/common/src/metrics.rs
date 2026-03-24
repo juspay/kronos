@@ -4,7 +4,6 @@ use metrics_exporter_prometheus::PrometheusHandle;
 pub const JOBS_CREATED_TOTAL: &str = "kronos_jobs_created_total";
 pub const EXECUTIONS_CLAIMED_TOTAL: &str = "kronos_executions_claimed_total";
 pub const EXECUTIONS_COMPLETED_TOTAL: &str = "kronos_executions_completed_total";
-pub const EXECUTIONS_RECLAIMED_TOTAL: &str = "kronos_executions_reclaimed_total";
 pub const WORKER_POLL_IDLE_TOTAL: &str = "kronos_worker_poll_idle_total";
 
 // Dispatcher-level counters

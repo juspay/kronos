@@ -178,19 +178,6 @@ pub async fn cancel(conn: &mut PgConnection, execution_id: &str) -> Result<Optio
     .await
 }
 
-pub async fn reclaim_stuck(conn: &mut PgConnection, timeout_secs: i64) -> Result<u64, sqlx::Error> {
-    let result = sqlx::query(
-        "UPDATE executions
-         SET status = CASE WHEN attempt_count >= max_attempts THEN 'FAILED' ELSE 'RETRYING' END,
-             worker_id = NULL, run_at = now()
-         WHERE status = 'RUNNING' AND started_at < now() - ($1 * interval '1 second')",
-    )
-    .bind(timeout_secs)
-    .execute(&mut *conn)
-    .await?;
-    Ok(result.rows_affected())
-}
-
 pub async fn create_cron_execution(
     conn: &mut PgConnection,
     job_id: &str,
