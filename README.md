@@ -31,53 +31,66 @@ Except: it survives crashes, retries on failure, never fires twice, and every ex
                                     POST /v1/jobs
                                            │
                               ┌────────────▼────────────┐
-                              │    API Server (actix)    │
-                              │       port 8080          │
+                              │   API Server (actix-web) │
+                              │   port 8080 + /metrics   │
                               └────────────┬────────────┘
                                            │
                              INSERT job + execution (txn)
                                            │
-                              ┌────────────▼────────────┐
-                              │      PostgreSQL          │
-                              │  (source of truth)       │
-                              └──┬──────────┬──────────┬┘
-                                 │          │          │
-            ┌────────────────────▼┐  ┌──────▼───────┐  ┌▼────────────────────┐
-            │     Scheduler       │  │   Worker      │  │   Dashboard (WASM)  │
-            │  (3 loops)          │  │   Pool        │  │   Leptos + Trunk    │
-            │                     │  │               │  └─────────────────────┘
-            │  CRON materializer  │  │  SELECT FOR   │
-            │    (every 1s)       │  │  UPDATE SKIP  │
-            │                     │  │  LOCKED       │
-            │  Delayed promoter   │  │               │
-            │    (every 500ms)    │  │  ┌──────────┐ │
-            │                     │  │  │ HTTP     │ │
-            │  Stuck reclaimer    │  │  │ Kafka    │ │
-            │    (every 30s)      │  │  │ Redis    │ │
-            └─────────────────────┘  │  └──────────┘ │
-                                     └───────────────┘
+                 ┌─────────────────────────▼──────────────────────────┐
+                 │               PostgreSQL + pg_cron                  │
+                 │                                                     │
+                 │  Source of truth          CRON scheduling natively  │
+                 │  FOR UPDATE SKIP LOCKED   via pg_cron extension    │
+                 │  Txn-based job pickup     (no external scheduler)  │
+                 └───────┬──────────────────────────────┬─────────────┘
+                         │                              │
+              ┌──────────▼───────────┐    ┌─────────────▼─────────────┐
+              │     Worker Pool      │    │    Dashboard (WASM)       │
+              │                      │    │    Leptos + Trunk         │
+              │  Semaphore-gated     │    │    port 3000              │
+              │  50 concurrent jobs  │    └───────────────────────────┘
+              │                      │
+              │  ┌────────────────┐  │
+              │  │ HTTP  (reqwest)│  │
+              │  │ Kafka (rdkafka)│  │
+              │  │ Redis (redis)  │  │
+              │  └────────────────┘  │
+              │  metrics on :9090    │
+              └──────────────────────┘
 ```
+
+### How scheduling works
+
+Kronos uses **PostgreSQL pg_cron** for CRON materialization and **transaction-based pickup** for all job types:
+
+- **IMMEDIATE** jobs: Execution is created as `QUEUED` in the same transaction as the job. Workers pick it up directly.
+- **DELAYED** jobs: Execution is created as `PENDING` with a `run_at` timestamp. Workers pick up PENDING executions once `run_at <= now()`.
+- **CRON** jobs: Registered with pg_cron at creation time. pg_cron inserts a new `QUEUED` execution on each tick. Workers pick it up directly.
+
+No separate scheduler process is needed. The database handles all scheduling concerns.
 
 ### Crates
 
 | Crate | Description |
 |-------|-------------|
-| `kronos-common` | Shared library — models, DB layer, config, tenant management, caching |
-| `kronos-api` | REST API server (actix-web). Handles all CRUD and job invocations |
-| `kronos-worker` | Execution engine. Polls DB, resolves templates, dispatches to endpoints |
-| `kronos-scheduler` | Three background loops: CRON materializer, delayed promoter, stuck reclaimer |
+| `kronos-common` | Shared library — models, DB layer, config, tenant management, caching, metrics |
+| `kronos-api` | REST API server (actix-web). CRUD for all resources, job invocation, Prometheus metrics at `/metrics` |
+| `kronos-worker` | Execution engine. Polls DB for QUEUED/RETRYING/PENDING executions, resolves templates, dispatches to endpoints. Exposes metrics via HTTP listener |
 | `kronos-mock-server` | Test fixture — HTTP server on port 9999 for integration tests |
-| `kronos-dashboard` | Web UI — Leptos/WASM, shows jobs, executions, attempts |
+| `kronos-dashboard` | Web UI — Leptos/WASM, shows jobs, executions, attempts. Excluded from workspace build |
 
 ### Multi-tenancy
 
-Kronos uses **schema-per-tenant** isolation. Each workspace gets its own PostgreSQL schema with isolated tables for endpoints, jobs, executions, etc. Shared tables (organizations, workspaces) live in the `public` schema.
+Kronos uses **schema-per-tenant** isolation. Each workspace gets its own PostgreSQL schema with isolated tables. Shared tables live in the `public` schema.
 
 ```
 public schema:        organizations, workspaces
 tenant schema:        payload_specs, configs, secrets, endpoints,
 (org_workspace):      jobs, executions, attempts, execution_logs
 ```
+
+Tenant-scoped API requests require `X-Org-Id` and `X-Workspace-Id` headers. The worker iterates all active workspace schemas via a cached `SchemaRegistry` (30s TTL).
 
 ---
 
@@ -91,13 +104,13 @@ tenant schema:        payload_specs, configs, secrets, endpoints,
 ### Setup
 
 ```bash
-# Enter the dev shell (installs Rust, Node.js, smithy-cli, just, etc.)
+# Enter the dev shell (installs Rust, Node.js, smithy-cli, just, trunk, etc.)
 nix develop
 
 # One-time setup: start DB, run migrations, build SDK, install CLI deps
 just setup
 
-# Run all services (API + worker + scheduler + mock-server)
+# Run all services (API + worker + mock-server)
 just dev
 ```
 
@@ -116,13 +129,34 @@ curl http://localhost:8080/health
 
 All endpoints require `Authorization: Bearer <api_key>` (default: `dev-api-key`).
 
-### 1. Setup — define input contracts, configs, and secrets
+Tenant-scoped endpoints (everything except orgs/workspaces) also require:
+- `X-Org-Id: <org_id>`
+- `X-Workspace-Id: <workspace_id>`
+
+### 1. Setup — create an org and workspace first
 
 ```bash
-# Create a JSON Schema for input validation
-curl -X POST http://localhost:8080/v1/payload-specs \
+# Create an organization
+curl -X POST http://localhost:8080/v1/orgs \
   -H "Authorization: Bearer dev-api-key" \
   -H "Content-Type: application/json" \
+  -d '{ "name": "My Company", "slug": "my-company" }'
+
+# Create a workspace within the org
+curl -X POST http://localhost:8080/v1/orgs/{org_id}/workspaces \
+  -H "Authorization: Bearer dev-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "Production", "slug": "production" }'
+```
+
+### 2. Define input contracts, configs, and secrets
+
+```bash
+# All subsequent requests include tenant headers
+HEADERS='-H "Authorization: Bearer dev-api-key" -H "X-Org-Id: <org_id>" -H "X-Workspace-Id: <workspace_id>" -H "Content-Type: application/json"'
+
+# Create a JSON Schema for input validation
+curl -X POST http://localhost:8080/v1/payload-specs $HEADERS \
   -d '{
     "name": "order-input",
     "schema": {
@@ -136,9 +170,7 @@ curl -X POST http://localhost:8080/v1/payload-specs \
   }'
 
 # Create configs (static variables)
-curl -X POST http://localhost:8080/v1/configs \
-  -H "Authorization: Bearer dev-api-key" \
-  -H "Content-Type: application/json" \
+curl -X POST http://localhost:8080/v1/configs $HEADERS \
   -d '{
     "name": "email-service",
     "values": {
@@ -148,21 +180,17 @@ curl -X POST http://localhost:8080/v1/configs \
   }'
 
 # Create secrets (encrypted at rest, write-only)
-curl -X POST http://localhost:8080/v1/secrets \
-  -H "Authorization: Bearer dev-api-key" \
-  -H "Content-Type: application/json" \
+curl -X POST http://localhost:8080/v1/secrets $HEADERS \
   -d '{
     "name": "email_api_key",
     "value": "sk-your-api-key"
   }'
 ```
 
-### 2. Register — tell Kronos where to deliver
+### 3. Register — tell Kronos where to deliver
 
 ```bash
-curl -X POST http://localhost:8080/v1/endpoints \
-  -H "Authorization: Bearer dev-api-key" \
-  -H "Content-Type: application/json" \
+curl -X POST http://localhost:8080/v1/endpoints $HEADERS \
   -d '{
     "name": "send-welcome-email",
     "type": "HTTP",
@@ -193,13 +221,11 @@ curl -X POST http://localhost:8080/v1/endpoints \
 
 Endpoint types: `HTTP`, `KAFKA`, `REDIS_STREAM`. Same template resolution, same retry policy, same guarantees — regardless of transport.
 
-### 3. Invoke — fire it
+### 4. Invoke — fire it
 
 **Immediate** — fires now:
 ```bash
-curl -X POST http://localhost:8080/v1/jobs \
-  -H "Authorization: Bearer dev-api-key" \
-  -H "Content-Type: application/json" \
+curl -X POST http://localhost:8080/v1/jobs $HEADERS \
   -d '{
     "endpoint": "send-welcome-email",
     "trigger": "IMMEDIATE",
@@ -210,9 +236,7 @@ curl -X POST http://localhost:8080/v1/jobs \
 
 **Delayed** — fires at a specific time:
 ```bash
-curl -X POST http://localhost:8080/v1/jobs \
-  -H "Authorization: Bearer dev-api-key" \
-  -H "Content-Type: application/json" \
+curl -X POST http://localhost:8080/v1/jobs $HEADERS \
   -d '{
     "endpoint": "send-welcome-email",
     "trigger": "DELAYED",
@@ -224,9 +248,7 @@ curl -X POST http://localhost:8080/v1/jobs \
 
 **CRON** — fires on a schedule:
 ```bash
-curl -X POST http://localhost:8080/v1/jobs \
-  -H "Authorization: Bearer dev-api-key" \
-  -H "Content-Type: application/json" \
+curl -X POST http://localhost:8080/v1/jobs $HEADERS \
   -d '{
     "endpoint": "send-welcome-email",
     "trigger": "CRON",
@@ -236,23 +258,23 @@ curl -X POST http://localhost:8080/v1/jobs \
   }'
 ```
 
-### 4. Observe
+### 5. Observe
 
 ```bash
 # Job details
-curl http://localhost:8080/v1/jobs/{job_id} -H "Authorization: Bearer dev-api-key"
+curl http://localhost:8080/v1/jobs/{job_id} $HEADERS
 
 # Job health status
-curl http://localhost:8080/v1/jobs/{job_id}/status -H "Authorization: Bearer dev-api-key"
+curl http://localhost:8080/v1/jobs/{job_id}/status $HEADERS
 
 # List executions
-curl http://localhost:8080/v1/jobs/{job_id}/executions -H "Authorization: Bearer dev-api-key"
+curl http://localhost:8080/v1/jobs/{job_id}/executions $HEADERS
 
 # Execution details
-curl http://localhost:8080/v1/executions/{execution_id} -H "Authorization: Bearer dev-api-key"
+curl http://localhost:8080/v1/executions/{execution_id} $HEADERS
 
 # Attempt history
-curl http://localhost:8080/v1/executions/{execution_id}/attempts -H "Authorization: Bearer dev-api-key"
+curl http://localhost:8080/v1/executions/{execution_id}/attempts $HEADERS
 ```
 
 ---
@@ -305,18 +327,18 @@ Configs are cached (60s TTL). Secrets are encrypted at rest, decrypted in memory
 ## Execution lifecycle
 
 ```
-PENDING ──→ QUEUED ──→ RUNNING ──→ SUCCESS
-                │          │
-                │          ├──→ RETRYING ──→ RUNNING (next attempt)
-                │          │
-                │          └──→ FAILED (retries exhausted)
-                │
-                └──→ CANCELLED
+PENDING ──→ RUNNING ──→ SUCCESS
+    │          │
+    │          ├──→ RETRYING ──→ RUNNING (next attempt)
+    │          │
+    │          └──→ FAILED (retries exhausted)
+    │
+    └──→ CANCELLED
 ```
 
-- **IMMEDIATE** jobs skip PENDING and go directly to QUEUED.
-- **DELAYED** jobs start as PENDING and are promoted to QUEUED by the scheduler when `run_at` arrives.
-- **CRON** jobs are materialized by the scheduler on each tick, creating a new execution per tick.
+- **IMMEDIATE** jobs create an execution as `QUEUED`, picked up immediately by workers.
+- **DELAYED** jobs create an execution as `PENDING` with `run_at`. Workers pick it up when `run_at <= now()` — no separate promoter needed.
+- **CRON** jobs are registered with pg_cron. Each tick inserts a `QUEUED` execution directly into the database.
 
 ### Retry policy
 
@@ -336,14 +358,11 @@ CRON jobs are immutable. Updates create a new version and retire the old one. Th
 
 ```bash
 # Update a CRON job (creates new version)
-curl -X PUT http://localhost:8080/v1/jobs/{job_id} \
-  -H "Authorization: Bearer dev-api-key" \
-  -H "Content-Type: application/json" \
+curl -X PUT http://localhost:8080/v1/jobs/{job_id} $HEADERS \
   -d '{ "cron": "0 */2 * * *", "input": { "mode": "v2" } }'
 
 # View version history
-curl http://localhost:8080/v1/jobs/{job_id}/versions \
-  -H "Authorization: Bearer dev-api-key"
+curl http://localhost:8080/v1/jobs/{job_id}/versions $HEADERS
 ```
 
 ---
@@ -355,10 +374,39 @@ curl http://localhost:8080/v1/jobs/{job_id}/versions \
 | **Exactly-once** | Idempotency keys + DB unique constraints + `SELECT FOR UPDATE SKIP LOCKED` |
 | **Durable** | Every job persisted to PostgreSQL before acknowledgment |
 | **Retry with backoff** | Configurable per endpoint: fixed, linear, or exponential with jitter |
-| **Sub-second** | Immediate: ~300ms. Delayed: ~700ms of `run_at`. CRON: within 1s of tick |
+| **Sub-second** | Immediate: ~300ms. Delayed: within ~200ms of `run_at` (worker poll interval) |
 | **Observable** | Every execution has a lifecycle. Every attempt recorded with duration, output, error |
 | **Type-safe** | JSON Schema validation on job input at creation time |
 | **Multi-tenant** | Schema-per-workspace isolation. Shared nothing between tenants |
+
+---
+
+## Monitoring
+
+Kronos exposes Prometheus metrics. The API serves metrics at `GET /metrics`, the worker exposes metrics via a separate HTTP listener (default port 9090).
+
+```bash
+# Start Prometheus + Grafana
+just monitoring-up
+
+# Prometheus: http://localhost:9099
+# Grafana:    http://localhost:3001  (admin / kronos)
+```
+
+A pre-built Grafana dashboard is included at `monitoring/grafana/dashboards/kronos-platform.json`.
+
+### Key metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `kronos_jobs_created_total` | Counter | Jobs created, by trigger type, endpoint, schema |
+| `kronos_executions_claimed_total` | Counter | Executions claimed by workers |
+| `kronos_executions_completed_total` | Counter | Executions completed, by status (SUCCESS/FAILED) |
+| `kronos_execution_duration_seconds` | Histogram | End-to-end execution duration |
+| `kronos_dispatch_total` | Counter | Dispatch attempts by endpoint type |
+| `kronos_dispatch_duration_seconds` | Histogram | Dispatcher-level latency |
+| `kronos_worker_inflight_executions` | Gauge | Currently in-flight executions per worker |
+| `kronos_worker_poll_idle_total` | Counter | Idle poll cycles (no work found) |
 
 ---
 
@@ -375,7 +423,7 @@ curl http://localhost:8080/v1/jobs/{job_id}/versions \
 | `GET` | `/v1/orgs/{org_id}/workspaces` | List workspaces |
 | `GET` | `/v1/orgs/{org_id}/workspaces/{id}` | Get workspace |
 
-### Setup
+### Setup (requires `X-Org-Id` + `X-Workspace-Id` headers)
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/v1/payload-specs` | Create input schema |
@@ -417,7 +465,7 @@ All list endpoints support cursor-based pagination via `?limit=N&cursor=...`.
 
 ## Configuration
 
-All configuration is via environment variables:
+All configuration is via environment variables prefixed with `TE_`:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -425,16 +473,13 @@ All configuration is via environment variables:
 | `TE_LISTEN_ADDR` | `0.0.0.0:8080` | API server bind address |
 | `TE_API_KEY` | `dev-api-key` | Bearer token for authentication |
 | `TE_ENCRYPTION_KEY` | 64 zeros | AES key for secret encryption (hex, 32+ bytes) |
-| `TE_DB_POOL_SIZE` | `20` | Database connection pool size |
+| `TE_DB_POOL_SIZE` | `50` | Database connection pool size |
 | `TE_WORKER_MAX_CONCURRENT` | `50` | Max concurrent job executions per worker |
 | `TE_WORKER_POLL_INTERVAL_MS` | `200` | Worker DB polling interval |
-| `TE_CRON_TICK_INTERVAL_SEC` | `1` | CRON materializer tick interval |
-| `TE_CRON_BATCH_SIZE` | `100` | CRON jobs processed per tick |
-| `TE_PROMOTE_INTERVAL_MS` | `500` | Delayed job promoter interval |
-| `TE_RECLAIM_INTERVAL_SEC` | `30` | Stuck execution reclaimer interval |
-| `TE_STUCK_EXECUTION_TIMEOUT_SEC` | `300` | Timeout before reclaiming a running execution |
+| `TE_WORKER_SHUTDOWN_TIMEOUT_SEC` | `30` | Graceful shutdown timeout for in-flight work |
 | `TE_CONFIG_CACHE_TTL_SEC` | `60` | Config cache TTL in worker |
 | `TE_SECRET_CACHE_TTL_SEC` | `300` | Secret cache TTL in worker |
+| `TE_METRICS_PORT` | `9090` | Prometheus metrics HTTP listener port (worker) |
 
 ---
 
@@ -445,12 +490,11 @@ All configuration is via environment variables:
 ```bash
 just                    # List all recipes
 just setup              # One-time setup (DB + migrations + SDK + CLI)
-just dev                # Run all 4 services in parallel
+just dev                # Run API + worker + mock-server in parallel
 
 # Individual services
 just api                # API server (port 8080)
-just worker             # Worker
-just scheduler          # Scheduler (cron, delayed, stuck)
+just worker             # Worker (metrics on :9090)
 just mock-server        # Mock HTTP server (port 9999)
 
 # Database
@@ -466,11 +510,22 @@ just build-sdk          # Build TypeScript SDK
 just sdk-refresh        # Regenerate + rebuild + reinstall CLI
 just cli-install        # Install CLI dependencies
 
-# Tests
+# Tests (integration — requires `just dev` running)
 just test-immediate     # Test immediate job execution
 just test-delayed       # Test delayed job execution
 just test-cron          # Test CRON job execution
 just test-e2e           # Full integration test (starts services, runs all tests)
+just test-haskell       # Run Haskell SDK example
+
+# Tests (unit — dispatcher tests)
+just test-http          # HTTP dispatcher tests (requires mock-server)
+just test-kafka         # Kafka dispatcher tests (requires Kafka)
+just test-redis         # Redis stream dispatcher tests (requires Redis)
+just test-dispatchers   # All dispatcher tests
+
+# Load testing
+just load-test 50       # Create 50 jobs of each type and track completion
+just load-test-nw 50    # Fire-and-forget (no polling)
 
 # Build
 just build              # Build all Rust crates
@@ -479,9 +534,20 @@ just check              # Type-check without building
 just lint               # Run clippy
 just fmt                # Format code
 
+# Monitoring
+just monitoring-up      # Start Prometheus + Grafana
+just monitoring-down    # Stop monitoring stack
+just all-up             # Start all infrastructure + monitoring
+just all-down           # Stop everything
+
 # Dashboard
-just dashboard          # Run dashboard dev server
+just dashboard          # Run dashboard dev server (port 3000)
 just dashboard-build    # Build WASM dashboard
+just dashboard-setup    # Install dashboard build tools
+
+# Infrastructure
+just infra-up           # Start all infra (DB + Kafka + Redis)
+just infra-down         # Stop all infra
 ```
 
 ### Project structure
@@ -489,20 +555,22 @@ just dashboard-build    # Build WASM dashboard
 ```
 kronos/
 ├── crates/
-│   ├── common/          # Shared: models, DB, config, tenant, cache
+│   ├── common/          # Shared: models, DB, config, tenant, cache, metrics
 │   ├── api/             # REST API server (actix-web)
 │   ├── worker/          # Job execution engine
-│   ├── scheduler/       # CRON materializer, delayed promoter, stuck reclaimer
 │   ├── mock-server/     # Test HTTP server
-│   └── dashboard/       # Web UI (Leptos/WASM)
+│   └── dashboard/       # Web UI (Leptos/WASM, excluded from workspace)
 ├── migrations/          # SQL migration files
+├── monitoring/
+│   ├── prometheus.yml   # Prometheus scrape config
+│   └── grafana/         # Grafana provisioning + dashboards
 ├── smithy/
 │   ├── model/           # Smithy IDL definitions
 │   └── smithy-build.json
 ├── cli/                 # TypeScript CLI for testing (uses generated SDK)
 ├── haskell-example/     # Example Haskell client
 ├── nix/                 # Custom Nix derivations (smithy-cli)
-├── docker-compose.yml   # PostgreSQL, Kafka (opt), Redis (opt)
+├── docker-compose.yml   # PostgreSQL, Kafka (opt), Redis (opt), Prometheus (opt), Grafana (opt)
 ├── flake.nix            # Nix dev environment
 └── justfile             # Task runner
 ```
@@ -532,21 +600,23 @@ docker compose --profile redis up -d
 
 ### Worker pipeline
 
-When a worker claims an execution:
+When a worker claims an execution (via `SELECT FOR UPDATE SKIP LOCKED` within a transaction):
 
 1. Load endpoint definition
 2. Load config (cached 60s) and secrets (cached 300s, encrypted at rest)
 3. Resolve `{{input.*}}`, `{{config.*}}`, `{{secret.*}}` templates
-4. Validate resolved payload against JSON Schema (if payload spec is attached)
+4. If no `body`/`body_template` in spec, inject job `input` as the HTTP body
 5. Dispatch to endpoint (HTTP / Kafka / Redis)
 6. Record attempt (status, duration, output/error)
-7. On success: mark execution `SUCCESS`
-8. On failure: compute backoff, mark `RETRYING` (or `FAILED` if retries exhausted)
+7. On success: mark execution `SUCCESS`, commit transaction
+8. On failure: compute backoff, mark `RETRYING` (or `FAILED` if retries exhausted), commit transaction
 
-### Scheduler components
+Workers use a semaphore to limit concurrency (default 50). Each poll iteration acquires a permit, iterates all active tenant schemas, and attempts to claim one execution. Idle polls back off to the configured interval (200ms).
 
-- **CRON materializer** (every 1s): Finds CRON jobs where `next_run_at <= now`, creates an execution for each tick, advances the tick pointer via CAS.
-- **Delayed promoter** (every 500ms): Promotes `PENDING` executions to `QUEUED` when `run_at` arrives.
-- **Stuck reclaimer** (every 30s): Finds `RUNNING` executions that have been running longer than the timeout (default 5min), resets them to `QUEUED` for re-pickup.
+### Database-driven scheduling
 
-All three loops are idempotent — safe to run multiple instances for redundancy.
+Instead of a separate scheduler process, Kronos delegates scheduling to PostgreSQL:
+
+- **pg_cron extension** handles CRON job materialization. When a CRON job is created, it's registered with `cron.schedule()`. pg_cron inserts a new `QUEUED` execution row on each tick with an idempotency key (`cron_{job_id}_{epoch_ms}`) to prevent duplicates.
+- **Transaction-based pickup** handles DELAYED jobs. The worker's claim query includes `PENDING` status with `run_at <= now()`, so delayed jobs are picked up directly when their time arrives — no promoter loop needed.
+- The pickup index covers all three statuses: `WHERE status IN ('QUEUED', 'RETRYING', 'PENDING')`.
