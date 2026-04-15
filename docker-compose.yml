@@ -16,6 +16,19 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
+  # LocalStack (for local KMS/Secrets Manager)
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: secretsmanager
+      DEFAULT_REGION: us-east-1
+    volumes:
+      - localstack-data:/var/lib/localstack
+    profiles:
+      - kms
+
   # Kafka (for kafka feature)
   kafka:
     image: bitnamilegacy/kafka:3.7
@@ -79,6 +92,7 @@ services:
 
 volumes:
   postgres-data:
+  localstack-data:
   kafka-data:
   redis-data:
   prometheus-data:

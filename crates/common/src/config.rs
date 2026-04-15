@@ -10,8 +10,12 @@ pub struct AppConfig {
     pub db_pool_size: u32,
     #[serde(default = "default_api_key")]
     pub api_key: String,
-    #[serde(default = "default_encryption_key")]
-    pub encryption_key: String,
+
+    // KMS
+    #[serde(default = "default_kms_provider")]
+    pub kms_provider: String,
+    pub kms_aws_region: Option<String>,
+    pub kms_aws_endpoint_url: Option<String>,
 
     // Worker
     #[serde(default = "default_max_concurrent")]
@@ -39,8 +43,8 @@ fn default_db_pool_size() -> u32 {
 fn default_api_key() -> String {
     "dev-api-key".into()
 }
-fn default_encryption_key() -> String {
-    "0".repeat(64)
+fn default_kms_provider() -> String {
+    "aws".into()
 }
 fn default_max_concurrent() -> usize {
     50
@@ -72,8 +76,10 @@ impl AppConfig {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or_else(default_db_pool_size),
             api_key: std::env::var("TE_API_KEY").unwrap_or_else(|_| default_api_key()),
-            encryption_key: std::env::var("TE_ENCRYPTION_KEY")
-                .unwrap_or_else(|_| default_encryption_key()),
+            kms_provider: std::env::var("TE_KMS_PROVIDER")
+                .unwrap_or_else(|_| default_kms_provider()),
+            kms_aws_region: std::env::var("TE_KMS_AWS_REGION").ok(),
+            kms_aws_endpoint_url: std::env::var("TE_KMS_AWS_ENDPOINT_URL").ok(),
             worker_max_concurrent: std::env::var("TE_WORKER_MAX_CONCURRENT")
                 .ok()
                 .and_then(|v| v.parse().ok())

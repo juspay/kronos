@@ -2,8 +2,9 @@ use crate::extractors::{AuthenticatedRequest, Workspace};
 use crate::router::AppState;
 use actix_web::{web, HttpResponse};
 use kronos_common::{
-    crypto, db,
+    db,
     error::AppError,
+    kms::KmsProviderType,
     models::secret::{CreateSecret, SecretResponse, UpdateSecret},
     pagination::{encode_cursor, PaginatedResponse, PaginationParams},
 };
@@ -14,14 +15,25 @@ pub async fn create(
     ws: Workspace,
     body: web::Json<CreateSecret>,
 ) -> Result<HttpResponse, AppError> {
-    let encrypted = crypto::encrypt(&body.value, &state.config.encryption_key)
-        .map_err(|e| AppError::Internal(format!("Encryption failed: {}", e)))?;
+    // Validate provider type
+    KmsProviderType::from_str_val(&body.provider).ok_or_else(|| {
+        AppError::InvalidRequest(format!(
+            "Unsupported KMS provider: '{}'. Supported: aws, gcp, vault",
+            body.provider
+        ))
+    })?;
+
+    if body.reference.is_empty() {
+        return Err(AppError::InvalidRequest(
+            "Secret reference cannot be empty".into(),
+        ));
+    }
 
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
 
-    let secret = db::secrets::create(&mut *conn, &body.name, &encrypted)
+    let secret = db::secrets::create(&mut *conn, &body.name, &body.provider, &body.reference)
         .await
         .map_err(|e| match e {
             sqlx::Error::Database(ref db_err) if db_err.constraint().is_some() => {
@@ -31,9 +43,7 @@ pub async fn create(
         })?;
 
     let resp = SecretResponse::from(secret);
-    Ok(HttpResponse::Created().json(serde_json::json!({ "data": {
-        "name": resp.name, "created_at": resp.created_at, "updated_at": resp.updated_at,
-    }})))
+    Ok(HttpResponse::Created().json(serde_json::json!({ "data": resp })))
 }
 
 pub async fn list(
@@ -57,14 +67,7 @@ pub async fn list(
         None
     };
 
-    let data: Vec<serde_json::Value> = items
-        .into_iter()
-        .map(|s| {
-            serde_json::json!({
-                "name": s.name, "created_at": s.created_at, "updated_at": s.updated_at,
-            })
-        })
-        .collect();
+    let data: Vec<SecretResponse> = items.into_iter().map(SecretResponse::from).collect();
 
     Ok(HttpResponse::Ok().json(PaginatedResponse {
         data,
@@ -86,9 +89,8 @@ pub async fn get(
         .await?
         .ok_or_else(|| AppError::SecretNotFound(name))?;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
-        "name": secret.name, "created_at": secret.created_at, "updated_at": secret.updated_at,
-    }})))
+    let resp = SecretResponse::from(secret);
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": resp })))
 }
 
 pub async fn update(
@@ -98,21 +100,39 @@ pub async fn update(
     path: web::Path<String>,
     body: web::Json<UpdateSecret>,
 ) -> Result<HttpResponse, AppError> {
-    let name = path.into_inner();
-    let encrypted = crypto::encrypt(&body.value, &state.config.encryption_key)
-        .map_err(|e| AppError::Internal(format!("Encryption failed: {}", e)))?;
+    if let Some(ref provider) = body.provider {
+        KmsProviderType::from_str_val(provider).ok_or_else(|| {
+            AppError::InvalidRequest(format!(
+                "Unsupported KMS provider: '{}'. Supported: aws, gcp, vault",
+                provider
+            ))
+        })?;
+    }
 
+    if let Some(ref reference) = body.reference {
+        if reference.is_empty() {
+            return Err(AppError::InvalidRequest(
+                "Secret reference cannot be empty".into(),
+            ));
+        }
+    }
+
+    let name = path.into_inner();
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
 
-    let secret = db::secrets::update(&mut *conn, &name, &encrypted)
-        .await?
-        .ok_or_else(|| AppError::SecretNotFound(name))?;
+    let secret = db::secrets::update(
+        &mut *conn,
+        &name,
+        body.provider.as_deref(),
+        body.reference.as_deref(),
+    )
+    .await?
+    .ok_or_else(|| AppError::SecretNotFound(name))?;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
-        "name": secret.name, "created_at": secret.created_at, "updated_at": secret.updated_at,
-    }})))
+    let resp = SecretResponse::from(secret);
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "data": resp })))
 }
 
 pub async fn delete(

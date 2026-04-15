@@ -790,6 +790,8 @@ fn SecretsTab(org_id: String, workspace_id: String) -> impl IntoView {
                                             <thead class="bg-gray-50">
                                                 <tr>
                                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">"Name"</th>
+                                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">"Provider"</th>
+                                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">"Reference"</th>
                                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">"Created"</th>
                                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">"Updated"</th>
                                                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">"Actions"</th>
@@ -802,6 +804,8 @@ fn SecretsTab(org_id: String, workspace_id: String) -> impl IntoView {
                                                     view! {
                                                         <tr class="hover:bg-gray-50">
                                                             <td class="px-6 py-4 text-sm font-medium text-gray-900">{secret.name.clone()}</td>
+                                                            <td class="px-6 py-4 text-sm text-gray-500">{secret.provider.clone()}</td>
+                                                            <td class="px-6 py-4 text-sm text-gray-500 font-mono text-xs max-w-xs truncate">{secret.reference.clone()}</td>
                                                             <td class="px-6 py-4 text-sm text-gray-500">{format_date(&secret.created_at)}</td>
                                                             <td class="px-6 py-4 text-sm text-gray-500">{format_date(&secret.updated_at)}</td>
                                                             <td class="px-6 py-4 text-right">
@@ -855,7 +859,8 @@ fn CreateSecretForm(
     set_refresh: WriteSignal<u32>,
 ) -> impl IntoView {
     let (name, set_name) = signal(String::new());
-    let (value, set_value) = signal(String::new());
+    let (provider, set_provider) = signal("aws".to_string());
+    let (reference, set_reference) = signal(String::new());
     let (error, set_error) = signal(Option::<String>::None);
     let (submitting, set_submitting) = signal(false);
 
@@ -864,11 +869,12 @@ fn CreateSecretForm(
         let oid = org_id.clone();
         let wid = workspace_id.clone();
         let n = name.get_untracked();
-        let v = value.get_untracked();
+        let p = provider.get_untracked();
+        let r = reference.get_untracked();
         set_submitting.set(true);
         set_error.set(None);
         leptos::task::spawn_local(async move {
-            let body = CreateSecret { name: n, value: v };
+            let body = CreateSecret { name: n, provider: p, reference: r };
             match api::create_secret(&oid, &wid, &body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
@@ -893,11 +899,21 @@ fn CreateSecretForm(
                     placeholder="MY_SECRET_KEY" />
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">"Value"</label>
-                <input type="password" required=true prop:value=move || value.get()
-                    on:input=move |ev| set_value.set(event_target_value(&ev))
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    placeholder="secret-value" />
+                <label class="block text-sm font-medium text-gray-700 mb-1">"Provider"</label>
+                <select required=true prop:value=move || provider.get()
+                    on:change=move |ev| set_provider.set(event_target_value(&ev))
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                    <option value="aws">"AWS Secrets Manager"</option>
+                    <option value="gcp">"GCP Secret Manager"</option>
+                    <option value="vault">"HashiCorp Vault"</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">"Reference"</label>
+                <input type="text" required=true prop:value=move || reference.get()
+                    on:input=move |ev| set_reference.set(event_target_value(&ev))
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono"
+                    placeholder="arn:aws:secretsmanager:us-east-1:123456:secret:my-secret" />
             </div>
             <div class="flex justify-end gap-3 pt-2">
                 <button type="submit" disabled=move || submitting.get()
@@ -917,13 +933,15 @@ fn UpdateSecretForm(
     set_modal_open: WriteSignal<bool>,
     set_refresh: WriteSignal<u32>,
 ) -> impl IntoView {
-    let (value, set_value) = signal(String::new());
+    let (provider, set_provider) = signal(String::new());
+    let (reference, set_reference) = signal(String::new());
     let (error, set_error) = signal(Option::<String>::None);
     let (submitting, set_submitting) = signal(false);
 
     Effect::new(move || {
         if updating_name.get().is_some() {
-            set_value.set(String::new());
+            set_provider.set(String::new());
+            set_reference.set(String::new());
             set_error.set(None);
         }
     });
@@ -935,11 +953,15 @@ fn UpdateSecretForm(
         let oid = org_id.clone();
         let wid = workspace_id.clone();
         let name = secret_name();
-        let v = value.get_untracked();
+        let p = provider.get_untracked();
+        let r = reference.get_untracked();
         set_submitting.set(true);
         set_error.set(None);
         leptos::task::spawn_local(async move {
-            let body = UpdateSecret { value: v };
+            let body = UpdateSecret {
+                provider: if p.is_empty() { None } else { Some(p) },
+                reference: if r.is_empty() { None } else { Some(r) },
+            };
             match api::update_secret(&oid, &wid, &name, &body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
@@ -962,11 +984,22 @@ fn UpdateSecretForm(
                     class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500" />
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">"New Value"</label>
-                <input type="password" required=true prop:value=move || value.get()
-                    on:input=move |ev| set_value.set(event_target_value(&ev))
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    placeholder="new-secret-value" />
+                <label class="block text-sm font-medium text-gray-700 mb-1">"Provider"</label>
+                <select prop:value=move || provider.get()
+                    on:change=move |ev| set_provider.set(event_target_value(&ev))
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                    <option value="">"(no change)"</option>
+                    <option value="aws">"AWS Secrets Manager"</option>
+                    <option value="gcp">"GCP Secret Manager"</option>
+                    <option value="vault">"HashiCorp Vault"</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">"Reference"</label>
+                <input type="text" prop:value=move || reference.get()
+                    on:input=move |ev| set_reference.set(event_target_value(&ev))
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono"
+                    placeholder="Leave empty to keep current" />
             </div>
             <div class="flex justify-end gap-3 pt-2">
                 <button type="button" on:click=move |_| set_modal_open.set(false)

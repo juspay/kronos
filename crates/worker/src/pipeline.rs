@@ -1,13 +1,15 @@
 use chrono::Utc;
 use kronos_common::{
     cache::{ConfigCache, SecretCache},
-    crypto, db,
+    db,
+    kms::KmsProvider,
     metrics as m,
     template,
 };
 use reqwest::Client;
 use sqlx::{PgConnection, PgPool};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::backoff;
 use crate::dispatcher::{self, DispatchResult};
@@ -17,7 +19,7 @@ pub struct PipelineContext {
     pub http_client: Client,
     pub config_cache: ConfigCache,
     pub secret_cache: SecretCache,
-    pub encryption_key: String,
+    pub kms_provider: Arc<dyn KmsProvider>,
 }
 
 pub async fn process_execution(
@@ -312,23 +314,12 @@ async fn load_secrets(
     conn: &mut sqlx::PgConnection,
     spec: &serde_json::Value,
 ) -> Result<HashMap<String, String>, String> {
-    let spec_str = spec.to_string();
+    let secret_names = template::extract_secret_names(spec);
     let mut secrets = HashMap::new();
 
-    let mut start = 0;
-    while let Some(pos) = spec_str[start..].find("{{secret.") {
-        let abs_pos = start + pos + 9; // skip "{{secret."
-        if let Some(end) = spec_str[abs_pos..].find("}}") {
-            let secret_name = &spec_str[abs_pos..abs_pos + end];
-
-            if !secrets.contains_key(secret_name) {
-                let value = load_single_secret(ctx, conn, secret_name).await?;
-                secrets.insert(secret_name.to_string(), value);
-            }
-            start = abs_pos + end + 2;
-        } else {
-            break;
-        }
+    for secret_name in secret_names {
+        let value = load_single_secret(ctx, conn, &secret_name).await?;
+        secrets.insert(secret_name, value);
     }
 
     Ok(secrets)
@@ -348,11 +339,14 @@ async fn load_single_secret(
         .map_err(|e| format!("Failed to load secret '{}': {}", name, e))?
         .ok_or_else(|| format!("Secret '{}' not found", name))?;
 
-    let decrypted = crypto::decrypt(&secret.encrypted_value, &ctx.encryption_key)
-        .map_err(|e| format!("Failed to decrypt secret '{}': {}", name, e))?;
+    let value = ctx
+        .kms_provider
+        .get_secret(&secret.reference)
+        .await
+        .map_err(|e| format!("Failed to fetch secret '{}' from KMS: {}", name, e))?;
 
-    ctx.secret_cache.set(name.to_string(), decrypted.clone());
-    Ok(decrypted)
+    ctx.secret_cache.set(name.to_string(), value.clone());
+    Ok(value)
 }
 
 fn flatten_json_object(

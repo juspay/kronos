@@ -1,7 +1,9 @@
 use kronos_common::{
     cache::{ConfigCache, SecretCache},
     config::AppConfig,
-    db, metrics as m,
+    db,
+    kms::{self, KmsProvider},
+    metrics as m,
     tenant::SchemaRegistry,
 };
 use reqwest::Client;
@@ -20,13 +22,30 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
     let poll_interval = Duration::from_millis(config.worker_poll_interval_ms);
     let schema_registry = SchemaRegistry::new(pool.clone(), 30);
 
+    let kms_provider: Arc<dyn KmsProvider> = match config.kms_provider.as_str() {
+        "aws" => Arc::new(
+            kms::aws::AwsKmsProvider::new(
+                config.kms_aws_region.clone(),
+                config.kms_aws_endpoint_url.clone(),
+            )
+            .await
+            .expect("Failed to initialize AWS KMS provider"),
+        ),
+        other => anyhow::bail!("Unsupported KMS provider: {}", other),
+    };
+
+    let secret_cache = SecretCache::new(config.secret_cache_ttl_sec);
+
     let ctx = Arc::new(PipelineContext {
         pool: pool.clone(),
         http_client: Client::new(),
         config_cache: ConfigCache::new(config.config_cache_ttl_sec),
-        secret_cache: SecretCache::new(config.secret_cache_ttl_sec),
-        encryption_key: config.encryption_key.clone(),
+        secret_cache,
+        kms_provider,
     });
+
+    // Preload secrets from KMS at startup
+    preload_secrets(&pool, &schema_registry, &ctx).await;
 
     tracing::info!(worker_id = %worker_id, "Worker polling started");
 
@@ -145,4 +164,59 @@ async fn claim_and_process(
     }
 
     false
+}
+
+async fn preload_secrets(pool: &PgPool, schema_registry: &SchemaRegistry, ctx: &PipelineContext) {
+    let schemas = match schema_registry.get_active_schemas().await {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("Failed to fetch schemas for secret preload: {}", e);
+            return;
+        }
+    };
+
+    let mut total = 0u64;
+    let mut failed = 0u64;
+
+    for schema_name in &schemas {
+        let mut conn = match db::scoped::scoped_connection(pool, schema_name).await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(schema = %schema_name, "Failed to get connection for secret preload: {}", e);
+                continue;
+            }
+        };
+
+        let secrets = match db::secrets::list_all(&mut *conn).await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(schema = %schema_name, "Failed to list secrets for preload: {}", e);
+                continue;
+            }
+        };
+
+        for secret in secrets {
+            total += 1;
+            match ctx.kms_provider.get_secret(&secret.reference).await {
+                Ok(value) => {
+                    ctx.secret_cache.set(secret.name, value);
+                }
+                Err(e) => {
+                    failed += 1;
+                    tracing::warn!(
+                        schema = %schema_name,
+                        secret = %secret.name,
+                        "Failed to preload secret from KMS: {}. Will be fetched on demand.",
+                        e
+                    );
+                }
+            }
+        }
+    }
+
+    tracing::info!(
+        total = total,
+        failed = failed,
+        "Secret preload complete"
+    );
 }

@@ -10,7 +10,11 @@ default:
 
 export TE_DATABASE_URL := env("TE_DATABASE_URL", "postgresql://kronos:kronos@localhost:5432/taskexecutor")
 export TE_API_KEY := env("TE_API_KEY", "dev-api-key")
-export TE_ENCRYPTION_KEY := env("TE_ENCRYPTION_KEY", "0000000000000000000000000000000000000000000000000000000000000000")
+export TE_KMS_PROVIDER := env("TE_KMS_PROVIDER", "aws")
+export TE_KMS_AWS_REGION := env("TE_KMS_AWS_REGION", "us-east-1")
+export TE_KMS_AWS_ENDPOINT_URL := env("TE_KMS_AWS_ENDPOINT_URL", "http://localhost:4566")
+export AWS_ACCESS_KEY_ID := env("AWS_ACCESS_KEY_ID", "test")
+export AWS_SECRET_ACCESS_KEY := env("AWS_SECRET_ACCESS_KEY", "test")
 
 # ─── Setup ────────────────────────────────────────────────────
 
@@ -158,6 +162,23 @@ test-delayed:
 test-cron:
     cd cli && npx tsx src/test-cron.ts
 
+# Run the secrets E2E test (requires LocalStack + all services running)
+test-secrets:
+    cd cli && npx tsx src/test-secrets.ts
+
+# Run mock KMS unit tests
+test-kms:
+    cargo test -p kronos-common --lib kms::mock::tests
+
+# Start LocalStack for local KMS
+kms-up:
+    docker compose --profile kms up -d
+    @echo "LocalStack (Secrets Manager): http://localhost:4566"
+
+# Stop LocalStack
+kms-down:
+    docker compose --profile kms down
+
 # Full integration test: setup → dev services → run test
 test-e2e: build
     #!/usr/bin/env bash
@@ -251,13 +272,13 @@ fmt-check:
 
 # ─── Docker ──────────────────────────────────────────────────
 
-# Start all infrastructure (DB + Kafka + Redis)
+# Start all infrastructure (DB + Kafka + Redis + LocalStack)
 infra-up:
-    docker compose --profile kafka --profile redis up -d
+    docker compose --profile kafka --profile redis --profile kms up -d
 
 # Stop all infrastructure
 infra-down:
-    docker compose --profile kafka --profile redis down
+    docker compose --profile kafka --profile redis --profile kms down
 
 # ─── Monitoring ─────────────────────────────────────────────
 
@@ -273,14 +294,14 @@ monitoring-down:
 
 # Start everything: infra + monitoring
 all-up:
-    docker compose --profile kafka --profile redis --profile monitoring up -d
+    docker compose --profile kafka --profile redis --profile kms --profile monitoring up -d
     @echo "All infrastructure started."
     @echo "Prometheus: http://localhost:9099"
     @echo "Grafana:    http://localhost:3001  (admin / kronos)"
 
 # Stop everything
 all-down:
-    docker compose --profile kafka --profile redis --profile monitoring down
+    docker compose --profile kafka --profile redis --profile kms --profile monitoring down
 
 # ─── Dashboard ──────────────────────────────────────────────
 
