@@ -41,6 +41,8 @@ pub enum AppError {
     InputValidationFailed(String),
     #[error("Template resolution failed: {0}")]
     TemplateResolutionFailed(String),
+    #[error("KMS error: {0}")]
+    KmsError(String),
     #[error("Rate limited")]
     RateLimited,
     #[error("Internal error: {0}")]
@@ -88,6 +90,7 @@ impl AppError {
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "TEMPLATE_RESOLUTION_FAILED",
             ),
+            Self::KmsError(_) => (StatusCode::SERVICE_UNAVAILABLE, "KMS_ERROR"),
             Self::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED"),
             Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
         }

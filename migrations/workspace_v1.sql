@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS configs (
 
 CREATE TABLE IF NOT EXISTS secrets (
     name              TEXT          NOT NULL,
-    encrypted_value   BYTEA         NOT NULL,
+    provider          TEXT          NOT NULL,
+    reference         TEXT          NOT NULL,
     created_at        TIMESTAMPTZ   NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ   NOT NULL DEFAULT now(),
     CONSTRAINT pk_secrets PRIMARY KEY (name)

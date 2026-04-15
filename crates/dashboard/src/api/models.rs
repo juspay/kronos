@@ -199,6 +199,8 @@ pub struct UpdatePayloadSpec {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Secret {
     pub name: String,
+    pub provider: String,
+    pub reference: String,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -206,12 +208,14 @@ pub struct Secret {
 #[derive(Debug, Clone, Serialize)]
 pub struct CreateSecret {
     pub name: String,
-    pub value: String,
+    pub provider: String,
+    pub reference: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct UpdateSecret {
-    pub value: String,
+    pub provider: Option<String>,
+    pub reference: Option<String>,
 }
 
 // -- Attempt --
