@@ -11,26 +11,6 @@ use kronos_common::{
 };
 use uuid::Uuid;
 
-fn parse_cron_expr(expr: &str) -> Result<(cron::Schedule, String), AppError> {
-    let field_count = expr.split_whitespace().count();
-    let (seven_field, five_field) = match field_count {
-        5 => (format!("0 {} *", expr), expr.to_string()),
-        7 => {
-            let parts: Vec<&str> = expr.split_whitespace().collect();
-            (expr.to_string(), parts[1..6].join(" "))
-        }
-        _ => {
-            return Err(AppError::InvalidCron(
-                "Cron expression must be 5-field (min hour dom month dow) or 7-field (sec min hour dom month dow year)".into(),
-            ))
-        }
-    };
-    let schedule = seven_field
-        .parse::<cron::Schedule>()
-        .map_err(|e| AppError::InvalidCron(format!("{}", e)))?;
-    Ok((schedule, five_field))
-}
-
 pub async fn create(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
@@ -636,4 +616,24 @@ fn job_summary(job: &kronos_common::models::Job) -> serde_json::Value {
         "next_run_at": job.cron_next_run_at,
         "created_at": job.created_at,
     })
+}
+
+fn parse_cron_expr(expr: &str) -> Result<(cron::Schedule, String), AppError> {
+    let field_count = expr.split_whitespace().count();
+    let (seven_field, five_field) = match field_count {
+        5 => (format!("0 {} *", expr), expr.to_string()),
+        7 => {
+            let parts: Vec<&str> = expr.split_whitespace().collect();
+            (expr.to_string(), parts[1..6].join(" "))
+        }
+        _ => {
+            return Err(AppError::InvalidCron(
+                "Cron expression must be 5-field (min hour dom month dow) or 7-field (sec min hour dom month dow year)".into(),
+            ))
+        }
+    };
+    let schedule = seven_field
+        .parse::<cron::Schedule>()
+        .map_err(|e| AppError::InvalidCron(format!("{}", e)))?;
+    Ok((schedule, five_field))
 }
