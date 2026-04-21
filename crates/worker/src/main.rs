@@ -10,12 +10,12 @@ async fn main() -> anyhow::Result<()> {
         .json()
         .init();
 
-    let config = AppConfig::from_env()?;
-    let pool = sqlx::PgPool::connect(&config.database_url).await?;
+    let config = AppConfig::from_env().await?;
+    let pool = sqlx::PgPool::connect(&config.db.url).await?;
 
-    kronos_common::metrics::install_recorder_with_listener(config.metrics_port);
+    kronos_common::metrics::install_recorder_with_listener(config.metrics.port);
 
-    tracing::info!("Worker starting (metrics on port {})", config.metrics_port);
+    tracing::info!("Worker starting (metrics on port {})", config.metrics.port);
 
     kronos_worker::poller::run(pool, config).await?;
 

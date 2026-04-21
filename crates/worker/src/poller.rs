@@ -16,16 +16,16 @@ use crate::pipeline::{self, PipelineContext};
 
 pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
     let worker_id = format!("worker_{}", Uuid::new_v4().simple());
-    let semaphore = Arc::new(Semaphore::new(config.worker_max_concurrent));
-    let poll_interval = Duration::from_millis(config.worker_poll_interval_ms);
+    let semaphore = Arc::new(Semaphore::new(config.worker.max_concurrent));
+    let poll_interval = Duration::from_millis(config.worker.poll_interval_ms);
     let schema_registry = SchemaRegistry::new(pool.clone(), 30);
 
     let ctx = Arc::new(PipelineContext {
         pool: pool.clone(),
         http_client: Client::new(),
-        config_cache: ConfigCache::new(config.config_cache_ttl_sec),
-        secret_cache: SecretCache::new(config.secret_cache_ttl_sec),
-        encryption_key: config.encryption_key.clone(),
+        config_cache: ConfigCache::new(config.worker.config_cache_ttl_sec),
+        secret_cache: SecretCache::new(config.worker.secret_cache_ttl_sec),
+        encryption_key: config.crypto.encryption_key.clone(),
     });
 
     tracing::info!(worker_id = %worker_id, "Worker polling started");
@@ -43,9 +43,9 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
         tokio::select! {
             _ = &mut shutdown => {
                 tracing::info!("Shutting down worker, waiting for in-flight tasks...");
-                let timeout = Duration::from_secs(config.worker_shutdown_timeout_sec);
+                let timeout = Duration::from_secs(config.worker.shutdown_timeout_sec);
                 let _ = tokio::time::timeout(timeout, async {
-                    let _all = semaphore.acquire_many(config.worker_max_concurrent as u32).await;
+                    let _all = semaphore.acquire_many(config.worker.max_concurrent as u32).await;
                 }).await;
                 tracing::info!("Worker shutdown complete");
                 return Ok(());

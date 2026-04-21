@@ -14,7 +14,7 @@ pub async fn create(
     ws: Workspace,
     body: web::Json<CreateSecret>,
 ) -> Result<HttpResponse, AppError> {
-    let encrypted = crypto::encrypt(&body.value, &state.config.encryption_key)
+    let encrypted = crypto::encrypt(&body.value, &state.config.crypto.encryption_key)
         .map_err(|e| AppError::Internal(format!("Encryption failed: {}", e)))?;
 
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
@@ -99,7 +99,7 @@ pub async fn update(
     body: web::Json<UpdateSecret>,
 ) -> Result<HttpResponse, AppError> {
     let name = path.into_inner();
-    let encrypted = crypto::encrypt(&body.value, &state.config.encryption_key)
+    let encrypted = crypto::encrypt(&body.value, &state.config.crypto.encryption_key)
         .map_err(|e| AppError::Internal(format!("Encryption failed: {}", e)))?;
 
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)

@@ -2,7 +2,10 @@ pub mod cache;
 pub mod config;
 pub mod crypto;
 pub mod db;
+pub mod env;
 pub mod error;
+#[cfg(feature = "kms")]
+pub mod kms;
 pub mod metrics;
 pub mod models;
 pub mod pagination;
