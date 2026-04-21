@@ -6,6 +6,7 @@ pub mod execution_log;
 pub mod job;
 pub mod organization;
 pub mod payload_spec;
+pub mod pg_cron_expr;
 pub mod secret;
 pub mod workspace;
 
@@ -15,6 +16,7 @@ pub use endpoint::{Endpoint, EndpointType, RetryPolicy};
 pub use execution::{Execution, ExecutionStatus};
 pub use execution_log::ExecutionLog;
 pub use job::{Job, JobStatus, TriggerType};
+pub use pg_cron_expr::PgCronExpr;
 pub use organization::Organization;
 pub use payload_spec::PayloadSpec;
 pub use secret::Secret;

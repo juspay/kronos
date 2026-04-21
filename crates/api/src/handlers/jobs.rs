@@ -2,13 +2,14 @@ use crate::extractors::{AuthenticatedRequest, Workspace};
 use crate::router::AppState;
 use actix_web::{web, HttpResponse};
 use chrono::Utc;
+use kronos_common::metrics as m;
 use kronos_common::{
     db,
     error::AppError,
     models::job::{CreateJob, TriggerType, UpdateJob},
+    models::pg_cron_expr::PgCronExpr,
     pagination::{encode_cursor, PaginatedResponse, PaginationParams},
 };
-use kronos_common::metrics as m;
 use uuid::Uuid;
 
 pub async fn create(
@@ -65,12 +66,10 @@ pub async fn create(
                 }
             };
 
-            let mut tx = kronos_common::db::scoped::scoped_transaction(
-                &state.pool,
-                &ws.0.schema_name,
-            )
-            .await
-            .map_err(AppError::from)?;
+            let mut tx =
+                kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
+                    .await
+                    .map_err(AppError::from)?;
 
             let result = db::jobs::create_immediate(
                 &mut *tx,
@@ -122,12 +121,10 @@ pub async fn create(
                 AppError::InvalidRequest("run_at required for DELAYED jobs".into())
             })?;
 
-            let mut tx = kronos_common::db::scoped::scoped_transaction(
-                &state.pool,
-                &ws.0.schema_name,
-            )
-            .await
-            .map_err(AppError::from)?;
+            let mut tx =
+                kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
+                    .await
+                    .map_err(AppError::from)?;
 
             let result = db::jobs::create_delayed(
                 &mut *tx,
@@ -170,15 +167,13 @@ pub async fn create(
         TriggerType::CRON => {
             let cron_expr = body
                 .cron
-                .as_deref()
+                .as_ref()
                 .ok_or_else(|| AppError::InvalidRequest("cron required for CRON jobs".into()))?;
             let tz_str = body.timezone.as_deref().ok_or_else(|| {
                 AppError::InvalidRequest("timezone required for CRON jobs".into())
             })?;
 
-            let schedule: cron::Schedule = cron_expr
-                .parse()
-                .map_err(|e| AppError::InvalidCron(format!("{}", e)))?;
+            let schedule = cron_expr.to_schedule();
 
             let tz: chrono_tz::Tz = tz_str
                 .parse()
@@ -199,7 +194,7 @@ pub async fn create(
                 &body.endpoint,
                 &ep.endpoint_type,
                 body.input.as_ref(),
-                cron_expr,
+                cron_expr.as_str(),
                 tz_str,
                 Some(starts_at),
                 body.ends_at,
@@ -212,7 +207,7 @@ pub async fn create(
                 &state.pool,
                 &ws.0.schema_name,
                 &job.job_id,
-                cron_expr,
+                cron_expr.as_str(),
             )
             .await
             {
@@ -314,18 +309,21 @@ pub async fn update(
         return Err(AppError::JobNotUpdatable("Job is not active".into()));
     }
 
-    let cron_expr = body
-        .cron
-        .as_deref()
-        .unwrap_or(old_job.cron_expression.as_deref().unwrap_or(""));
+    let cron_expr = match body.cron.clone() {
+        Some(c) => c,
+        None => PgCronExpr::try_from(
+            old_job
+                .cron_expression
+                .clone()
+                .ok_or_else(|| AppError::InvalidCron("Existing job has no cron expression".into()))?,
+        )?,
+    };
     let tz_str = body
         .timezone
         .as_deref()
         .unwrap_or(old_job.cron_timezone.as_deref().unwrap_or("UTC"));
 
-    let schedule: cron::Schedule = cron_expr
-        .parse()
-        .map_err(|e| AppError::InvalidCron(format!("{}", e)))?;
+    let schedule = cron_expr.to_schedule();
     let tz: chrono_tz::Tz = tz_str
         .parse()
         .map_err(|_| AppError::InvalidRequest(format!("Invalid timezone: {}", tz_str)))?;
@@ -334,7 +332,7 @@ pub async fn update(
         .ok_or_else(|| AppError::InvalidCron("No upcoming run".into()))?;
 
     let mut new_job = old_job.clone();
-    new_job.cron_expression = Some(cron_expr.to_string());
+    new_job.cron_expression = Some(cron_expr.as_str().to_string());
     new_job.cron_timezone = Some(tz_str.to_string());
     new_job.cron_next_run_at = Some(next_run);
     new_job.version = old_job.version + 1;
@@ -358,16 +356,14 @@ pub async fn update(
     tx.commit().await.map_err(AppError::from)?;
 
     // Unschedule old pg_cron job and register new one
-    if let Err(e) =
-        db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await
-    {
+    if let Err(e) = db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await {
         tracing::error!(job_id = %job_id, "Failed to unregister old pg_cron job: {}", e);
     }
     if let Err(e) = db::jobs::register_pg_cron(
         &state.pool,
         &ws.0.schema_name,
         &created.job_id,
-        cron_expr,
+        cron_expr.as_str(),
     )
     .await
     {
@@ -418,8 +414,7 @@ pub async fn cancel(
 
     // Unregister from pg_cron if this was a CRON job
     if job.trigger_type == "CRON" {
-        if let Err(e) =
-            db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await
+        if let Err(e) = db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await
         {
             tracing::error!(job_id = %job_id, "Failed to unregister pg_cron job: {}", e);
         }
@@ -628,3 +623,4 @@ fn job_summary(job: &kronos_common::models::Job) -> serde_json::Value {
         "created_at": job.created_at,
     })
 }
+
