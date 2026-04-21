@@ -1,0 +1,17 @@
+target/
+.direnv/
+.git/
+.github/
+.vscode/
+.idea/
+docker-data/
+node_modules/
+dist/
+result
+smithy/build/
+crates/dashboard/
+*.md
+*.pdf
+*.svg
+.env*
+.DS_Store
