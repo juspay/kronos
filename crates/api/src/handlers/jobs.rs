@@ -7,6 +7,7 @@ use kronos_common::{
     db,
     error::AppError,
     models::job::{CreateJob, TriggerType, UpdateJob},
+    models::pg_cron_expr::PgCronExpr,
     pagination::{encode_cursor, PaginatedResponse, PaginationParams},
 };
 use uuid::Uuid;
@@ -166,13 +167,13 @@ pub async fn create(
         TriggerType::CRON => {
             let cron_expr = body
                 .cron
-                .as_deref()
+                .as_ref()
                 .ok_or_else(|| AppError::InvalidRequest("cron required for CRON jobs".into()))?;
             let tz_str = body.timezone.as_deref().ok_or_else(|| {
                 AppError::InvalidRequest("timezone required for CRON jobs".into())
             })?;
 
-            let (schedule, pg_cron_expr) = parse_cron_expr(cron_expr)?;
+            let schedule = cron_expr.to_schedule();
 
             let tz: chrono_tz::Tz = tz_str
                 .parse()
@@ -193,7 +194,7 @@ pub async fn create(
                 &body.endpoint,
                 &ep.endpoint_type,
                 body.input.as_ref(),
-                &pg_cron_expr,
+                cron_expr.as_str(),
                 tz_str,
                 Some(starts_at),
                 body.ends_at,
@@ -206,7 +207,7 @@ pub async fn create(
                 &state.pool,
                 &ws.0.schema_name,
                 &job.job_id,
-                &pg_cron_expr,
+                cron_expr.as_str(),
             )
             .await
             {
@@ -308,16 +309,21 @@ pub async fn update(
         return Err(AppError::JobNotUpdatable("Job is not active".into()));
     }
 
-    let cron_expr = body
-        .cron
-        .as_deref()
-        .unwrap_or(old_job.cron_expression.as_deref().unwrap_or(""));
+    let cron_expr = match body.cron.clone() {
+        Some(c) => c,
+        None => PgCronExpr::try_from(
+            old_job
+                .cron_expression
+                .clone()
+                .ok_or_else(|| AppError::InvalidCron("Existing job has no cron expression".into()))?,
+        )?,
+    };
     let tz_str = body
         .timezone
         .as_deref()
         .unwrap_or(old_job.cron_timezone.as_deref().unwrap_or("UTC"));
 
-    let (schedule, pg_cron_expr) = parse_cron_expr(cron_expr)?;
+    let schedule = cron_expr.to_schedule();
     let tz: chrono_tz::Tz = tz_str
         .parse()
         .map_err(|_| AppError::InvalidRequest(format!("Invalid timezone: {}", tz_str)))?;
@@ -326,7 +332,7 @@ pub async fn update(
         .ok_or_else(|| AppError::InvalidCron("No upcoming run".into()))?;
 
     let mut new_job = old_job.clone();
-    new_job.cron_expression = Some(pg_cron_expr.clone());
+    new_job.cron_expression = Some(cron_expr.as_str().to_string());
     new_job.cron_timezone = Some(tz_str.to_string());
     new_job.cron_next_run_at = Some(next_run);
     new_job.version = old_job.version + 1;
@@ -357,7 +363,7 @@ pub async fn update(
         &state.pool,
         &ws.0.schema_name,
         &created.job_id,
-        &pg_cron_expr,
+        cron_expr.as_str(),
     )
     .await
     {
@@ -618,22 +624,3 @@ fn job_summary(job: &kronos_common::models::Job) -> serde_json::Value {
     })
 }
 
-fn parse_cron_expr(expr: &str) -> Result<(cron::Schedule, String), AppError> {
-    let field_count = expr.split_whitespace().count();
-    let (seven_field, five_field) = match field_count {
-        5 => (format!("0 {} *", expr), expr.to_string()),
-        7 => {
-            let parts: Vec<&str> = expr.split_whitespace().collect();
-            (expr.to_string(), parts[1..6].join(" "))
-        }
-        _ => {
-            return Err(AppError::InvalidCron(
-                "Cron expression must be 5-field (min hour dom month dow) or 7-field (sec min hour dom month dow year)".into(),
-            ))
-        }
-    };
-    let schedule = seven_field
-        .parse::<cron::Schedule>()
-        .map_err(|e| AppError::InvalidCron(format!("{}", e)))?;
-    Ok((schedule, five_field))
-}

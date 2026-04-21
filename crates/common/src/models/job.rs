@@ -1,3 +1,4 @@
+use crate::models::pg_cron_expr::PgCronExpr;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -74,7 +75,7 @@ pub struct CreateJob {
     pub idempotency_key: Option<String>,
     pub input: Option<serde_json::Value>,
     pub run_at: Option<DateTime<Utc>>,
-    pub cron: Option<String>,
+    pub cron: Option<PgCronExpr>,
     pub timezone: Option<String>,
     pub starts_at: Option<DateTime<Utc>>,
     pub ends_at: Option<DateTime<Utc>>,
@@ -82,7 +83,7 @@ pub struct CreateJob {
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateJob {
-    pub cron: Option<String>,
+    pub cron: Option<PgCronExpr>,
     pub timezone: Option<String>,
     pub input: Option<serde_json::Value>,
     pub starts_at: Option<DateTime<Utc>>,
