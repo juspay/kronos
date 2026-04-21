@@ -22,7 +22,7 @@ impl FromRequest for AuthenticatedRequest {
         let result = match (state, auth_header) {
             (Some(state), Some(header)) if header.starts_with("Bearer ") => {
                 let token = &header[7..];
-                if token == state.config.api_key {
+                if token == state.config.server.api_key {
                     Ok(AuthenticatedRequest)
                 } else {
                     Err(actix_web::error::InternalError::from_response(

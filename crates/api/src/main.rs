@@ -17,8 +17,8 @@ async fn main() -> anyhow::Result<()> {
         .json()
         .init();
 
-    let config = AppConfig::from_env()?;
-    let pool = sqlx::PgPool::connect(&config.database_url).await?;
+    let config = AppConfig::from_env().await?;
+    let pool = sqlx::PgPool::connect(&config.db.url).await?;
 
     // CARGO_MANIFEST_DIR is resolved at compile time so the path works regardless of cwd.
     // let migrator = Migrator::new(std::path::Path::new(concat!(
@@ -30,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
 
     let metrics_handle = kronos_common::metrics::install_recorder();
 
-    let listen_addr = config.listen_addr.clone();
+    let listen_addr = config.server.listen_addr.clone();
     let app_state = router::AppState {
         pool: pool.clone(),
         config: config.clone(),

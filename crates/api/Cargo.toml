@@ -7,6 +7,10 @@ edition.workspace = true
 name = "kronos-api"
 path = "src/main.rs"
 
+[features]
+default = []
+kms = ["kronos-common/kms"]
+
 [dependencies]
 kronos-common = { path = "../common" }
 tokio.workspace = true

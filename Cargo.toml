@@ -77,5 +77,9 @@ base64 = "0.22"
 metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.16", features = ["http-listener"] }
 
+# AWS (KMS feature)
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-kms = "1"
+
 # Misc
 dotenvy = "0.15"

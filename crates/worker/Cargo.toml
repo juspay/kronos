@@ -11,6 +11,7 @@ path = "src/main.rs"
 default = []
 kafka = ["rdkafka"]
 redis-stream = ["redis"]
+kms = ["kronos-common/kms"]
 
 [dependencies]
 kronos-common = { path = "../common" }
