@@ -31,6 +31,9 @@ import {
 const KRONOS_URL = process.env.KRONOS_URL ?? "http://localhost:8080";
 const MOCK_URL = process.env.MOCK_URL ?? "http://localhost:9999";
 const API_KEY = process.env.KRONOS_API_KEY ?? "dev-api-key";
+const ORG_ID = process.env.KRONOS_ORG_ID!;
+const WORKSPACE_ID = process.env.KRONOS_WORKSPACE_ID!;
+const tenant = { org_id: ORG_ID, workspace_id: WORKSPACE_ID };
 const POLL_INTERVAL_MS = 500;
 const POLL_TIMEOUT_MS = 30_000;
 
@@ -68,6 +71,7 @@ async function main() {
 
     const endpointResp = await client.send(
       new CreateEndpointCommand({
+        ...tenant,
         name: endpointName,
         endpoint_type: "HTTP",
         spec: {
@@ -94,6 +98,7 @@ async function main() {
 
     const jobResp = await client.send(
       new CreateJobCommand({
+        ...tenant,
         endpoint: endpointName,
         trigger: "IMMEDIATE",
         input: testPayload,
@@ -112,7 +117,7 @@ async function main() {
     while (Date.now() - startTime < POLL_TIMEOUT_MS) {
       // List executions for this job
       const execsResp = await client.send(
-        new ListJobExecutionsCommand({ job_id: jobId }),
+        new ListJobExecutionsCommand({ ...tenant, job_id: jobId }),
       );
 
       const executions = execsResp.data ?? [];
@@ -126,6 +131,7 @@ async function main() {
           finalExecution = (
             await client.send(
               new GetExecutionCommand({
+                ...tenant,
                 execution_id: exec.execution_id!,
               }),
             )
@@ -175,6 +181,7 @@ async function main() {
     // ── Step 5: Fetch and print attempts ───────────────────────
     const attemptsResp = await client.send(
       new ListExecutionAttemptsCommand({
+        ...tenant,
         execution_id: finalExecution.execution_id!,
       }),
     );
@@ -194,7 +201,7 @@ async function main() {
 
     // ── Step 6: Check job status ───────────────────────────────
     const statusResp = await client.send(
-      new GetJobStatusCommand({ job_id: jobId }),
+      new GetJobStatusCommand({ ...tenant, job_id: jobId }),
     );
 
     console.log(`\n  Job Status: ${statusResp.data?.job_status}`);
@@ -208,12 +215,12 @@ async function main() {
     // ── Cleanup ────────────────────────────────────────────────
     log("Cleaning up...");
     try {
-      await client.send(new CancelJobCommand({ job_id: jobId }));
+      await client.send(new CancelJobCommand({ ...tenant, job_id: jobId }));
     } catch {
       // Job may already be in a non-cancellable state
     }
     try {
-      await client.send(new DeleteEndpointCommand({ name: endpointName }));
+      await client.send(new DeleteEndpointCommand({ ...tenant, name: endpointName }));
     } catch {
       // Endpoint may still have references
     }

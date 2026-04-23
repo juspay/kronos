@@ -33,12 +33,13 @@ import {
   createClient,
   createTestEndpoint,
   cleanup,
+  tenant,
   POLL_INTERVAL_MS,
   TERMINAL_STATUSES,
 } from "./helpers.js";
 
-const CRON_EVERY_10S = "0/10 * * * * *"; // every 10 seconds
-const CRON_EVERY_15S = "0/15 * * * * *"; // every 15 seconds (for update test)
+const CRON_EVERY_MIN = "* * * * *"; // every minute
+const CRON_EVERY_2MIN = "*/2 * * * *"; // every 2 minutes (for update test)
 
 async function waitForExecutions(
   client: ReturnType<typeof createClient>,
@@ -51,7 +52,7 @@ async function waitForExecutions(
 
   while (Date.now() - startTime < timeoutMs) {
     const execsResp = await client.send(
-      new ListJobExecutionsCommand({ job_id: jobId }),
+      new ListJobExecutionsCommand({ ...tenant, job_id: jobId }),
     );
 
     const executions = execsResp.data ?? [];
@@ -59,7 +60,7 @@ async function waitForExecutions(
     for (const exec of executions) {
       if (TERMINAL_STATUSES.has(exec.status!) && !completed.has(exec.execution_id!)) {
         const full = await client.send(
-          new GetExecutionCommand({ execution_id: exec.execution_id! }),
+          new GetExecutionCommand({ ...tenant, execution_id: exec.execution_id! }),
         );
         completed.set(exec.execution_id!, full.data);
         log(`  Execution ${exec.execution_id?.slice(0, 8)}... completed: ${exec.status} (${completed.size}/${targetCount})`);
@@ -93,13 +94,14 @@ async function main() {
     log(`Endpoint created: ${endpointName}`);
 
     // ── Step 2: Create CRON job (every 10s) ──────────────────
-    log(`Creating CRON job with schedule: ${CRON_EVERY_10S}`);
+    log(`Creating CRON job with schedule: ${CRON_EVERY_MIN}`);
 
     const jobResp = await client.send(
       new CreateJobCommand({
+        ...tenant,
         endpoint: endpointName,
         trigger: "CRON",
-        cron: CRON_EVERY_10S,
+        cron: CRON_EVERY_MIN,
         timezone: "UTC",
         input: {
           message: "Hello from Kronos CRON test",
@@ -117,7 +119,7 @@ async function main() {
     // ── Step 3: Wait for 2 executions ────────────────────────
     log("Waiting for 2 CRON executions to complete...");
 
-    const executions = await waitForExecutions(client, jobId, 2, 60_000);
+    const executions = await waitForExecutions(client, jobId, 2, 150_000);
 
     if (executions.length < 2) {
       log(`ERROR: Only ${executions.length}/2 executions completed within timeout`);
@@ -141,6 +143,7 @@ async function main() {
       // Fetch attempts for each execution
       const attemptsResp = await client.send(
         new ListExecutionAttemptsCommand({
+          ...tenant,
           execution_id: exec.execution_id!,
         }),
       );
@@ -157,12 +160,13 @@ async function main() {
     console.log("═".repeat(60));
 
     // ── Step 4: Update the CRON job ──────────────────────────
-    log(`Updating CRON job to new schedule: ${CRON_EVERY_15S}`);
+    log(`Updating CRON job to new schedule: ${CRON_EVERY_2MIN}`);
 
     const updateResp = await client.send(
       new UpdateJobCommand({
+        ...tenant,
         job_id: jobId,
-        cron: CRON_EVERY_15S,
+        cron: CRON_EVERY_2MIN,
         input: {
           message: "Updated CRON payload",
           iteration: "v2",
@@ -182,7 +186,7 @@ async function main() {
     log("Fetching version history...");
 
     const versionsResp = await client.send(
-      new GetJobVersionsCommand({ job_id: newJobId }),
+      new GetJobVersionsCommand({ ...tenant, job_id: newJobId }),
     );
     const versions = versionsResp.data ?? [];
     console.log(`\n  VERSION HISTORY (${versions.length} versions):`);
@@ -192,7 +196,7 @@ async function main() {
 
     // Verify original job is RETIRED
     const oldJobResp = await client.send(
-      new GetJobCommand({ job_id: jobId }),
+      new GetJobCommand({ ...tenant, job_id: jobId }),
     );
     log(`Original job status: ${oldJobResp.data?.status} (expected: RETIRED)`);
 
@@ -214,13 +218,13 @@ async function main() {
     log("Cancelling CRON job...");
 
     const cancelResp = await client.send(
-      new CancelJobCommand({ job_id: newJobId }),
+      new CancelJobCommand({ ...tenant, job_id: newJobId }),
     );
     log(`Job cancelled: ${cancelResp.data?.status}`);
 
     // Verify status
     const statusResp = await client.send(
-      new GetJobStatusCommand({ job_id: newJobId }),
+      new GetJobStatusCommand({ ...tenant, job_id: newJobId }),
     );
     log(`Final job status: ${statusResp.data?.job_status}`);
 
@@ -243,7 +247,7 @@ async function main() {
 
     if (jobId) {
       try {
-        await client.send(new CancelJobCommand({ job_id: jobId }));
+        await client.send(new CancelJobCommand({ ...tenant, job_id: jobId }));
       } catch { /* ignore */ }
     }
     await cleanup(client, null, endpointName);

@@ -38,6 +38,8 @@ db-down:
 db-migrate:
     PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260317000000_initial.sql
     PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260318000000_multi_tenancy.sql
+    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260322000000_txn_based_pickup.sql
+    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260322000001_pg_cron.sql
 
 # Reset database (drop + recreate + migrate)
 db-reset:
@@ -234,6 +236,44 @@ test-haskell: build
 
     echo "Shutting down services..."
     exit $EXIT_CODE
+
+# ─── KMS (LocalStack) ────────────────────────────────────────
+
+# Start LocalStack for KMS dev testing
+kms-up:
+    docker compose --profile kms up -d localstack
+    @echo "Waiting for LocalStack to be ready..."
+    @sleep 3
+    @echo "LocalStack KMS ready at http://localhost:4566"
+
+# Stop LocalStack
+kms-down:
+    docker compose --profile kms down
+
+# Create a KMS key on LocalStack + encrypt DB URL → .env.kms
+kms-init: kms-up
+    unset TE_DATABASE_URL TE_API_KEY TE_ENCRYPTION_KEY && ./scripts/kms-init.sh
+
+# Encrypt a plaintext value with the LocalStack KMS key
+kms-encrypt VALUE:
+    @./scripts/kms-encrypt.sh "{{VALUE}}"
+
+# Run API + worker with KMS feature enabled (uses .env.kms)
+kms-dev:
+    #!/usr/bin/env bash
+    set -e
+    if [ ! -f .env.kms ]; then
+        echo "Error: .env.kms not found. Run 'just kms-init' first." >&2
+        exit 1
+    fi
+    cp .env.kms .env
+    trap 'kill 0' EXIT
+    echo "Starting KMS-enabled dev services..."
+    cargo run --features kms -p kronos-api &
+    TE_METRICS_PORT=9090 cargo run --features kms -p kronos-worker &
+    cargo run -p kronos-mock-server &
+    echo "All services starting with KMS. Press Ctrl+C to stop."
+    wait
 
 # ─── Cargo utilities ─────────────────────────────────────────
 

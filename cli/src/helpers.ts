@@ -14,6 +14,9 @@ import {
 export const KRONOS_URL = process.env.KRONOS_URL ?? "http://localhost:8080";
 export const MOCK_URL = process.env.MOCK_URL ?? "http://localhost:9999";
 export const API_KEY = process.env.KRONOS_API_KEY ?? "dev-api-key";
+export const ORG_ID = process.env.KRONOS_ORG_ID!;
+export const WORKSPACE_ID = process.env.KRONOS_WORKSPACE_ID!;
+export const tenant = { org_id: ORG_ID, workspace_id: WORKSPACE_ID };
 export const POLL_INTERVAL_MS = 500;
 export const POLL_TIMEOUT_MS = 30_000;
 export const TERMINAL_STATUSES = new Set(["SUCCESS", "FAILED", "CANCELLED"]);
@@ -43,6 +46,7 @@ export async function createTestEndpoint(
 ) {
   const resp = await client.send(
     new CreateEndpointCommand({
+      ...tenant,
       name,
       endpoint_type: "HTTP",
       spec: {
@@ -73,7 +77,7 @@ export async function pollExecution(
 
   while (Date.now() - startTime < timeoutMs) {
     const execsResp = await client.send(
-      new ListJobExecutionsCommand({ job_id: jobId }),
+      new ListJobExecutionsCommand({ ...tenant, job_id: jobId }),
     );
 
     const executions = execsResp.data ?? [];
@@ -83,7 +87,7 @@ export async function pollExecution(
 
       if (TERMINAL_STATUSES.has(exec.status!)) {
         const full = await client.send(
-          new GetExecutionCommand({ execution_id: exec.execution_id! }),
+          new GetExecutionCommand({ ...tenant, execution_id: exec.execution_id! }),
         );
         log(`Execution reached terminal state: ${exec.status}`);
         return full.data;
@@ -131,6 +135,7 @@ export async function printExecutionResult(
   // Attempts
   const attemptsResp = await client.send(
     new ListExecutionAttemptsCommand({
+      ...tenant,
       execution_id: execution.execution_id!,
     }),
   );
@@ -150,7 +155,7 @@ export async function printExecutionResult(
 
   // Job status
   const statusResp = await client.send(
-    new GetJobStatusCommand({ job_id: jobId }),
+    new GetJobStatusCommand({ ...tenant, job_id: jobId }),
   );
 
   console.log(`\n  Job Status: ${statusResp.data?.job_status}`);
@@ -170,13 +175,13 @@ export async function cleanup(
   log("Cleaning up...");
   if (jobId) {
     try {
-      await client.send(new CancelJobCommand({ job_id: jobId }));
+      await client.send(new CancelJobCommand({ ...tenant, job_id: jobId }));
     } catch {
       // ignore
     }
   }
   try {
-    await client.send(new DeleteEndpointCommand({ name: endpointName }));
+    await client.send(new DeleteEndpointCommand({ ...tenant, name: endpointName }));
   } catch {
     // ignore
   }

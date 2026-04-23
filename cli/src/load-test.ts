@@ -31,8 +31,8 @@ import {
 const KRONOS_URL = process.env.KRONOS_URL ?? "http://localhost:8080";
 const MOCK_URL = process.env.MOCK_URL ?? "http://localhost:9999";
 const API_KEY = process.env.KRONOS_API_KEY ?? "dev-api-key";
-const ORG_ID = process.env.KRONOS_ORG_ID ?? "e336afd5-c291-477a-80f4-2cc1c9a072f6";
-const WORKSPACE_ID = process.env.KRONOS_WORKSPACE_ID ?? "60f0a1ef-0e07-4fb6-a590-d41ae1068785";
+const ORG_ID = process.env.KRONOS_ORG_ID!;
+const WORKSPACE_ID = process.env.KRONOS_WORKSPACE_ID!;
 const CONCURRENCY = parseInt(process.env.LOAD_TEST_CONCURRENCY ?? "10", 10);
 const POLL_INTERVAL_MS = 500;
 const POLL_TIMEOUT_MS = 120_000;
@@ -223,7 +223,7 @@ async function main() {
         ...tenant,
         endpoint: epCron,
         trigger: "CRON",
-        cron: "0/10 * * * * *",
+        cron: "* * * * *",
         timezone: "UTC",
         ends_at: new Date(Date.now() + 30_000),
         input: {

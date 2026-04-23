@@ -36,6 +36,7 @@
             just
             trunk
             wasm-bindgen-cli
+            awscli2
           ];
 
           shellHook = ''
