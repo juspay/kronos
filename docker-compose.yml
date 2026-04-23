@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16
+    build: docker/postgres
     ports:
       - "5432:5432"
     environment:
@@ -44,6 +44,19 @@ services:
     profiles:
       - redis
 
+  # LocalStack (for KMS feature)
+  localstack:
+    image: localstack/localstack:3
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: kms
+      AWS_DEFAULT_REGION: us-east-1
+    volumes:
+      - localstack-data:/var/lib/localstack
+    profiles:
+      - kms
+
   # Monitoring
   prometheus:
     image: prom/prometheus:latest
@@ -81,5 +94,6 @@ volumes:
   postgres-data:
   kafka-data:
   redis-data:
+  localstack-data:
   prometheus-data:
   grafana-data:

@@ -28,6 +28,7 @@ import {
   pollExecution,
   printExecutionResult,
   cleanup,
+  tenant,
   POLL_TIMEOUT_MS,
 } from "./helpers.js";
 
@@ -50,6 +51,7 @@ async function main() {
     const idempotencyKey = `delayed-test-${Date.now()}`;
     const jobResp = await client.send(
       new CreateJobCommand({
+        ...tenant,
         endpoint: endpointName,
         trigger: "DELAYED",
         run_at: runAt,
@@ -67,7 +69,7 @@ async function main() {
 
     // ── Step 3: Verify initial state is PENDING ────────────────
     const statusResp = await client.send(
-      new GetJobStatusCommand({ job_id: jobId }),
+      new GetJobStatusCommand({ ...tenant, job_id: jobId }),
     );
     const initialStatus = statusResp.data?.job_status;
     log(`Initial job status: ${initialStatus}`);

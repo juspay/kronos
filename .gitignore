@@ -6,6 +6,8 @@
 .env
 .env.local
 .env.*.local
+.env.kms
+.kms-key-id
 
 # Nix / direnv
 .direnv/
