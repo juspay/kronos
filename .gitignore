@@ -7,6 +7,7 @@
 .env.local
 .env.*.local
 .env.kms
+.env.prod.kms
 .kms-key-id
 
 # Nix / direnv
