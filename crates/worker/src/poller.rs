@@ -31,9 +31,18 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
     tracing::info!(worker_id = %worker_id, "Worker polling started");
 
     let idle = Arc::new(AtomicBool::new(false));
+
     let shutdown = tokio::signal::ctrl_c();
+
+    // ctrl_c gives an !Unpin future
+    // tokio::select wants the future it polls to implement Unpin (or are pinned)
     tokio::pin!(shutdown);
 
+    // Single-threaded poller loop with bounded concurrency.
+    // The semaphore (max_concurrent permits) gates how many tasks run in parallel.
+    // The loop spins freely while permits are available, only sleeping when the
+    // previous iteration found no work (idle backoff). Each spawned task holds a
+    // permit and releases it on completion, unblocking the next iteration.
     loop {
         if idle.load(Ordering::Relaxed) {
             tokio::time::sleep(poll_interval).await;
@@ -108,20 +117,40 @@ async fn claim_and_process(
             }
         };
 
+        let job = match db::jobs::get(&mut *tx, &exec.job_id).await {
+            Ok(Some(job)) => job,
+            Ok(None) => {
+                tracing::error!(schema = %schema_name, "Associated job for execution {} not found", exec.execution_id);
+                continue;
+            }
+            Err(e) => {
+                tracing::error!(schema = %schema_name, "Failed to fetch associated job: {}", e);
+                tracing::warn!(schema = %schema_name, "Marking execution as failed: {}", e);
+                let _ = db::executions::complete_failed(&mut *tx, &exec.execution_id).await;
+                continue;
+            }
+        };
+
         metrics::counter!(m::EXECUTIONS_CLAIMED_TOTAL,
             "schema" => schema_name.clone(),
             "endpoint_type" => exec.endpoint_type.clone(),
         )
         .increment(1);
 
-        metrics::gauge!(m::WORKER_INFLIGHT, "worker_id" => worker_id.to_string())
-            .increment(1.0);
+        metrics::gauge!(m::WORKER_INFLIGHT, "worker_id" => worker_id.to_string()).increment(1.0);
+
+        let idempotency_key: &str = job
+            .idempotency_key
+            .as_ref()
+            .map(|v| v.as_str())
+            .unwrap_or(exec.execution_id.as_str());
 
         pipeline::process_execution(
             ctx,
             &mut *tx,
             schema_name,
             &exec.execution_id,
+            idempotency_key,
             &exec.job_id,
             &exec.endpoint,
             &exec.endpoint_type,
@@ -138,8 +167,7 @@ async fn claim_and_process(
             );
         }
 
-        metrics::gauge!(m::WORKER_INFLIGHT, "worker_id" => worker_id.to_string())
-            .decrement(1.0);
+        metrics::gauge!(m::WORKER_INFLIGHT, "worker_id" => worker_id.to_string()).decrement(1.0);
 
         return true;
     }

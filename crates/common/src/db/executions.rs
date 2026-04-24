@@ -1,7 +1,8 @@
 use crate::models::Execution;
 use chrono::{DateTime, Utc};
-use sqlx::PgConnection;
+use sqlx::{prelude::FromRow, PgConnection};
 
+#[derive(FromRow)]
 pub struct ClaimedExecution {
     pub execution_id: String,
     pub job_id: String,
@@ -12,35 +13,11 @@ pub struct ClaimedExecution {
     pub max_attempts: i64,
 }
 
-impl ClaimedExecution {
-    fn from_row(
-        row: (
-            String,
-            String,
-            String,
-            String,
-            Option<serde_json::Value>,
-            i64,
-            i64,
-        ),
-    ) -> Self {
-        Self {
-            execution_id: row.0,
-            job_id: row.1,
-            endpoint: row.2,
-            endpoint_type: row.3,
-            input: row.4,
-            attempt_count: row.5,
-            max_attempts: row.6,
-        }
-    }
-}
-
 pub async fn claim(
     conn: &mut PgConnection,
     worker_id: &str,
 ) -> Result<Option<ClaimedExecution>, sqlx::Error> {
-    let row: Option<(String, String, String, String, Option<serde_json::Value>, i64, i64)> = sqlx::query_as(
+    let row: Option<ClaimedExecution> = sqlx::query_as(
         "UPDATE executions
          SET status = 'RUNNING',
              worker_id = $1,
@@ -61,7 +38,7 @@ pub async fn claim(
     .fetch_optional(&mut *conn)
     .await?;
 
-    Ok(row.map(ClaimedExecution::from_row))
+    Ok(row)
 }
 
 pub async fn complete_success(
@@ -106,7 +83,10 @@ pub async fn complete_retry(
     Ok(())
 }
 
-pub async fn complete_failed(conn: &mut PgConnection, execution_id: &str) -> Result<(), sqlx::Error> {
+pub async fn complete_failed(
+    conn: &mut PgConnection,
+    execution_id: &str,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         "UPDATE executions
          SET status = 'FAILED', completed_at = now(),
@@ -120,14 +100,20 @@ pub async fn complete_failed(conn: &mut PgConnection, execution_id: &str) -> Res
     Ok(())
 }
 
-pub async fn get(conn: &mut PgConnection, execution_id: &str) -> Result<Option<Execution>, sqlx::Error> {
+pub async fn get(
+    conn: &mut PgConnection,
+    execution_id: &str,
+) -> Result<Option<Execution>, sqlx::Error> {
     sqlx::query_as::<_, Execution>("SELECT * FROM executions WHERE execution_id = $1")
         .bind(execution_id)
         .fetch_optional(&mut *conn)
         .await
 }
 
-pub async fn get_for_job(conn: &mut PgConnection, job_id: &str) -> Result<Option<Execution>, sqlx::Error> {
+pub async fn get_for_job(
+    conn: &mut PgConnection,
+    job_id: &str,
+) -> Result<Option<Execution>, sqlx::Error> {
     sqlx::query_as::<_, Execution>(
         "SELECT * FROM executions WHERE job_id = $1 ORDER BY created_at DESC LIMIT 1",
     )
@@ -167,7 +153,10 @@ pub async fn list_for_job(
     }
 }
 
-pub async fn cancel(conn: &mut PgConnection, execution_id: &str) -> Result<Option<Execution>, sqlx::Error> {
+pub async fn cancel(
+    conn: &mut PgConnection,
+    execution_id: &str,
+) -> Result<Option<Execution>, sqlx::Error> {
     sqlx::query_as::<_, Execution>(
         "UPDATE executions SET status = 'CANCELLED', completed_at = now()
          WHERE execution_id = $1 AND status IN ('PENDING', 'QUEUED')
@@ -205,7 +194,10 @@ pub async fn create_cron_execution(
     Ok(result.rows_affected() > 0)
 }
 
-pub async fn cancel_pending_for_job(conn: &mut PgConnection, job_id: &str) -> Result<u64, sqlx::Error> {
+pub async fn cancel_pending_for_job(
+    conn: &mut PgConnection,
+    job_id: &str,
+) -> Result<u64, sqlx::Error> {
     let result = sqlx::query(
         "UPDATE executions SET status = 'CANCELLED', completed_at = now()
          WHERE job_id = $1 AND status IN ('PENDING', 'QUEUED')",
