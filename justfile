@@ -274,6 +274,16 @@ kms-dev:
     echo "All services starting with KMS. Press Ctrl+C to stop."
     wait
 
+# ─── Docker Prod ─────────────────────────────────────────────
+
+# Start full prod-like Docker environment (postgres + KMS + all services)
+docker-prod-up:
+    ./scripts/docker-prod.sh
+
+# Stop and clean up prod-like Docker environment
+docker-prod-down:
+    ./scripts/docker-prod-down.sh
+
 # ─── Cargo utilities ─────────────────────────────────────────
 
 # Run clippy lints
