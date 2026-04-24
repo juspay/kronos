@@ -139,6 +139,9 @@ async function main() {
       console.log(`    Duration:  ${exec.duration_ms ?? "N/A"}ms`);
       console.log(`    Started:   ${exec.started_at}`);
       console.log(`    Completed: ${exec.completed_at}`);
+      if (exec.output) {
+        console.log(`    Output:    ${JSON.stringify(exec.output, null, 2)}`);
+      }
 
       // Fetch attempts for each execution
       const attemptsResp = await client.send(

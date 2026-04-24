@@ -13,10 +13,7 @@ pub struct WorkspaceContext {
 
 /// Validates that a schema name contains only safe characters.
 pub fn validate_schema_name(name: &str) -> bool {
-    !name.is_empty()
-        && name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// Builds the schema name from org_id and workspace slug.
@@ -65,11 +62,10 @@ impl SchemaRegistry {
         }
 
         // Refresh
-        let schemas: Vec<(String,)> = sqlx::query_as(
-            "SELECT schema_name FROM public.workspaces WHERE status = 'ACTIVE'",
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let schemas: Vec<(String,)> =
+            sqlx::query_as("SELECT schema_name FROM public.workspaces WHERE status = 'ACTIVE'")
+                .fetch_all(&self.pool)
+                .await?;
 
         let schemas: Vec<String> = schemas.into_iter().map(|r| r.0).collect();
 

@@ -1,9 +1,7 @@
 use chrono::Utc;
 use kronos_common::{
     cache::{ConfigCache, SecretCache},
-    crypto, db,
-    metrics as m,
-    template,
+    crypto, db, metrics as m, template,
 };
 use reqwest::Client;
 use sqlx::{PgConnection, PgPool};
@@ -25,6 +23,7 @@ pub async fn process_execution(
     conn: &mut PgConnection,
     schema_name: &str,
     execution_id: &str,
+    idempotency_key: &str,
     _job_id: &str,
     endpoint_name: &str,
     endpoint_type: &str,
@@ -178,7 +177,9 @@ pub async fn process_execution(
     .await;
 
     let result = match endpoint_type {
-        "HTTP" => dispatcher::http::dispatch(&ctx.http_client, &dispatch_spec).await,
+        "HTTP" => {
+            dispatcher::http::dispatch(&ctx.http_client, &dispatch_spec, idempotency_key).await
+        }
         #[cfg(feature = "kafka")]
         "KAFKA" => dispatcher::kafka::dispatch(&dispatch_spec).await,
         #[cfg(feature = "redis-stream")]

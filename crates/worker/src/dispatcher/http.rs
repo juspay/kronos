@@ -4,7 +4,7 @@ use reqwest::Client;
 use serde_json::Value;
 use std::time::Duration;
 
-pub async fn dispatch(client: &Client, spec: &Value) -> DispatchResult {
+pub async fn dispatch(client: &Client, spec: &Value, idempotency_key: &str) -> DispatchResult {
     let url = spec["url"].as_str().unwrap_or_default();
     let method = spec["method"].as_str().unwrap_or("POST");
     let timeout_ms = spec["timeout_ms"].as_u64().unwrap_or(5000);
@@ -26,6 +26,7 @@ pub async fn dispatch(client: &Client, spec: &Value) -> DispatchResult {
         _ => client.post(url),
     };
 
+    req = req.header("x-kronos-idempotency-key", idempotency_key);
     req = req.timeout(Duration::from_millis(timeout_ms));
 
     // Set headers
@@ -137,7 +138,7 @@ mod tests {
             "timeout_ms": 5000,
         });
 
-        let result = dispatch(&client, &spec).await;
+        let result = dispatch(&client, &spec, "test-http-dispatch-success").await;
         assert!(result.is_success(), "expected success from /success");
         if let DispatchResult::Success { output } = result {
             assert_eq!(output["status_code"].as_u64().unwrap(), 200);
@@ -154,7 +155,7 @@ mod tests {
             "timeout_ms": 2000,
         });
 
-        let result = dispatch(&client, &spec).await;
+        let result = dispatch(&client, &spec, "test-http-dispatch-connection-error").await;
         assert!(result.is_failure(), "expected connection failure");
         if let DispatchResult::Failure { error } = result {
             let err_type = error["type"].as_str().unwrap();
@@ -177,7 +178,7 @@ mod tests {
             "timeout_ms": 5000,
         });
 
-        let result = dispatch(&client, &spec).await;
+        let result = dispatch(&client, &spec, "test-http-dispatch-unexpected-status").await;
         // If mock-server returns 500 for /fail, this should be a failure
         if result.is_failure() {
             if let DispatchResult::Failure { error } = result {
@@ -197,7 +198,7 @@ mod tests {
             "timeout_ms": 5000,
         });
 
-        let result = dispatch(&client, &spec).await;
+        let result = dispatch(&client, &spec, "test-http-dispatch-get-method").await;
         assert!(result.is_success(), "expected success from GET /health");
     }
 
@@ -216,7 +217,7 @@ mod tests {
             "timeout_ms": 5000,
         });
 
-        let result = dispatch(&client, &spec).await;
+        let result = dispatch(&client, &spec, "test-http-dispatch-with-headers").await;
         assert!(result.is_success(), "expected success with custom headers");
     }
 }

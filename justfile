@@ -116,7 +116,6 @@ dev:
 
     cargo run -p kronos-api &
     TE_METRICS_PORT=9090 cargo run -p kronos-worker &
-    TE_METRICS_PORT=9091 cargo run -p kronos-scheduler &
     cargo run -p kronos-mock-server &
 
     echo "All services starting. Press Ctrl+C to stop all."
