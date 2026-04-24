@@ -226,7 +226,10 @@ pub async fn get_versions(conn: &mut PgConnection, job_id: &str) -> Result<Vec<J
     .await
 }
 
-pub async fn get_due_cron_jobs(conn: &mut PgConnection, limit: i64) -> Result<Vec<Job>, sqlx::Error> {
+pub async fn get_due_cron_jobs(
+    conn: &mut PgConnection,
+    limit: i64,
+) -> Result<Vec<Job>, sqlx::Error> {
     sqlx::query_as::<_, Job>(
         "SELECT * FROM jobs
          WHERE trigger_type = 'CRON' AND status = 'ACTIVE'
