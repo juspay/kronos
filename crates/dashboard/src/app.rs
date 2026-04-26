@@ -16,6 +16,20 @@ const PATH_PREFIX: &str = match option_env!("TE_DASHBOARD_PATH_PREFIX") {
     None => "",
 };
 
+// Compile-time validation: PATH_PREFIX must be empty or start with '/' and not end with '/'.
+// e.g. "" (ok), "/dashboard" (ok), "dashboard" (bad), "/dashboard/" (bad)
+const _: () = {
+    let b = PATH_PREFIX.as_bytes();
+    if b.len() > 0 {
+        if b[0] != b'/' {
+            panic!("TE_DASHBOARD_PATH_PREFIX must start with '/'");
+        }
+        if b[b.len() - 1] == b'/' {
+            panic!("TE_DASHBOARD_PATH_PREFIX must not end with '/'");
+        }
+    }
+};
+
 /// Prepend the dashboard path prefix to an internal route path.
 pub fn prefixed(path: &str) -> String {
     format!("{PATH_PREFIX}{path}")
