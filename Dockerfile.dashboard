@@ -7,9 +7,14 @@ RUN apt-get update && apt-get install -y \
     cmake \
     && rm -rf /var/lib/apt/lists/*
 
-# Install wasm target and Trunk
+# Install wasm target, Trunk, and Tailwind CSS standalone CLI
 RUN rustup target add wasm32-unknown-unknown
 RUN cargo install trunk --locked
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "arm64" ]; then TW_ARCH="linux-arm64"; else TW_ARCH="linux-x64"; fi && \
+    curl -sL "https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-${TW_ARCH}" \
+      -o /usr/local/bin/tailwindcss && \
+    chmod +x /usr/local/bin/tailwindcss
 
 WORKDIR /app
 COPY . .
@@ -32,7 +37,18 @@ RUN if [ -n "$TE_DASHBOARD_PATH_PREFIX" ]; then \
 # ── Serve stage ───────────────────────────────────────────────
 FROM nginx:alpine
 
-COPY docker/dashboard/nginx.conf /etc/nginx/conf.d/default.conf
+ARG TE_DASHBOARD_PATH_PREFIX=""
+
 COPY --from=builder /app/crates/dashboard/dist /usr/share/nginx/html
+COPY docker/dashboard/nginx-prefix.conf.template /tmp/nginx-prefix.conf.template
+COPY docker/dashboard/nginx-default.conf /tmp/nginx-default.conf
+
+# Generate nginx config: use prefix template with sed, or default
+RUN if [ -n "$TE_DASHBOARD_PATH_PREFIX" ]; then \
+      sed "s|__PREFIX__|${TE_DASHBOARD_PATH_PREFIX}|g" \
+        /tmp/nginx-prefix.conf.template > /etc/nginx/conf.d/default.conf; \
+    else \
+      cp /tmp/nginx-default.conf /etc/nginx/conf.d/default.conf; \
+    fi && rm -f /tmp/nginx-*.conf*
 
 EXPOSE 80

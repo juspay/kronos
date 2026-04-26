@@ -6,7 +6,12 @@ dist = "dist"
 # public_url = "/dashboard"
 
 [watch]
-watch = ["src", "index.html"]
+watch = ["src", "index.html", "input.css"]
+
+[[hooks]]
+stage = "pre_build"
+command = "tailwindcss"
+command_arguments = ["-i", "input.css", "-o", "tailwind-output.css", "--minify"]
 
 [serve]
 address = "127.0.0.1"

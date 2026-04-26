@@ -116,13 +116,13 @@ EOF
 echo "    Done."
 
 echo ""
-echo "==> Starting application services (api, worker)..."
-$DC up -d kronos-api kronos-worker
+echo "==> Starting application services (api, worker, dashboard)..."
+$DC up -d kronos-api kronos-worker kronos-dashboard
 
 echo ""
 echo "==> Waiting for API health..."
 for i in $(seq 1 30); do
-    if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+    if curl -sf http://localhost:8080/kronos/health > /dev/null 2>&1; then
         echo "    API ready."
         break
     fi
@@ -135,10 +135,26 @@ for i in $(seq 1 30); do
 done
 
 echo ""
+echo "==> Waiting for Dashboard health..."
+for i in $(seq 1 30); do
+    if curl -sf http://localhost:3000/dashboard/ > /dev/null 2>&1; then
+        echo "    Dashboard ready."
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        echo "WARNING: Dashboard failed to start within 30s (continuing anyway)"
+        $DC logs kronos-dashboard
+        break
+    fi
+    sleep 1
+done
+
+echo ""
 echo "════════════════════════════════════════════════════════════"
 echo "  Kronos prod-like environment is running!"
 echo "════════════════════════════════════════════════════════════"
-echo "  API:          http://localhost:8080"
+echo "  API:          http://localhost:8080/kronos"
+echo "  Dashboard:    http://localhost:3000/dashboard"
 echo "  Mock Server:  http://localhost:9999"
 echo "  Worker:       metrics on :9090"
 echo "  PostgreSQL:   localhost:5432"
@@ -147,8 +163,8 @@ echo ""
 echo "  KMS:          enabled (key: ${KEY_ID})"
 echo ""
 echo "  Next steps:"
-echo "    ./scripts/setup-dev-tenant.sh                    # create org + workspace"
-echo "    MOCK_URL=http://kronos-mock-server:9999 just test-immediate  # run e2e test"
+echo "    KRONOS_BASE_URL=http://localhost:8080/kronos ./scripts/setup-dev-tenant.sh"
+echo "    KRONOS_URL=http://localhost:8080/kronos just test-immediate"
 echo ""
 echo "  Teardown:"
 echo "    just docker-prod-down"
