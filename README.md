@@ -523,6 +523,11 @@ just dashboard  # Dashboard at http://localhost:3000/dashboard/
 
 Without these variables, everything works at the root path as before.
 
+**Note:** When using a path prefix, update monitoring and healthcheck configs to match:
+
+- **Prometheus** (`monitoring/prometheus.yml`): change `metrics_path` from `/metrics` to `/{prefix}/metrics` (e.g. `/kronos/metrics`)
+- **Docker healthchecks** (`docker-compose.prod.yml`): change healthcheck URLs from `http://localhost:8080/health` to `http://localhost:8080/{prefix}/health` (e.g. `http://localhost:8080/kronos/health`)
+
 ---
 
 ## Development

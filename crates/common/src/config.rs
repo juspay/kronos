@@ -65,12 +65,15 @@ impl ServerEnv {
             .await;
         let path_prefix =
             get_from_env_or_default("TE_PATH_PREFIX", String::new());
-        // Normalize: ensure it starts with '/' and has no trailing '/'
-        let path_prefix = if path_prefix.is_empty() {
-            String::new()
-        } else {
+        // Normalize: ensure it starts with '/' and has no trailing '/'.
+        // A bare "/" or empty string both map to "" (no prefix).
+        let path_prefix = {
             let p = path_prefix.trim_matches('/');
-            format!("/{p}")
+            if p.is_empty() {
+                String::new()
+            } else {
+                format!("/{p}")
+            }
         };
         Ok(Self {
             listen_addr,
