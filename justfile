@@ -265,11 +265,11 @@ kms-dev:
         echo "Error: .env.kms not found. Run 'just kms-init' first." >&2
         exit 1
     fi
-    cp .env.kms .env
+    # cp .env.kms .env
     trap 'kill 0' EXIT
     echo "Starting KMS-enabled dev services..."
     cargo run --features kms -p kronos-api &
-    TE_METRICS_PORT=9090 cargo run --features kms -p kronos-worker &
+    TE_METRICS_PORT=9090 RUST_LOG=info cargo run --features kms -p kronos-worker &
     cargo run -p kronos-mock-server &
     echo "All services starting with KMS. Press Ctrl+C to stop."
     wait
