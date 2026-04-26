@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos_router::components::A;
 use leptos_router::hooks::use_params_map;
 
+use crate::app::prefixed;
 use crate::api::{self, CreateWorkspace, Organization, UpdateOrganization, Workspace};
 use crate::components::loading::{EmptyState, ErrorAlert, LoadingSpinner};
 use crate::components::modal::Modal;
@@ -32,7 +33,7 @@ pub fn OrgDetailPage() -> impl IntoView {
         <div class="space-y-6">
             // Breadcrumb
             <nav class="flex items-center gap-2 text-sm text-gray-500">
-                <A href="/" attr:class="hover:text-blue-600 transition-colors">"Organizations"</A>
+                <A href=prefixed("/") attr:class="hover:text-blue-600 transition-colors">"Organizations"</A>
                 <ChevronRight />
                 <Suspense fallback=move || view! { <span class="animate-pulse bg-gray-200 rounded w-24 h-4 inline-block"></span> }>
                     {move || org.get().map(|r| {
@@ -200,7 +201,7 @@ fn WorkspaceGrid(org_id: String, workspaces: Vec<Workspace>) -> impl IntoView {
     view! {
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {workspaces.into_iter().map(|ws| {
-                let href = format!("/orgs/{}/workspaces/{}", org_id, ws.workspace_id);
+                let href = prefixed(&format!("/orgs/{}/workspaces/{}", org_id, ws.workspace_id));
                 view! {
                     <A href=href attr:class="block bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md hover:border-blue-300 transition-all">
                         <div class="flex items-start justify-between">

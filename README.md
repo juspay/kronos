@@ -480,6 +480,53 @@ All configuration is via environment variables prefixed with `TE_`:
 | `TE_CONFIG_CACHE_TTL_SEC` | `60` | Config cache TTL in worker |
 | `TE_SECRET_CACHE_TTL_SEC` | `300` | Secret cache TTL in worker |
 | `TE_METRICS_PORT` | `9090` | Prometheus metrics HTTP listener port (worker) |
+| `TE_PATH_PREFIX` | *(empty)* | URL path prefix for the API server (e.g. `/kronos`) |
+
+### Path prefix
+
+Kronos can be hosted under a URL prefix, useful when running behind a reverse proxy alongside other services.
+
+**API server** — set `TE_PATH_PREFIX` at runtime:
+
+```bash
+# All routes are now under /kronos: /kronos/health, /kronos/v1/jobs, etc.
+TE_PATH_PREFIX=/kronos just dev
+```
+
+When a prefix is configured, hitting `GET /` returns a `302` redirect to `{prefix}/health`.
+
+**Dashboard** — uses compile-time env vars (baked into the WASM binary):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TE_DASHBOARD_PATH_PREFIX` | *(empty)* | URL prefix for dashboard routes (e.g. `/dashboard`) |
+| `TE_API_BASE_URL` | *(empty)* | Full API base URL including prefix (e.g. `http://localhost:8080/kronos`) |
+
+```bash
+# Dashboard at http://localhost:3000/dashboard/, API calls go to http://localhost:8080/kronos/v1/...
+TE_DASHBOARD_PATH_PREFIX=/dashboard TE_API_BASE_URL=http://localhost:8080/kronos just dashboard
+```
+
+Using `just` with `.env` (since the justfile has `set dotenv-load`):
+
+```env
+# .env
+TE_PATH_PREFIX=/kronos
+TE_DASHBOARD_PATH_PREFIX=/dashboard
+TE_API_BASE_URL=http://localhost:8080/kronos
+```
+
+```bash
+just dev        # API at http://localhost:8080/kronos/...
+just dashboard  # Dashboard at http://localhost:3000/dashboard/
+```
+
+Without these variables, everything works at the root path as before.
+
+**Note:** When using a path prefix, update monitoring and healthcheck configs to match:
+
+- **Prometheus** (`monitoring/prometheus.yml`): change `metrics_path` from `/metrics` to `/{prefix}/metrics` (e.g. `/kronos/metrics`)
+- **Docker healthchecks** (`docker-compose.prod.yml`): change healthcheck URLs from `http://localhost:8080/health` to `http://localhost:8080/{prefix}/health` (e.g. `http://localhost:8080/kronos/health`)
 
 ---
 

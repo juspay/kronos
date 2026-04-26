@@ -53,6 +53,7 @@ impl DbEnv {
 pub struct ServerEnv {
     pub listen_addr: String,
     pub api_key: String,
+    pub path_prefix: String,
 }
 
 impl ServerEnv {
@@ -62,9 +63,22 @@ impl ServerEnv {
         let api_key = reader
             .read_or_default("TE_API_KEY", "dev-api-key".to_string())
             .await;
+        let path_prefix =
+            get_from_env_or_default("TE_PATH_PREFIX", String::new());
+        // Normalize: ensure it starts with '/' and has no trailing '/'.
+        // A bare "/" or empty string both map to "" (no prefix).
+        let path_prefix = {
+            let p = path_prefix.trim_matches('/');
+            if p.is_empty() {
+                String::new()
+            } else {
+                format!("/{p}")
+            }
+        };
         Ok(Self {
             listen_addr,
             api_key,
+            path_prefix,
         })
     }
 }

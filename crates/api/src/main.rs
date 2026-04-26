@@ -31,6 +31,7 @@ async fn main() -> anyhow::Result<()> {
     let metrics_handle = kronos_common::metrics::install_recorder();
 
     let listen_addr = config.server.listen_addr.clone();
+    let path_prefix = config.server.path_prefix.clone();
     let app_state = router::AppState {
         pool: pool.clone(),
         config: config.clone(),
@@ -38,6 +39,9 @@ async fn main() -> anyhow::Result<()> {
     };
 
     tracing::info!("API server listening on {}", listen_addr);
+    if !path_prefix.is_empty() {
+        tracing::info!("Path prefix: {}", path_prefix);
+    }
 
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -46,11 +50,12 @@ async fn main() -> anyhow::Result<()> {
             .allow_any_header()
             .max_age(3600);
 
+        let prefix = path_prefix.clone();
         App::new()
             .app_data(web::Data::new(app_state.clone()))
             .wrap(cors)
             .wrap(crate::middleware::RequestId)
-            .configure(router::configure)
+            .configure(router::configure(&prefix))
     })
     .bind(&listen_addr)?
     .run()

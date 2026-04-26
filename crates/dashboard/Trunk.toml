@@ -1,6 +1,9 @@
 [build]
 target = "index.html"
 dist = "dist"
+# Set TE_DASHBOARD_PATH_PREFIX env var to serve under a prefix (e.g. "/dashboard")
+# Then pass the same value here: trunk build --public-url /dashboard
+# public_url = "/dashboard"
 
 [watch]
 watch = ["src", "index.html"]

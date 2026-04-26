@@ -6,6 +6,12 @@ use super::models::*;
 const API_KEY: &str = "dev-api-key";
 
 fn base_url() -> String {
+    // If TE_API_BASE_URL is set at compile time, use it directly.
+    // e.g. TE_API_BASE_URL=http://localhost:8080/kronos
+    if let Some(url) = option_env!("TE_API_BASE_URL") {
+        return url.trim_end_matches('/').to_string();
+    }
+
     let location = web_sys::window().unwrap().location();
     let host = location.host().unwrap_or_default();
     if host.contains("3000") {
