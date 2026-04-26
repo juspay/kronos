@@ -334,12 +334,14 @@ all-down:
 # ─── Dashboard ──────────────────────────────────────────────
 
 # Build the dashboard (requires trunk and wasm32 target)
+# Set TE_DASHBOARD_PATH_PREFIX and TE_API_BASE_URL env vars for prefix support
 dashboard-build:
-    cd crates/dashboard && trunk build --release
+    cd crates/dashboard && trunk build --release {{ if env("TE_DASHBOARD_PATH_PREFIX", "") != "" { "--public-url " + env("TE_DASHBOARD_PATH_PREFIX", "") } else { "" } }}
 
 # Run the dashboard dev server (port 3000, proxies API to 8080)
+# Set TE_DASHBOARD_PATH_PREFIX and TE_API_BASE_URL env vars for prefix support
 dashboard:
-    cd crates/dashboard && trunk serve
+    cd crates/dashboard && trunk serve {{ if env("TE_DASHBOARD_PATH_PREFIX", "") != "" { "--public-url " + env("TE_DASHBOARD_PATH_PREFIX", "") } else { "" } }}
 
 # Install dashboard build tools
 dashboard-setup:

@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos_router::components::A;
 
+use crate::app::prefixed;
 use crate::api::{self, CreateOrganization, Organization};
 use crate::components::loading::{EmptyState, ErrorAlert, LoadingSpinner};
 use crate::components::modal::Modal;
@@ -70,7 +71,7 @@ fn OrgGrid(orgs: Vec<Organization>) -> impl IntoView {
     view! {
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {orgs.into_iter().map(|org| {
-                let href = format!("/orgs/{}", org.org_id);
+                let href = prefixed(&format!("/orgs/{}", org.org_id));
                 view! {
                     <A href=href attr:class="block bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md hover:border-blue-300 transition-all">
                         <div class="flex items-start justify-between">

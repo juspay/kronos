@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos_router::components::A;
 use leptos_router::hooks::use_params_map;
 
+use crate::app::prefixed;
 use crate::api::{
     self, Config, CreateConfig, CreateEndpoint, CreatePayloadSpec, CreateSecret, Endpoint,
     Execution, Job, PayloadSpec, UpdateConfig, UpdatePayloadSpec,
@@ -36,9 +37,9 @@ pub fn WorkspaceDetailPage() -> impl IntoView {
         <div class="space-y-6">
             // Breadcrumb
             <nav class="flex items-center gap-2 text-sm text-gray-500">
-                <A href="/" attr:class="hover:text-blue-600 transition-colors">"Organizations"</A>
+                <A href=prefixed("/") attr:class="hover:text-blue-600 transition-colors">"Organizations"</A>
                 <ChevronRight />
-                <A href={let oid = org_id(); format!("/orgs/{oid}")} attr:class="hover:text-blue-600 transition-colors">
+                <A href={let oid = org_id(); prefixed(&format!("/orgs/{oid}"))} attr:class="hover:text-blue-600 transition-colors">
                     {org_id()}
                 </A>
                 <ChevronRight />
