@@ -116,8 +116,8 @@ EOF
 echo "    Done."
 
 echo ""
-echo "==> Starting application services (api, worker, dashboard)..."
-$DC up -d kronos-api kronos-worker kronos-dashboard
+echo "==> Starting application services (server, worker)..."
+$DC up -d kronos-server kronos-worker
 
 echo ""
 echo "==> Waiting for API health..."
@@ -128,7 +128,7 @@ for i in $(seq 1 30); do
     fi
     if [ "$i" -eq 30 ]; then
         echo "ERROR: API failed to start within 30s"
-        $DC logs kronos-api
+        $DC logs kronos-server
         exit 1
     fi
     sleep 1
@@ -137,13 +137,13 @@ done
 echo ""
 echo "==> Waiting for Dashboard health..."
 for i in $(seq 1 30); do
-    if curl -sf http://localhost:3000/dashboard/ > /dev/null 2>&1; then
+    if curl -sf http://localhost:8080/dashboard/ > /dev/null 2>&1; then
         echo "    Dashboard ready."
         break
     fi
     if [ "$i" -eq 30 ]; then
         echo "WARNING: Dashboard failed to start within 30s (continuing anyway)"
-        $DC logs kronos-dashboard
+        $DC logs kronos-server
         break
     fi
     sleep 1
@@ -154,7 +154,7 @@ echo "════════════════════════�
 echo "  Kronos prod-like environment is running!"
 echo "════════════════════════════════════════════════════════════"
 echo "  API:          http://localhost:8080/kronos"
-echo "  Dashboard:    http://localhost:3000/dashboard"
+echo "  Dashboard:    http://localhost:8080/dashboard"
 echo "  Mock Server:  http://localhost:9999"
 echo "  Worker:       metrics on :9090"
 echo "  PostgreSQL:   localhost:5432"

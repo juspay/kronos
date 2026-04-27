@@ -25,7 +25,7 @@ pub fn WorkspaceDetailPage() -> impl IntoView {
         let oid = org_id();
         let wid = workspace_id();
         async move {
-            let workspaces = api::list_workspaces(&oid).await?;
+            let workspaces = api::list_workspaces(oid).await?;
             workspaces
                 .into_iter()
                 .find(|w| w.workspace_id == wid)
@@ -44,8 +44,8 @@ pub fn WorkspaceDetailPage() -> impl IntoView {
                 </A>
                 <ChevronRight />
                 <Suspense fallback=move || view! { <span class="animate-pulse bg-gray-200 rounded w-24 h-4 inline-block"></span> }>
-                    {move || workspace.get().map(|r| {
-                        match &*r {
+                    {move || workspace.get().map(|r| (*r).clone()).map(|result| {
+                        match result {
                             Ok(w) => view! { <span class="text-gray-900 font-medium">{w.name.clone()}</span> }.into_any(),
                             Err(_) => view! { <span>"Unknown"</span> }.into_any(),
                         }
@@ -55,8 +55,8 @@ pub fn WorkspaceDetailPage() -> impl IntoView {
 
             // Workspace header
             <Suspense fallback=move || view! { <LoadingSpinner /> }>
-                {move || workspace.get().map(|r| {
-                    match &*r {
+                {move || workspace.get().map(|r| (*r).clone()).map(|result| {
+                    match result {
                         Ok(w) => view! {
                             <div class="bg-white rounded-xl border border-gray-200 p-6">
                                 <div class="flex items-center justify-between">
@@ -71,7 +71,7 @@ pub fn WorkspaceDetailPage() -> impl IntoView {
                                 </div>
                             </div>
                         }.into_any(),
-                        Err(e) => view! { <ErrorAlert message=e.clone() /> }.into_any(),
+                        Err(e) => view! { <ErrorAlert message=e.to_string() /> }.into_any(),
                     }
                 })}
             </Suspense>
@@ -158,7 +158,7 @@ fn PayloadSpecsTab(org_id: String, workspace_id: String) -> impl IntoView {
         let _ = refresh.get();
         let oid = oid.clone();
         let wid = wid.clone();
-        async move { api::list_payload_specs(&oid, &wid).await }
+        api::list_payload_specs(oid, wid)
     });
 
     let oid_create = org_id.clone();
@@ -175,9 +175,9 @@ fn PayloadSpecsTab(org_id: String, workspace_id: String) -> impl IntoView {
             let wid = wid_del.clone();
             set_delete_error.set(None);
             leptos::task::spawn_local(async move {
-                match api::delete_payload_spec(&oid, &wid, &name).await {
+                match api::delete_payload_spec(oid, wid, name).await {
                     Ok(_) => set_refresh.update(|c| *c += 1),
-                    Err(e) => set_delete_error.set(Some(e)),
+                    Err(e) => set_delete_error.set(Some(e.to_string())),
                 }
             });
         }
@@ -200,8 +200,8 @@ fn PayloadSpecsTab(org_id: String, workspace_id: String) -> impl IntoView {
             </Show>
 
             <Suspense fallback=move || view! { <LoadingSpinner /> }>
-                {move || specs.get().map(|result| {
-                    match &*result {
+                {move || specs.get().map(|r| (*r).clone()).map(|result| {
+                    match result {
                         Ok(items) => {
                             if items.is_empty() {
                                 view! { <EmptyState message="No payload specs yet." /> }.into_any()
@@ -260,7 +260,7 @@ fn PayloadSpecsTab(org_id: String, workspace_id: String) -> impl IntoView {
                                 }.into_any()
                             }
                         }
-                        Err(e) => view! { <ErrorAlert message=e.clone() /> }.into_any(),
+                        Err(e) => view! { <ErrorAlert message=e.to_string() /> }.into_any(),
                     }
                 })}
             </Suspense>
@@ -314,12 +314,12 @@ fn CreatePayloadSpecForm(
                 }
             };
             let body = CreatePayloadSpec { name: name_val, schema };
-            match api::create_payload_spec(&oid, &wid, &body).await {
+            match api::create_payload_spec(oid, wid, body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
                     set_refresh.update(|c| *c += 1);
                 }
-                Err(e) => set_error.set(Some(e)),
+                Err(e) => set_error.set(Some(e.to_string())),
             }
             set_submitting.set(false);
         });
@@ -393,12 +393,12 @@ fn EditPayloadSpecForm(
                 }
             };
             let body = UpdatePayloadSpec { schema };
-            match api::update_payload_spec(&oid, &wid, &name, &body).await {
+            match api::update_payload_spec(oid, wid, name, body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
                     set_refresh.update(|c| *c += 1);
                 }
-                Err(e) => set_error.set(Some(e)),
+                Err(e) => set_error.set(Some(e.to_string())),
             }
             set_submitting.set(false);
         });
@@ -453,7 +453,7 @@ fn ConfigsTab(org_id: String, workspace_id: String) -> impl IntoView {
         let _ = refresh.get();
         let oid = oid.clone();
         let wid = wid.clone();
-        async move { api::list_configs(&oid, &wid).await }
+        api::list_configs(oid, wid)
     });
 
     let oid_create = org_id.clone();
@@ -470,9 +470,9 @@ fn ConfigsTab(org_id: String, workspace_id: String) -> impl IntoView {
             let wid = wid_del.clone();
             set_delete_error.set(None);
             leptos::task::spawn_local(async move {
-                match api::delete_config(&oid, &wid, &name).await {
+                match api::delete_config(oid, wid, name).await {
                     Ok(_) => set_refresh.update(|c| *c += 1),
-                    Err(e) => set_delete_error.set(Some(e)),
+                    Err(e) => set_delete_error.set(Some(e.to_string())),
                 }
             });
         }
@@ -493,8 +493,8 @@ fn ConfigsTab(org_id: String, workspace_id: String) -> impl IntoView {
             </Show>
 
             <Suspense fallback=move || view! { <LoadingSpinner /> }>
-                {move || configs.get().map(|result| {
-                    match &*result {
+                {move || configs.get().map(|r| (*r).clone()).map(|result| {
+                    match result {
                         Ok(items) => {
                             if items.is_empty() {
                                 view! { <EmptyState message="No configs yet." /> }.into_any()
@@ -547,7 +547,7 @@ fn ConfigsTab(org_id: String, workspace_id: String) -> impl IntoView {
                                 }.into_any()
                             }
                         }
-                        Err(e) => view! { <ErrorAlert message=e.clone() /> }.into_any(),
+                        Err(e) => view! { <ErrorAlert message=e.to_string() /> }.into_any(),
                     }
                 })}
             </Suspense>
@@ -599,12 +599,12 @@ fn CreateConfigForm(
                 }
             };
             let body = CreateConfig { name: name_val, values };
-            match api::create_config(&oid, &wid, &body).await {
+            match api::create_config(oid, wid, body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
                     set_refresh.update(|c| *c += 1);
                 }
-                Err(e) => set_error.set(Some(e)),
+                Err(e) => set_error.set(Some(e.to_string())),
             }
             set_submitting.set(false);
         });
@@ -678,12 +678,12 @@ fn EditConfigForm(
                 }
             };
             let body = UpdateConfig { values };
-            match api::update_config(&oid, &wid, &name, &body).await {
+            match api::update_config(oid, wid, name, body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
                     set_refresh.update(|c| *c += 1);
                 }
-                Err(e) => set_error.set(Some(e)),
+                Err(e) => set_error.set(Some(e.to_string())),
             }
             set_submitting.set(false);
         });
@@ -738,7 +738,7 @@ fn SecretsTab(org_id: String, workspace_id: String) -> impl IntoView {
         let _ = refresh.get();
         let oid = oid.clone();
         let wid = wid.clone();
-        async move { api::list_secrets(&oid, &wid).await }
+        api::list_secrets(oid, wid)
     });
 
     let oid_create = org_id.clone();
@@ -755,9 +755,9 @@ fn SecretsTab(org_id: String, workspace_id: String) -> impl IntoView {
             let wid = wid_del.clone();
             set_delete_error.set(None);
             leptos::task::spawn_local(async move {
-                match api::delete_secret(&oid, &wid, &name).await {
+                match api::delete_secret(oid, wid, name).await {
                     Ok(_) => set_refresh.update(|c| *c += 1),
-                    Err(e) => set_delete_error.set(Some(e)),
+                    Err(e) => set_delete_error.set(Some(e.to_string())),
                 }
             });
         }
@@ -778,8 +778,8 @@ fn SecretsTab(org_id: String, workspace_id: String) -> impl IntoView {
             </Show>
 
             <Suspense fallback=move || view! { <LoadingSpinner /> }>
-                {move || secrets.get().map(|result| {
-                    match &*result {
+                {move || secrets.get().map(|r| (*r).clone()).map(|result| {
+                    match result {
                         Ok(items) => {
                             if items.is_empty() {
                                 view! { <EmptyState message="No secrets yet." /> }.into_any()
@@ -826,7 +826,7 @@ fn SecretsTab(org_id: String, workspace_id: String) -> impl IntoView {
                                 }.into_any()
                             }
                         }
-                        Err(e) => view! { <ErrorAlert message=e.clone() /> }.into_any(),
+                        Err(e) => view! { <ErrorAlert message=e.to_string() /> }.into_any(),
                     }
                 })}
             </Suspense>
@@ -870,12 +870,12 @@ fn CreateSecretForm(
         set_error.set(None);
         leptos::task::spawn_local(async move {
             let body = CreateSecret { name: n, value: v };
-            match api::create_secret(&oid, &wid, &body).await {
+            match api::create_secret(oid, wid, body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
                     set_refresh.update(|c| *c += 1);
                 }
-                Err(e) => set_error.set(Some(e)),
+                Err(e) => set_error.set(Some(e.to_string())),
             }
             set_submitting.set(false);
         });
@@ -941,12 +941,12 @@ fn UpdateSecretForm(
         set_error.set(None);
         leptos::task::spawn_local(async move {
             let body = UpdateSecret { value: v };
-            match api::update_secret(&oid, &wid, &name, &body).await {
+            match api::update_secret(oid, wid, name, body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
                     set_refresh.update(|c| *c += 1);
                 }
-                Err(e) => set_error.set(Some(e)),
+                Err(e) => set_error.set(Some(e.to_string())),
             }
             set_submitting.set(false);
         });
@@ -996,7 +996,7 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
         let _ = refresh.get();
         let oid = oid.clone();
         let wid = wid.clone();
-        async move { api::list_jobs(&oid, &wid).await }
+        api::list_jobs(oid, wid)
     });
 
     let oid_render = org_id.clone();
@@ -1020,8 +1020,8 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
                 {move || {
                     let oid = oid_render.clone();
                     let wid = wid_render.clone();
-                    jobs.get().map(move |result| {
-                        match &*result {
+                    jobs.get().map(|r| (*r).clone()).map(move |result| {
+                        match result {
                             Ok(jobs) => {
                                 if jobs.is_empty() {
                                     view! { <EmptyState message="No jobs in this workspace. Create an endpoint first, then add a job." /> }.into_any()
@@ -1030,7 +1030,7 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
                                     view! { <JobsTable jobs=jobs org_id=oid.clone() workspace_id=wid.clone() set_refresh=set_refresh /> }.into_any()
                                 }
                             }
-                            Err(e) => view! { <ErrorAlert message=e.clone() /> }.into_any(),
+                            Err(e) => view! { <ErrorAlert message=e.to_string() /> }.into_any(),
                         }
                     })
                 }}
@@ -1131,12 +1131,12 @@ fn CreateJobForm(
                 }
             }
 
-            match api::create_job(&oid, &wid, &body).await {
+            match api::create_job(oid, wid, body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
                     set_refresh.update(|c| *c += 1);
                 }
-                Err(e) => set_error.set(Some(e)),
+                Err(e) => set_error.set(Some(e.to_string())),
             }
             set_submitting.set(false);
         });
@@ -1307,9 +1307,9 @@ fn JobsTable(jobs: Vec<Job>, org_id: String, workspace_id: String, set_refresh: 
                                                         let jid = jid_c.clone();
                                                         set_cancel_error.set(None);
                                                         leptos::task::spawn_local(async move {
-                                                            match api::cancel_job(&oid, &wid, &jid).await {
+                                                            match api::cancel_job(oid, wid, jid).await {
                                                                 Ok(_) => set_refresh.update(|c| *c += 1),
-                                                                Err(e) => set_cancel_error.set(Some(e)),
+                                                                Err(e) => set_cancel_error.set(Some(e.to_string())),
                                                             }
                                                         });
                                                     } class="text-orange-600 hover:text-orange-800 text-xs font-medium">"Cancel"</button>
@@ -1383,19 +1383,22 @@ fn JobsTable(jobs: Vec<Job>, org_id: String, workspace_id: String, set_refresh: 
 
 #[component]
 fn JobStatusPanel(org_id: String, workspace_id: String, job_id: String) -> impl IntoView {
+    let oid = org_id.clone();
+    let wid = workspace_id.clone();
+    let jid = job_id.clone();
     let status = LocalResource::new(move || {
-        let oid = org_id.clone();
-        let wid = workspace_id.clone();
-        let jid = job_id.clone();
-        async move { api::get_job_status(&oid, &wid, &jid).await }
+        let oid = oid.clone();
+        let wid = wid.clone();
+        let jid = jid.clone();
+        api::get_job_status(oid, wid, jid)
     });
 
     view! {
         <div class="space-y-2">
             <h4 class="text-sm font-medium text-blue-800">"Job Status"</h4>
             <Suspense fallback=move || view! { <LoadingSpinner /> }>
-                {move || status.get().map(|result| {
-                    match &*result {
+                {move || status.get().map(|r| (*r).clone()).map(|result| {
+                    match result {
                         Ok(s) => {
                             let health_color = match s.health.as_str() {
                                 "HEALTHY" => "text-green-700 bg-green-100",
@@ -1433,7 +1436,7 @@ fn JobStatusPanel(org_id: String, workspace_id: String, job_id: String) -> impl 
                                 </div>
                             }.into_any()
                         }
-                        Err(e) => view! { <ErrorAlert message=e.clone() /> }.into_any(),
+                        Err(e) => view! { <ErrorAlert message=e.to_string() /> }.into_any(),
                     }
                 })}
             </Suspense>
@@ -1443,19 +1446,22 @@ fn JobStatusPanel(org_id: String, workspace_id: String, job_id: String) -> impl 
 
 #[component]
 fn JobVersionsPanel(org_id: String, workspace_id: String, job_id: String) -> impl IntoView {
+    let oid = org_id.clone();
+    let wid = workspace_id.clone();
+    let jid = job_id.clone();
     let versions = LocalResource::new(move || {
-        let oid = org_id.clone();
-        let wid = workspace_id.clone();
-        let jid = job_id.clone();
-        async move { api::get_job_versions(&oid, &wid, &jid).await }
+        let oid = oid.clone();
+        let wid = wid.clone();
+        let jid = jid.clone();
+        api::get_job_versions(oid, wid, jid)
     });
 
     view! {
         <div class="space-y-2">
             <h4 class="text-sm font-medium text-teal-800">"Version History"</h4>
             <Suspense fallback=move || view! { <LoadingSpinner /> }>
-                {move || versions.get().map(|result| {
-                    match &*result {
+                {move || versions.get().map(|r| (*r).clone()).map(|result| {
+                    match result {
                         Ok(items) => {
                             if items.is_empty() {
                                 view! { <p class="text-sm text-gray-500">"No version history."</p> }.into_any()
@@ -1478,7 +1484,7 @@ fn JobVersionsPanel(org_id: String, workspace_id: String, job_id: String) -> imp
                                 }.into_any()
                             }
                         }
-                        Err(e) => view! { <ErrorAlert message=e.clone() /> }.into_any(),
+                        Err(e) => view! { <ErrorAlert message=e.to_string() /> }.into_any(),
                     }
                 })}
             </Suspense>
@@ -1498,7 +1504,7 @@ fn JobExecutions(org_id: String, workspace_id: String, job_id: String) -> impl I
         let oid = oid.clone();
         let wid = wid.clone();
         let jid = jid.clone();
-        async move { api::list_job_executions(&oid, &wid, &jid).await }
+        api::list_job_executions(oid, wid, jid)
     });
 
     let oid_r = org_id.clone();
@@ -1511,8 +1517,8 @@ fn JobExecutions(org_id: String, workspace_id: String, job_id: String) -> impl I
                 {move || {
                     let oid = oid_r.clone();
                     let wid = wid_r.clone();
-                    executions.get().map(move |result| {
-                        match &*result {
+                    executions.get().map(|r| (*r).clone()).map(move |result| {
+                        match result {
                             Ok(execs) => {
                                 if execs.is_empty() {
                                     view! { <p class="text-sm text-gray-500">"No executions yet."</p> }.into_any()
@@ -1521,7 +1527,7 @@ fn JobExecutions(org_id: String, workspace_id: String, job_id: String) -> impl I
                                     view! { <ExecutionsList executions=execs org_id=oid.clone() workspace_id=wid.clone() set_refresh=set_refresh /> }.into_any()
                                 }
                             }
-                            Err(e) => view! { <ErrorAlert message=e.clone() /> }.into_any(),
+                            Err(e) => view! { <ErrorAlert message=e.to_string() /> }.into_any(),
                         }
                     })
                 }}
@@ -1581,9 +1587,9 @@ fn ExecutionsList(executions: Vec<Execution>, org_id: String, workspace_id: Stri
                                             let eid = eid_c.clone();
                                             set_cancel_error.set(None);
                                             leptos::task::spawn_local(async move {
-                                                match api::cancel_execution(&oid, &wid, &eid).await {
+                                                match api::cancel_execution(oid, wid, eid).await {
                                                     Ok(_) => set_refresh.update(|c| *c += 1),
-                                                    Err(e) => set_cancel_error.set(Some(e)),
+                                                    Err(e) => set_cancel_error.set(Some(e.to_string())),
                                                 }
                                             });
                                         } class="text-orange-600 hover:text-orange-800 text-xs font-medium">"Cancel"</button>
@@ -1617,7 +1623,7 @@ fn ExecutionDetail(org_id: String, workspace_id: String, execution: Execution) -
         let oid = oid_a.clone();
         let wid = wid_a.clone();
         let eid = eid_a.clone();
-        async move { api::list_attempts(&oid, &wid, &eid).await }
+        api::list_attempts(oid, wid, eid)
     });
 
     let oid_l = org_id.clone();
@@ -1627,7 +1633,7 @@ fn ExecutionDetail(org_id: String, workspace_id: String, execution: Execution) -
         let oid = oid_l.clone();
         let wid = wid_l.clone();
         let eid = eid_l.clone();
-        async move { api::list_execution_logs(&oid, &wid, &eid).await }
+        api::list_execution_logs(oid, wid, eid)
     });
 
     let input_str = execution.input.as_ref()
@@ -1661,8 +1667,8 @@ fn ExecutionDetail(org_id: String, workspace_id: String, execution: Execution) -
             <div>
                 <h5 class="text-xs font-medium text-gray-700 mb-1">"Attempts"</h5>
                 <Suspense fallback=move || view! { <LoadingSpinner /> }>
-                    {move || attempts.get().map(|result| {
-                        match &*result {
+                    {move || attempts.get().map(|r| (*r).clone()).map(|result| {
+                        match result {
                             Ok(items) => {
                                 if items.is_empty() {
                                     view! { <p class="text-xs text-gray-500">"No attempts yet."</p> }.into_any()
@@ -1684,7 +1690,7 @@ fn ExecutionDetail(org_id: String, workspace_id: String, execution: Execution) -
                                     }.into_any()
                                 }
                             }
-                            Err(e) => view! { <ErrorAlert message=e.clone() /> }.into_any(),
+                            Err(e) => view! { <ErrorAlert message=e.to_string() /> }.into_any(),
                         }
                     })}
                 </Suspense>
@@ -1694,8 +1700,8 @@ fn ExecutionDetail(org_id: String, workspace_id: String, execution: Execution) -
             <div>
                 <h5 class="text-xs font-medium text-gray-700 mb-1">"Logs"</h5>
                 <Suspense fallback=move || view! { <LoadingSpinner /> }>
-                    {move || logs.get().map(|result| {
-                        match &*result {
+                    {move || logs.get().map(|r| (*r).clone()).map(|result| {
+                        match result {
                             Ok(items) => {
                                 if items.is_empty() {
                                     view! { <p class="text-xs text-gray-500">"No logs."</p> }.into_any()
@@ -1723,7 +1729,7 @@ fn ExecutionDetail(org_id: String, workspace_id: String, execution: Execution) -
                                     }.into_any()
                                 }
                             }
-                            Err(e) => view! { <ErrorAlert message=e.clone() /> }.into_any(),
+                            Err(e) => view! { <ErrorAlert message=e.to_string() /> }.into_any(),
                         }
                     })}
                 </Suspense>
@@ -1752,7 +1758,7 @@ fn EndpointsTab(org_id: String, workspace_id: String) -> impl IntoView {
         let _ = refresh.get();
         let oid = oid.clone();
         let wid = wid.clone();
-        async move { api::list_endpoints(&oid, &wid).await }
+        api::list_endpoints(oid, wid)
     });
 
     let oid_create = org_id.clone();
@@ -1769,9 +1775,9 @@ fn EndpointsTab(org_id: String, workspace_id: String) -> impl IntoView {
             let wid = wid_del.clone();
             set_delete_error.set(None);
             leptos::task::spawn_local(async move {
-                match api::delete_endpoint(&oid, &wid, &name).await {
+                match api::delete_endpoint(oid, wid, name).await {
                     Ok(_) => set_refresh.update(|c| *c += 1),
-                    Err(e) => set_delete_error.set(Some(e)),
+                    Err(e) => set_delete_error.set(Some(e.to_string())),
                 }
             });
         }
@@ -1795,8 +1801,8 @@ fn EndpointsTab(org_id: String, workspace_id: String) -> impl IntoView {
 
             <Suspense fallback=move || view! { <LoadingSpinner /> }>
                 {move || {
-                    endpoints.get().map(move |result| {
-                        match &*result {
+                    endpoints.get().map(|r| (*r).clone()).map(move |result| {
+                        match result {
                             Ok(eps) => {
                                 if eps.is_empty() {
                                     view! { <EmptyState message="No endpoints yet. Create one to start scheduling jobs." /> }.into_any()
@@ -1811,7 +1817,7 @@ fn EndpointsTab(org_id: String, workspace_id: String) -> impl IntoView {
                                     /> }.into_any()
                                 }
                             }
-                            Err(e) => view! { <ErrorAlert message=e.clone() /> }.into_any(),
+                            Err(e) => view! { <ErrorAlert message=e.to_string() /> }.into_any(),
                         }
                     })
                 }}
@@ -1873,12 +1879,12 @@ fn CreateEndpointForm(
                 config: None,
                 retry_policy: None,
             };
-            match api::create_endpoint(&oid, &wid, &body).await {
+            match api::create_endpoint(oid, wid, body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
                     set_refresh.update(|c| *c += 1);
                 }
-                Err(e) => set_error.set(Some(e)),
+                Err(e) => set_error.set(Some(e.to_string())),
             }
             set_submitting.set(false);
         });
@@ -2024,12 +2030,12 @@ fn EditEndpointForm(
                 }
             };
             let body = serde_json::json!({ "spec": spec });
-            match api::update_endpoint(&oid, &wid, &name, &body).await {
+            match api::update_endpoint(oid, wid, name, body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
                     set_refresh.update(|c| *c += 1);
                 }
-                Err(e) => set_error.set(Some(e)),
+                Err(e) => set_error.set(Some(e.to_string())),
             }
             set_submitting.set(false);
         });

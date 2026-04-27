@@ -34,8 +34,9 @@
             yarn
             self.packages.${system}.smithy-cli
             just
-            trunk
+            wasm-pack
             wasm-bindgen-cli
+            tailwindcss
             awscli2
           ];
 

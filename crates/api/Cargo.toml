@@ -13,6 +13,7 @@ kms = ["kronos-common/kms"]
 
 [dependencies]
 kronos-common = { path = "../common" }
+kronos-dashboard = { path = "../dashboard", features = ["ssr"] }
 tokio.workspace = true
 actix-web.workspace = true
 actix-rt.workspace = true
@@ -29,5 +30,9 @@ jsonschema.workspace = true
 cron.workspace = true
 chrono-tz.workspace = true
 actix-cors = "0.7"
+actix-files = "0.6"
+leptos = { workspace = true, features = ["ssr"] }
+leptos_router = { workspace = true, features = ["ssr"] }
+leptos_actix.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true

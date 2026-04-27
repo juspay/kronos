@@ -2,12 +2,12 @@ use serde::{Deserialize, Serialize};
 
 // -- Wrapper types for API responses --
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataResponse<T> {
     pub data: T,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginatedResponse<T> {
     pub data: Vec<T>,
     pub cursor: Option<String>,
@@ -26,13 +26,13 @@ pub struct Organization {
     pub updated_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateOrganization {
     pub name: String,
     pub slug: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateOrganization {
     pub name: String,
 }
@@ -53,7 +53,7 @@ pub struct Workspace {
     pub updated_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateWorkspace {
     pub name: String,
     pub slug: String,
@@ -106,7 +106,7 @@ pub struct Endpoint {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateEndpoint {
     pub name: String,
     #[serde(rename = "type")]
@@ -162,13 +162,13 @@ pub struct Config {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateConfig {
     pub name: String,
     pub values: serde_json::Value,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateConfig {
     pub values: serde_json::Value,
 }
@@ -183,13 +183,13 @@ pub struct PayloadSpec {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreatePayloadSpec {
     pub name: String,
     pub schema: serde_json::Value,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdatePayloadSpec {
     pub schema: serde_json::Value,
 }
@@ -203,13 +203,13 @@ pub struct Secret {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateSecret {
     pub name: String,
     pub value: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateSecret {
     pub value: String,
 }

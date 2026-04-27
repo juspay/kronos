@@ -60,13 +60,14 @@ services:
       timeout: 3s
       retries: 10
 
-  kronos-api:
+  kronos-server:
     build:
       context: .
       dockerfile: Dockerfile
       args:
         BINARY: kronos-api
         FEATURES: kms
+        INCLUDE_DASHBOARD: "true"
     ports:
       - "8080:8080"
     env_file:
@@ -74,7 +75,10 @@ services:
         required: false
     environment:
       TE_LISTEN_ADDR: "0.0.0.0:8080"
+      TE_MODE: "both"
       TE_PATH_PREFIX: "/kronos"
+      TE_DASHBOARD_PATH_PREFIX: "/dashboard"
+      TE_DASHBOARD_DIST_DIR: "/app/dashboard-dist"
     networks:
       - kronos-net
     depends_on:
@@ -111,26 +115,6 @@ services:
         condition: service_healthy
       kronos-mock-server:
         condition: service_healthy
-
-  kronos-dashboard:
-    build:
-      context: .
-      dockerfile: Dockerfile.dashboard
-      args:
-        TE_DASHBOARD_PATH_PREFIX: "/dashboard"
-        TE_API_BASE_URL: "http://localhost:8080/kronos"
-    ports:
-      - "3000:80"
-    networks:
-      - kronos-net
-    depends_on:
-      kronos-api:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:80/dashboard/"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
 
 networks:
   kronos-net:

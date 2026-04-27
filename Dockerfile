@@ -1,12 +1,38 @@
+# ── Stage 0: Build dashboard WASM (skipped when INCLUDE_DASHBOARD != true) ──
+FROM rust:bookworm AS dashboard-builder
+
+ARG INCLUDE_DASHBOARD="false"
+
+RUN if [ "$INCLUDE_DASHBOARD" = "true" ]; then \
+      apt-get update && apt-get install -y pkg-config libssl-dev cmake && rm -rf /var/lib/apt/lists/* \
+      && rustup target add wasm32-unknown-unknown \
+      && cargo install wasm-pack --locked \
+      && ARCH=$(dpkg --print-architecture) \
+      && if [ "$ARCH" = "arm64" ]; then TW_ARCH="linux-arm64"; else TW_ARCH="linux-x64"; fi \
+      && curl -sL "https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-${TW_ARCH}" \
+           -o /usr/local/bin/tailwindcss \
+      && chmod +x /usr/local/bin/tailwindcss; \
+    fi
+
+WORKDIR /app
+COPY . .
+
+RUN if [ "$INCLUDE_DASHBOARD" = "true" ]; then \
+      cd crates/dashboard && wasm-pack build --target web --release -- --features hydrate \
+      && tailwindcss -i input.css -o pkg/tailwind-output.css --minify; \
+    else \
+      mkdir -p crates/dashboard/pkg; \
+    fi
+
+# ── Stage 1: Plan dependencies (cargo-chef) ─────────────────────────────
 FROM lukemathwalker/cargo-chef:latest-rust-bookworm AS chef
 WORKDIR /app
 
-# --- Plan dependencies ---
 FROM chef AS planner
 COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
-# --- Build ---
+# ── Stage 2: Build API/worker binary ────────────────────────────────────
 FROM chef AS builder
 
 RUN apt-get update && apt-get install -y \
@@ -41,7 +67,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     fi \
     && cp /app/target/release/"$BINARY" /usr/local/bin/app
 
-# --- Runtime ---
+# ── Stage 3: Runtime ────────────────────────────────────────────────────
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y \
@@ -51,5 +77,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/bin/app /usr/local/bin/app
+COPY --from=dashboard-builder /app/crates/dashboard/pkg /app/dashboard-dist
+
+ENV TE_DASHBOARD_DIST_DIR=/app/dashboard-dist
 
 ENTRYPOINT ["/usr/local/bin/app"]

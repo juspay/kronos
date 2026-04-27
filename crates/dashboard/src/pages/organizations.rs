@@ -14,7 +14,7 @@ pub fn OrganizationsPage() -> impl IntoView {
 
     let orgs = LocalResource::new(move || {
         let _ = refresh_counter.get();
-        async move { api::list_organizations().await }
+        api::list_organizations()
     });
 
     view! {
@@ -37,19 +37,18 @@ pub fn OrganizationsPage() -> impl IntoView {
 
             <Suspense fallback=move || view! { <LoadingSpinner /> }>
                 {move || {
-                    orgs.get().map(|result| {
-                        match &*result {
+                    orgs.get().map(|r| (*r).clone()).map(|result| {
+                        match result {
                             Ok(orgs) => {
                                 if orgs.is_empty() {
                                     view! {
                                         <EmptyState message="No organizations yet. Create one to get started." />
                                     }.into_any()
                                 } else {
-                                    let orgs = orgs.clone();
                                     view! { <OrgGrid orgs=orgs /> }.into_any()
                                 }
                             }
-                            Err(e) => view! { <ErrorAlert message=e.clone() /> }.into_any(),
+                            Err(e) => view! { <ErrorAlert message=e.to_string() /> }.into_any(),
                         }
                     })
                 }}
@@ -114,12 +113,12 @@ fn CreateOrgForm(
                 name: name_val,
                 slug: slug_val,
             };
-            match api::create_organization(&body).await {
+            match api::create_organization(body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
                     set_refresh.update(|c| *c += 1);
                 }
-                Err(e) => set_error.set(Some(e)),
+                Err(e) => set_error.set(Some(e.to_string())),
             }
             set_submitting.set(false);
         });

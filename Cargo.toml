@@ -4,8 +4,6 @@ members = [
     "crates/api",
     "crates/worker",
     "crates/mock-server",
-]
-exclude = [
     "crates/dashboard",
 ]
 resolver = "2"
@@ -80,6 +78,12 @@ metrics-exporter-prometheus = { version = "0.16", features = ["http-listener"] }
 # AWS (KMS feature)
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 aws-sdk-kms = "1"
+
+# Leptos (dashboard SSR)
+leptos = "0.7"
+leptos_router = "0.7"
+leptos_meta = "0.7"
+leptos_actix = "0.7"
 
 # Misc
 dotenvy = "0.15"

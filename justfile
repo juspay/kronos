@@ -333,20 +333,24 @@ all-down:
 
 # ─── Dashboard ──────────────────────────────────────────────
 
-# Build the dashboard (requires trunk and wasm32 target)
-# Set TE_DASHBOARD_PATH_PREFIX and TE_API_BASE_URL env vars for prefix support
+# Build the dashboard WASM hydration bundle (requires wasm-pack and wasm32 target)
 dashboard-build:
-    cd crates/dashboard && trunk build --release {{ if env("TE_DASHBOARD_PATH_PREFIX", "") != "" { "--public-url " + env("TE_DASHBOARD_PATH_PREFIX", "") } else { "" } }}
+    cd crates/dashboard && wasm-pack build --target web --release -- --features hydrate
+    cd crates/dashboard && tailwindcss -i input.css -o pkg/tailwind-output.css --minify
 
-# Run the dashboard dev server (port 3000, proxies API to 8080)
-# Set TE_DASHBOARD_PATH_PREFIX and TE_API_BASE_URL env vars for prefix support
+# Build dashboard in dev mode (faster, no optimizations)
+dashboard-build-dev:
+    cd crates/dashboard && wasm-pack build --target web --dev -- --features hydrate
+    cd crates/dashboard && tailwindcss -i input.css -o pkg/tailwind-output.css
+
+# Run the dashboard via the API server (SSR mode)
 dashboard:
-    cd crates/dashboard && trunk serve {{ if env("TE_DASHBOARD_PATH_PREFIX", "") != "" { "--public-url " + env("TE_DASHBOARD_PATH_PREFIX", "") } else { "" } }}
+    TE_MODE=both TE_DASHBOARD_DIST_DIR=crates/dashboard/pkg cargo run -p kronos-api
 
 # Install dashboard build tools
 dashboard-setup:
     rustup target add wasm32-unknown-unknown
-    cargo install trunk
+    cargo install wasm-pack
 
 # ─── Cleanup ─────────────────────────────────────────────────
 
@@ -355,4 +359,4 @@ clean:
     cargo clean
     rm -rf smithy/build
     rm -rf cli/node_modules cli/dist
-    rm -rf crates/dashboard/dist
+    rm -rf crates/dashboard/pkg
