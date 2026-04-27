@@ -46,8 +46,8 @@ COPY --from=planner /app/recipe.json recipe.json
 ARG FEATURES=""
 
 # Cache dependency build (rebuilds only when Cargo.toml/lock change)
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/app/target \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=cargo-registry \
+    --mount=type=cache,target=/app/target,sharing=locked,id=cargo-target \
     if [ -n "$FEATURES" ]; then \
       cargo chef cook --release --recipe-path recipe.json --features "$FEATURES"; \
     else \
@@ -58,8 +58,8 @@ COPY . .
 
 ARG BINARY
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/app/target \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=cargo-registry \
+    --mount=type=cache,target=/app/target,sharing=locked,id=cargo-target \
     if [ -n "$FEATURES" ]; then \
       cargo build --release --bin "$BINARY" --features "$FEATURES"; \
     else \
