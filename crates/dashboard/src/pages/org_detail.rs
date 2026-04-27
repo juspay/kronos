@@ -20,13 +20,13 @@ pub fn OrgDetailPage() -> impl IntoView {
     let org = LocalResource::new(move || {
         let _ = refresh_counter.get();
         let id = org_id();
-        async move { api::get_organization(&id).await }
+        api::get_organization(id)
     });
 
     let workspaces = LocalResource::new(move || {
         let _ = refresh_counter.get();
         let id = org_id();
-        async move { api::list_workspaces(&id).await }
+        api::list_workspaces(id)
     });
 
     view! {
@@ -36,8 +36,8 @@ pub fn OrgDetailPage() -> impl IntoView {
                 <A href=prefixed("/") attr:class="hover:text-blue-600 transition-colors">"Organizations"</A>
                 <ChevronRight />
                 <Suspense fallback=move || view! { <span class="animate-pulse bg-gray-200 rounded w-24 h-4 inline-block"></span> }>
-                    {move || org.get().map(|r| {
-                        match &*r {
+                    {move || org.get().map(|r| (*r).clone()).map(|r| {
+                        match r {
                             Ok(o) => view! { <span class="text-gray-900 font-medium">{o.name.clone()}</span> }.into_any(),
                             Err(_) => view! { <span>"Unknown"</span> }.into_any(),
                         }
@@ -47,13 +47,12 @@ pub fn OrgDetailPage() -> impl IntoView {
 
             // Org header
             <Suspense fallback=move || view! { <LoadingSpinner /> }>
-                {move || org.get().map(|r| {
-                    match &*r {
+                {move || org.get().map(|r| (*r).clone()).map(|r| {
+                    match r {
                         Ok(o) => {
-                            let o = o.clone();
                             view! { <OrgHeader org=o set_edit_open=set_edit_open /> }.into_any()
                         }
-                        Err(e) => view! { <ErrorAlert message=e.clone() /> }.into_any(),
+                        Err(e) => view! { <ErrorAlert message=e.to_string() /> }.into_any(),
                     }
                 })}
             </Suspense>
@@ -76,18 +75,17 @@ pub fn OrgDetailPage() -> impl IntoView {
                 <Suspense fallback=move || view! { <LoadingSpinner /> }>
                     {move || {
                         let oid = org_id();
-                        workspaces.get().map(move |result| {
-                            match &*result {
+                        workspaces.get().map(|r| (*r).clone()).map(move |result| {
+                            match result {
                                 Ok(wss) => {
                                     if wss.is_empty() {
                                         view! { <EmptyState message="No workspaces yet." /> }.into_any()
                                     } else {
                                         let oid = oid.clone();
-                                        let wss = wss.clone();
                                         view! { <WorkspaceGrid org_id=oid workspaces=wss /> }.into_any()
                                     }
                                 }
-                                Err(e) => view! { <ErrorAlert message=e.clone() /> }.into_any(),
+                                Err(e) => view! { <ErrorAlert message=e.to_string() /> }.into_any(),
                             }
                         })
                     }}
@@ -161,12 +159,12 @@ fn EditOrgForm(
         set_error.set(None);
         leptos::task::spawn_local(async move {
             let body = UpdateOrganization { name: name_val };
-            match api::update_organization(&oid, &body).await {
+            match api::update_organization(oid, body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
                     set_refresh.update(|c| *c += 1);
                 }
-                Err(e) => set_error.set(Some(e)),
+                Err(e) => set_error.set(Some(e.to_string())),
             }
             set_submitting.set(false);
         });
@@ -249,12 +247,12 @@ fn CreateWorkspaceForm(
                 name: name_val,
                 slug: slug_val,
             };
-            match api::create_workspace(&org_id, &body).await {
+            match api::create_workspace(org_id, body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
                     set_refresh.update(|c| *c += 1);
                 }
-                Err(e) => set_error.set(Some(e)),
+                Err(e) => set_error.set(Some(e.to_string())),
             }
             set_submitting.set(false);
         });

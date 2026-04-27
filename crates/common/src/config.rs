@@ -49,11 +49,43 @@ impl DbEnv {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ServerMode {
+    Api,
+    Dashboard,
+    Both,
+}
+
+impl ServerMode {
+    fn from_env() -> Self {
+        match get_from_env_or_default("TE_MODE", "api".to_string())
+            .to_lowercase()
+            .as_str()
+        {
+            "dashboard" => Self::Dashboard,
+            "both" => Self::Both,
+            _ => Self::Api,
+        }
+    }
+}
+
+fn normalize_prefix(raw: String) -> String {
+    let p = raw.trim_matches('/');
+    if p.is_empty() {
+        String::new()
+    } else {
+        format!("/{p}")
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ServerEnv {
     pub listen_addr: String,
     pub api_key: String,
     pub path_prefix: String,
+    pub mode: ServerMode,
+    pub dashboard_prefix: String,
+    pub dashboard_dist_dir: String,
 }
 
 impl ServerEnv {
@@ -63,22 +95,24 @@ impl ServerEnv {
         let api_key = reader
             .read_or_default("TE_API_KEY", "dev-api-key".to_string())
             .await;
-        let path_prefix =
-            get_from_env_or_default("TE_PATH_PREFIX", String::new());
-        // Normalize: ensure it starts with '/' and has no trailing '/'.
-        // A bare "/" or empty string both map to "" (no prefix).
-        let path_prefix = {
-            let p = path_prefix.trim_matches('/');
-            if p.is_empty() {
-                String::new()
-            } else {
-                format!("/{p}")
-            }
-        };
+        let path_prefix = normalize_prefix(
+            get_from_env_or_default("TE_PATH_PREFIX", String::new()),
+        );
+        let mode = ServerMode::from_env();
+        let dashboard_prefix = normalize_prefix(
+            get_from_env_or_default("TE_DASHBOARD_PATH_PREFIX", String::new()),
+        );
+        let dashboard_dist_dir = get_from_env_or_default(
+            "TE_DASHBOARD_DIST_DIR",
+            "./dashboard-dist".to_string(),
+        );
         Ok(Self {
             listen_addr,
             api_key,
             path_prefix,
+            mode,
+            dashboard_prefix,
+            dashboard_dist_dir,
         })
     }
 }

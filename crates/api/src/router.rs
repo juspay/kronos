@@ -1,5 +1,5 @@
 use actix_web::{web, HttpResponse};
-use kronos_common::config::AppConfig;
+use kronos_common::config::{AppConfig, ServerMode};
 use metrics_exporter_prometheus::PrometheusHandle;
 use sqlx::PgPool;
 
@@ -12,11 +12,23 @@ pub struct AppState {
     pub metrics_handle: PrometheusHandle,
 }
 
-pub fn configure(prefix: &str) -> impl FnOnce(&mut web::ServiceConfig) + '_ {
+pub fn configure(
+    prefix: &str,
+    mode: &ServerMode,
+    dashboard_prefix: &str,
+) -> impl FnOnce(&mut web::ServiceConfig) + 'static {
+    let prefix = prefix.to_string();
+    let mode = mode.clone();
+    let dashboard_prefix = dashboard_prefix.to_string();
+
     move |cfg: &mut web::ServiceConfig| {
-        // When a path prefix is configured, redirect `/` to the prefix
+        // When a path prefix is configured, redirect `/` appropriately
         if !prefix.is_empty() {
-            let redirect_target = format!("{prefix}/health");
+            let redirect_target = if mode == ServerMode::Both && !dashboard_prefix.is_empty() {
+                format!("{dashboard_prefix}/")
+            } else {
+                format!("{prefix}/health")
+            };
             cfg.route(
                 "/",
                 web::get().to(move || {
@@ -31,7 +43,7 @@ pub fn configure(prefix: &str) -> impl FnOnce(&mut web::ServiceConfig) + '_ {
         }
 
         cfg.service(
-            web::scope(prefix)
+            web::scope(&prefix)
                 .route("/health", web::get().to(health))
                 .route("/metrics", web::get().to(metrics_handler))
                 // Management routes (no workspace context needed)
