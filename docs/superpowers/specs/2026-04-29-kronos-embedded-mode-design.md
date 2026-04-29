@@ -26,6 +26,9 @@ The goal is to expose Kronos's job-management functionality as a Rust library th
 - Stripping multi-tenancy or moving tables to `public`. Tables stay in tenant schemas; embedded mode just pins a default workspace.
 - An embedded dashboard.
 - A manual `tick()` API for non-Tokio schedulers.
+- A connection-agnostic `KronosExecutor` trait that would let hosts pass non-sqlx connections (e.g., Diesel) into Kronos. Hosts using other DB libraries run with two pools against the same Postgres database; for atomicity-critical flows, the documented outbox pattern applies.
+- A forced migration of existing service deployments to a non-`public` system schema. Service-mode defaults preserve today's `public.organizations` / `public.workspaces` exactly. Operators who want the safer namespace get a separate, optional migration guide outside this spec.
+- Shipping a `kronos-outbox-relay` helper crate. The outbox pattern is documented as a blueprint in v1; a helper crate is a fast-follow if real users adopt the pattern.
 
 ## High-level architecture
 
@@ -268,17 +271,87 @@ Same pattern. Library uses `tracing` macros; never calls `tracing_subscriber::*`
 App-managed. The library exposes:
 
 ```rust
-pub fn migrations() -> &'static [Migration];   // SQL files compiled in
-pub async fn migrate(pool: &PgPool) -> Result<(), MigrateError>;
+pub fn migrations(opts: &MigrationOpts) -> Vec<Migration>;   // rendered for the chosen schemas
+pub async fn migrate(pool: &PgPool, opts: &MigrationOpts) -> Result<(), MigrateError>;
 ```
+
+`MigrationOpts` carries the `system_schema` name and the `tenant_schema_prefix` (see "Schema namespacing" below). Migration files are templates over these names, rendered at apply time.
 
 The README documents three integration paths:
 
-1. Call `kronos_client::migrate(&pool)` once at app startup (one-liner, no extra tool).
-2. Inline the SQL files into the host's existing migration tool (sqlx, refinery, Atlas, Liquibase).
-3. Use a small `kronos-migrate` CLI we ship for ad-hoc / CI use.
+1. Call `kronos_client::migrate(&pool, &opts)` once at app startup (one-liner, no extra tool).
+2. Inline the rendered SQL into the host's existing migration tool (sqlx, refinery, Atlas, Liquibase). The `kronos-migrate` CLI prints rendered SQL to stdout for this case.
+3. Use the `kronos-migrate` CLI directly for ad-hoc / CI use.
 
 `pg_cron` extension creation and `cron.schedule()` calls happen on the existing CRON registration code path. The library detects whether `pg_cron` is installed and warns rather than fails when it isn't, so non-CRON users aren't blocked.
+
+### Schema namespacing and table-name collisions
+
+Today's deployment puts shared tables (`organizations`, `workspaces`) in `public` and per-tenant tables in `{org_slug}_{workspace_slug}` schemas. For an embedded host whose own application tables also live in `public`, the names `organizations` and `workspaces` collide with very common host-app table names.
+
+The library treats schema names as configuration. Both builders accept:
+
+```rust
+KronosClient::builder(pool)
+    .system_schema("kronos")              // shared tables go here
+    .tenant_schema_prefix("kronos_")      // per-workspace schemas become "kronos_{org}_{ws}"
+    .workspace(o, w)
+    .build()
+```
+
+**Defaults differ by mode, by design:**
+
+- **Service binaries (`kronos-api`, `kronos-worker`):** default to `system_schema = "public"` and `tenant_schema_prefix = ""`. This preserves every existing deployment exactly. Operators can opt into the safer namespace by setting `TE_SYSTEM_SCHEMA` and `TE_TENANT_SCHEMA_PREFIX` and running a one-time migration (documented separately, not part of v1's scope).
+- **Library defaults (`KronosClient`, `Worker`):** default to `system_schema = "kronos"` and `tenant_schema_prefix = "kronos_"`. Embedded users get isolation from the host's `public.organizations` (or whatever) by default. They can override if they have a reason to.
+
+**Implementation:**
+
+- Migration SQL files reference schema names as template placeholders (`{{system_schema}}`, `{{tenant_schema_prefix}}`). The migration runner substitutes at apply time.
+- All runtime SQL in `kronos-common::db::*` already takes a schema parameter (the `scoped_transaction` path) — that pattern extends to the system schema for `organizations` / `workspaces` queries.
+- `SchemaRegistry` already iterates schemas; it gains a prefix filter so it picks up only Kronos-owned tenant schemas, not arbitrary host schemas that happen to exist.
+- `pg_cron` registrations include the schema name in the inserted execution row (no change to `pg_cron` itself, just the SQL it executes on tick).
+
+This is a configuration choice, not a schema rewrite — the table layout is identical, only the qualifier changes.
+
+### Coexistence with other database libraries (Diesel, etc.)
+
+Hosts may use Diesel, sea-orm, or another DB layer for their own tables. Two sub-questions matter, with different answers.
+
+**Connection pool coexistence.** The library is internally sqlx-only. The host's ORM keeps its own connection pool (e.g., `r2d2`/`bb8` for Diesel) against the same Postgres database. Two pools, one database — wasteful by a few connections, but functionally fine. v1 stance: document this; do not introduce a connection-agnostic abstraction.
+
+**Cross-system transactional atomicity.** The harder case is when the host wants to commit a domain change *and* enqueue a Kronos job atomically (e.g., "create order + enqueue welcome email — both or neither"). Two pools cannot share a transaction.
+
+The v1 stance is two-tiered:
+
+1. **Default: rely on idempotency keys.** Most embedded use cases tolerate "enqueue eventually succeeds" because Kronos already enforces idempotency via DB unique constraints — a retry of the enqueue after a domain commit is safe. The host pattern is:
+
+   ```rust
+   // Inside the host's diesel transaction:
+   let order = orders::insert(...).execute(&mut diesel_conn)?;
+   let idem_key = format!("welcome-email-{}", order.id);
+   diesel_conn.commit()?;
+
+   // After commit, enqueue with the order id as the idempotency key.
+   // If this fails, a retry (manual or via a sweeper) is safe — Kronos dedupes.
+   kronos.jobs().create(CreateJob {
+       endpoint: "welcome-email".into(),
+       idempotency_key: Some(idem_key),
+       input: Some(json!({ "order_id": order.id })),
+       ..Default::default()
+   }).await?;
+   ```
+
+   Failure mode: domain commits, enqueue crashes before retry, no email sent until the next sweep. Acceptable for most flows.
+
+2. **For hard-atomic needs: a transactional outbox.** For flows where the enqueue truly must be atomic with the domain commit, document the outbox pattern:
+
+   - Host adds its own `kronos_outbox` table to its schema, holding `{create_job_payload jsonb, attempted_at timestamptz}`.
+   - Inside the domain transaction (using the host's ORM), insert the outbox row.
+   - A small relay process polls `kronos_outbox`, calls `kronos.jobs().create()` for each pending row, and marks it sent. The relay uses idempotency keys so re-running after a crash is safe.
+
+   We document this pattern in the README and (as a fast-follow, not v1) optionally ship a `kronos-outbox-relay` helper crate that handles the polling/marking loop.
+
+**Out of scope for v1:** a connection-agnostic `KronosExecutor` trait that would let the host pass a Diesel connection where Kronos expects a sqlx connection. This is a substantial internal refactor (every internal query would have to route through the trait), and Diesel's type-state-heavy API does not abstract cleanly behind a runtime trait. We will revisit only if real users ask for it.
 
 ## Testing strategy
 
@@ -301,19 +374,21 @@ Each public method gets tests against a real PostgreSQL (sqlx test fixtures, sch
 
 A new test binary that does *no HTTP* and *no actix*: builds a `KronosClient` and a `Worker` against a fresh schema, creates a job via the client, lets the worker process it, asserts the execution row reaches `SUCCESS`. This is the canary for the embedded use case — if it breaks, embedding is broken.
 
+The test runs against the **non-default** `system_schema = "kronos"` and `tenant_schema_prefix = "kronos_"`, so it independently exercises the schema-parameterization machinery that service-mode integration tests don't reach (because they default to `public` / `""`).
+
 The mock-server stays as-is for HTTP dispatcher integration tests.
 
 ## Backwards-compatibility commitments
 
-The refactor is structural only. The following do not change:
+The refactor is structural only. For existing service deployments, the following do not change:
 
 - HTTP request and response shapes for any endpoint.
-- The DB schema and migration files.
-- The `TE_*` environment variable contract for the binaries.
+- The DB table layout (column types, constraints, indices). Migration files become parametric on schema names but, with service-mode defaults (`system_schema = "public"`, `tenant_schema_prefix = ""`), produce identical SQL output to today's migrations.
+- The `TE_*` environment variable contract for the binaries. New optional vars (`TE_SYSTEM_SCHEMA`, `TE_TENANT_SCHEMA_PREFIX`) default to today's values when unset.
 - The Prometheus metric names, labels, and the `:9090` listener for service mode.
 - The Smithy SDK contract (TypeScript / Haskell consumers see no change).
 
-If integration tests pass, the service is preserved.
+If integration tests pass with default config, the service is preserved.
 
 ## Risks and mitigations
 
@@ -325,6 +400,8 @@ If integration tests pass, the service is preserved.
 | Multi-tenancy code paths atrophy because most embedded users pin a workspace. | Service mode (`kronos-api` + multi-tenant `kronos-worker`) exercises the multi-tenant path on every CI run via the existing integration tests. |
 | Encryption-key handling regresses (e.g., key passed by reference vs. owned, lifetimes). | Builder takes `Vec<u8>` (owned); never holds a borrow across awaits. KMS path tested under the `kms` feature flag in CI. |
 | Embedded worker's `ctrl_c` handler conflicts with host's signal handling. | `start()` does not install a signal handler. Only the `run_until_ctrl_c()` convenience does, and its name is the documentation. Hosts that need their own shutdown story use `WorkerHandle::shutdown()`. |
+| Schema-name parameter inconsistency between client and worker (e.g., client writes to `kronos.organizations`, worker looks in `public.organizations`) silently breaks job execution. | Both builders share a `SchemaConfig { system_schema, tenant_schema_prefix }` value type. Mismatched config fails fast at `Worker::build()` by validating that the configured schemas exist and contain the expected migration version. The embedded-mode E2E test exercises the non-default `kronos`/`kronos_` namespace. |
+| Host adopts the outbox pattern incorrectly (e.g., commits the outbox row but never drains it; or drains without idempotency keys, producing duplicates). | README outbox section is prescriptive: it shows the exact relay loop, requires an idempotency key derived from a stable domain id, and recommends a periodic sweeper for the "outbox row written, relay process died before it ran" case. We may ship the relay as a helper crate later to reduce footguns. |
 
 ## Implementation phasing (rough)
 
@@ -333,10 +410,11 @@ This document is the design; the implementation plan (sequence of PRs, test gate
 Rough sketch of the phases the plan will likely cover:
 
 1. Create empty `kronos-client` and `kronos-embedded-worker` crates, wire workspace.
-2. Move worker modules (`poller`, `pipeline`, `backoff`, `dispatcher`) into `kronos-embedded-worker`. `kronos-worker` binary calls into it. Integration tests must pass.
-3. Build out `kronos-client` API surface incrementally, one resource at a time (orgs → workspaces → payload_specs → configs → secrets → endpoints → jobs → executions). Each handler in `kronos-api` cuts over as its resource is implemented. Integration tests must pass at each cutover.
-4. Add the embedded-mode E2E test.
-5. Documentation: README updates, embedded mode quickstart, migration integration guide.
+2. Parameterize migration files and runtime SQL on `system_schema` / `tenant_schema_prefix`. Service binaries default to `public` / `""` so existing deployments and integration tests are unaffected. Add a `MigrationOpts` type and the `migrate(&pool, &opts)` entry point. Integration tests must pass.
+3. Move worker modules (`poller`, `pipeline`, `backoff`, `dispatcher`) into `kronos-embedded-worker`. `kronos-worker` binary calls into it. Integration tests must pass.
+4. Build out `kronos-client` API surface incrementally, one resource at a time (orgs → workspaces → payload_specs → configs → secrets → endpoints → jobs → executions). Each handler in `kronos-api` cuts over as its resource is implemented. Integration tests must pass at each cutover.
+5. Add the embedded-mode E2E test, exercising the non-default `kronos` / `kronos_` namespace.
+6. Documentation: README updates, embedded mode quickstart, migration integration guide, outbox pattern blueprint.
 
 ## Open questions
 
