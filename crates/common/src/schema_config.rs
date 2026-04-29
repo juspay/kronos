@@ -36,7 +36,7 @@ impl SchemaConfig {
         }
         // Empty prefix is allowed; non-empty prefix must be a valid identifier *prefix*
         if !self.tenant_schema_prefix.is_empty()
-            && !is_valid_pg_identifier_prefix(&self.tenant_schema_prefix)
+            && !is_valid_pg_identifier(&self.tenant_schema_prefix)
         {
             return Err(format!(
                 "tenant_schema_prefix {:?} must contain only ASCII letters, digits, and underscores",
@@ -48,12 +48,6 @@ impl SchemaConfig {
 }
 
 fn is_valid_pg_identifier(s: &str) -> bool {
-    !s.is_empty()
-        && s.len() <= 63
-        && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-}
-
-fn is_valid_pg_identifier_prefix(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 63
         && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
@@ -85,7 +79,48 @@ mod tests {
             system_schema: "public; DROP TABLE x;".to_string(),
             tenant_schema_prefix: String::new(),
         };
-        assert!(bad.validate().is_err());
+        let err = bad.validate().unwrap_err();
+        assert!(
+            err.contains("system_schema"),
+            "error should name the offending field, got: {err}"
+        );
+        assert!(
+            err.contains("ASCII") || err.contains("alphanumeric"),
+            "error should describe the rule, got: {err}"
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_tenant_prefix() {
+        let bad = SchemaConfig {
+            system_schema: "public".to_string(),
+            tenant_schema_prefix: "bad-prefix!".to_string(),
+        };
+        let err = bad.validate().unwrap_err();
+        assert!(
+            err.contains("tenant_schema_prefix"),
+            "error should name the offending field, got: {err}"
+        );
+    }
+
+    #[test]
+    fn accepts_63_char_identifier() {
+        let name = "a".repeat(63);
+        let c = SchemaConfig {
+            system_schema: name,
+            tenant_schema_prefix: String::new(),
+        };
+        c.validate().expect("63-char identifier should validate");
+    }
+
+    #[test]
+    fn rejects_64_char_identifier() {
+        let name = "a".repeat(64);
+        let c = SchemaConfig {
+            system_schema: name,
+            tenant_schema_prefix: String::new(),
+        };
+        assert!(c.validate().is_err());
     }
 
     #[test]
