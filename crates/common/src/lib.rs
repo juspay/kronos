@@ -9,5 +9,6 @@ pub mod kms;
 pub mod metrics;
 pub mod models;
 pub mod pagination;
+pub mod schema_config;
 pub mod template;
 pub mod tenant;
