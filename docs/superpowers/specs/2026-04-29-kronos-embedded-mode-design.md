@@ -55,9 +55,13 @@ Public Rust API for everything the HTTP API does *except* the HTTP layer: create
 
 ### Construction
 
-Two builder modes, sharing the same struct and code paths:
+Two builder modes, sharing the same struct and code paths. The pool argument is `sqlx::PgPool`, taken by value (the type is internally `Arc<PoolInner>`, so passing by value is just a refcount bump):
 
 ```rust
+impl KronosClient {
+    pub fn builder(pool: sqlx::PgPool) -> KronosClientBuilder { /* ... */ }
+}
+
 // Embedded use: workspace pinned, all calls scoped to it
 let kronos = KronosClient::builder(pool)
     .workspace(org_id, workspace_id)
@@ -72,7 +76,7 @@ let kronos = KronosClient::builder(pool).build().await?;
 let scoped = kronos.for_workspace(org_id, workspace_id);
 ```
 
-`for_workspace` returns a cheap, cloneable scoped view backed by the same pool and caches. The actix handlers use this to translate tenant headers into a scoped client without rebuilding state.
+The host owns the pool's lifecycle and sizing; the library never connects on its own. Hosts that already have a `sqlx::PgPool` for their own queries can pass the same pool. `for_workspace` returns a cheap, cloneable scoped view backed by the same pool and caches. The actix handlers use this to translate tenant headers into a scoped client without rebuilding state.
 
 ### Public API surface
 
@@ -144,7 +148,13 @@ The worker pipeline (poll → claim → resolve → dispatch → record) as a li
 
 ### Construction & lifecycle
 
+The pool argument is `sqlx::PgPool` (same type and ownership semantics as `KronosClient::builder`):
+
 ```rust
+impl Worker {
+    pub fn builder(pool: sqlx::PgPool) -> WorkerBuilder { /* ... */ }
+}
+
 let worker = Worker::builder(pool)
     .workspace(org_id, workspace_id)            // matches client pinning
     .max_concurrent(50)
@@ -317,7 +327,7 @@ This is a configuration choice, not a schema rewrite — the table layout is ide
 
 Hosts may use Diesel, sea-orm, or another DB layer for their own tables. Two sub-questions matter, with different answers.
 
-**Connection pool coexistence.** The library is internally sqlx-only. The host's ORM keeps its own connection pool (e.g., `r2d2`/`bb8` for Diesel) against the same Postgres database. Two pools, one database — wasteful by a few connections, but functionally fine. v1 stance: document this; do not introduce a connection-agnostic abstraction.
+**Connection pool coexistence.** The library is internally sqlx-only — both `KronosClient::builder` and `Worker::builder` accept a `sqlx::PgPool`. The host's ORM keeps its own pool (e.g., `r2d2`/`bb8` holding `diesel::PgConnection`s for Diesel) against the same Postgres database. Two pools, one database — wasteful by a few connections, but functionally fine. v1 stance: document this; do not introduce a connection-agnostic abstraction.
 
 **Cross-system transactional atomicity.** The harder case is when the host wants to commit a domain change *and* enqueue a Kronos job atomically (e.g., "create order + enqueue welcome email — both or neither"). Two pools cannot share a transaction.
 
