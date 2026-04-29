@@ -413,18 +413,69 @@ If integration tests pass with default config, the service is preserved.
 | Schema-name parameter inconsistency between client and worker (e.g., client writes to `kronos.organizations`, worker looks in `public.organizations`) silently breaks job execution. | Both builders share a `SchemaConfig { system_schema, tenant_schema_prefix }` value type. Mismatched config fails fast at `Worker::build()` by validating that the configured schemas exist and contain the expected migration version. The embedded-mode E2E test exercises the non-default `kronos`/`kronos_` namespace. |
 | Host adopts the outbox pattern incorrectly (e.g., commits the outbox row but never drains it; or drains without idempotency keys, producing duplicates). | README outbox section is prescriptive: it shows the exact relay loop, requires an idempotency key derived from a stable domain id, and recommends a periodic sweeper for the "outbox row written, relay process died before it ran" case. We may ship the relay as a helper crate later to reduce footguns. |
 
-## Implementation phasing (rough)
+## Implementation phasing and rollout
 
-This document is the design; the implementation plan (sequence of PRs, test gates per step) is a separate artifact produced by the writing-plans skill.
+This document is the design. The detailed step-by-step implementation tasks live in separate plan files under `docs/superpowers/plans/` (one per rollout plan below), produced by the writing-plans skill.
 
-Rough sketch of the phases the plan will likely cover:
+The work ships as **four sequential plans, each merging as its own PR**. The boundaries are chosen so that every PR leaves the system in a green, runnable state — existing integration tests pass with default config, the service runs unchanged, and any merge can be deferred or rolled back without blocking the others.
 
-1. Create empty `kronos-client` and `kronos-embedded-worker` crates, wire workspace.
-2. Parameterize migration files and runtime SQL on `system_schema` / `tenant_schema_prefix`. Service binaries default to `public` / `""` so existing deployments and integration tests are unaffected. Add a `MigrationOpts` type and the `migrate(&pool, &opts)` entry point. Integration tests must pass.
-3. Move worker modules (`poller`, `pipeline`, `backoff`, `dispatcher`) into `kronos-embedded-worker`. `kronos-worker` binary calls into it. Integration tests must pass.
-4. Build out `kronos-client` API surface incrementally, one resource at a time (orgs → workspaces → payload_specs → configs → secrets → endpoints → jobs → executions). Each handler in `kronos-api` cuts over as its resource is implemented. Integration tests must pass at each cutover.
-5. Add the embedded-mode E2E test, exercising the non-default `kronos` / `kronos_` namespace.
-6. Documentation: README updates, embedded mode quickstart, migration integration guide, outbox pattern blueprint.
+### Plan 1 — Foundation
+
+**Covers:** new crate scaffolding + schema parameterization (phases below labeled F1, F2).
+
+| Phase | Detail |
+|---|---|
+| F1 | Create empty `kronos-client` and `kronos-embedded-worker` crates and wire them into the Cargo workspace. No public API yet — the crates compile but are inert. |
+| F2 | Parameterize migration files and runtime SQL on `system_schema` / `tenant_schema_prefix`. Add a `MigrationOpts` value type and the `migrate(&pool, &opts)` entry point on `kronos-client`. Service binaries default to `system_schema = "public"`, `tenant_schema_prefix = ""` (preserving today exactly). Add `TE_SYSTEM_SCHEMA` / `TE_TENANT_SCHEMA_PREFIX` env vars defaulting to today's values. |
+
+**Ships when:** `cargo build --workspace` succeeds, all existing integration tests (`just test-immediate`, `just test-delayed`, `just test-cron`, `just test-e2e`) pass with default config, and a smoke test confirms migrations applied with non-default `system_schema = "kronos"` produce a working schema.
+
+**Depends on:** nothing. This is the root.
+
+### Plan 2 — Worker extraction
+
+**Covers:** moving the worker pipeline into the new library crate (phase W1).
+
+| Phase | Detail |
+|---|---|
+| W1 | Move `poller`, `pipeline`, `backoff`, and `dispatcher` modules from `crates/worker/` to `crates/embedded-worker/`. Introduce the `Worker::builder(pool: sqlx::PgPool)` + `WorkerHandle` API and the `run_until_ctrl_c()` convenience. `kronos-worker` becomes a binary-only crate (~15-line `main`). |
+
+**Ships when:** all existing integration tests pass with the new worker shell. Behavior is byte-identical to the pre-extraction worker (same poll cadence, same claim semantics, same retry/backoff, same metrics labels).
+
+**Depends on:** Plan 1 (needs the empty `kronos-embedded-worker` crate to move into).
+
+### Plan 3 — Client extraction
+
+**Covers:** building the `kronos-client` API surface and cutting over `kronos-api` handlers, one resource at a time (phase C1).
+
+| Phase | Detail |
+|---|---|
+| C1 | For each resource (orgs → workspaces → payload-specs → configs → secrets → endpoints → jobs → executions/attempts/logs): implement the resource's API in `kronos-client` with unit tests against a real Postgres; cut over the corresponding `kronos-api` handler to translate HTTP into a `kronos-client` call; ensure integration tests still pass at each cutover. |
+
+**Ships when:** every `kronos-api` handler is a thin HTTP↔library translator; no DB-write logic remains in handler code; the integration test suite passes; the `KronosClient::for_workspace` per-request scoping pattern is in place.
+
+**Depends on:** Plan 1 (schema parameterization is a prerequisite for client SQL). Plan 2 is recommended-before but not strictly required (client extraction does not touch worker code).
+
+### Plan 4 — Embedded validation and documentation
+
+**Covers:** the embedded-mode E2E test and user-facing documentation (phases V1, D1).
+
+| Phase | Detail |
+|---|---|
+| V1 | Add the embedded-mode E2E test: a test binary that does no HTTP and no actix, builds a `KronosClient` and a `Worker` against a fresh schema using the non-default `system_schema = "kronos"` / `tenant_schema_prefix = "kronos_"`, creates a job via the client, lets the worker process it, asserts `SUCCESS`. |
+| D1 | README updates: embedded mode quickstart, the `sqlx::PgPool` setup snippet, the migration integration guide for `kronos-client::migrate(&pool, &opts)`, the transactional outbox pattern blueprint for hosts using Diesel/sea-orm/etc., and the explicit pg_cron prerequisite call-out. |
+
+**Ships when:** the embedded-mode E2E test is green in CI; documentation has been reviewed by a teammate who has not been part of the embedded-mode design.
+
+**Depends on:** Plan 3 (V1 needs the full `kronos-client` API and `Worker` library to exercise).
+
+### Out-of-band: optional follow-ups (not in v1)
+
+These are explicitly *not* in any of the four plans; they're tracked here so reviewers know the design has considered them:
+
+- One-time migration guide for service operators who want to move existing `public.organizations` / `public.workspaces` deployments into the `kronos` schema.
+- `kronos-outbox-relay` helper crate for hosts adopting the outbox pattern.
+- In-process CRON scheduler for hosts that can't install `pg_cron`.
 
 ## Open questions
 
