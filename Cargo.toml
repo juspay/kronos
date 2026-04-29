@@ -3,6 +3,8 @@ members = [
     "crates/common",
     "crates/api",
     "crates/worker",
+    "crates/client",
+    "crates/embedded-worker",
     "crates/mock-server",
     "crates/dashboard",
 ]
