@@ -2645,10 +2645,21 @@ dependencies = [
 name = "kronos-embedded-worker"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "chrono",
  "kronos-common",
+ "metrics",
+ "rand 0.8.5",
+ "rdkafka",
+ "redis",
+ "reqwest",
+ "serde",
+ "serde_json",
  "sqlx",
+ "thiserror 1.0.69",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

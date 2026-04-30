@@ -4,8 +4,26 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+default = []
+kafka = ["dep:rdkafka"]
+redis-stream = ["dep:redis"]
+kms = ["kronos-common/kms"]
+
 [dependencies]
 kronos-common = { path = "../common" }
 sqlx = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+rand = { workspace = true }
+metrics = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+rdkafka = { workspace = true, optional = true }
+redis = { workspace = true, optional = true }
