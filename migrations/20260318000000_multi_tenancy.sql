@@ -1,6 +1,8 @@
 -- Multi-tenancy: organizations and workspaces
 
-CREATE TABLE IF NOT EXISTS public.organizations (
+CREATE SCHEMA IF NOT EXISTS {{system_schema}};
+
+CREATE TABLE IF NOT EXISTS {{system_schema}}.organizations (
     org_id      TEXT        NOT NULL DEFAULT gen_random_uuid()::TEXT,
     name        TEXT        NOT NULL,
     slug        TEXT        NOT NULL UNIQUE,
@@ -11,7 +13,7 @@ CREATE TABLE IF NOT EXISTS public.organizations (
     CONSTRAINT chk_org_status CHECK (status IN ('ACTIVE', 'SUSPENDED', 'DELETED'))
 );
 
-CREATE TABLE IF NOT EXISTS public.workspaces (
+CREATE TABLE IF NOT EXISTS {{system_schema}}.workspaces (
     workspace_id    TEXT        NOT NULL DEFAULT gen_random_uuid()::TEXT,
     org_id          TEXT        NOT NULL,
     name            TEXT        NOT NULL,
@@ -22,10 +24,10 @@ CREATE TABLE IF NOT EXISTS public.workspaces (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT pk_workspaces PRIMARY KEY (workspace_id),
-    CONSTRAINT fk_workspaces_org FOREIGN KEY (org_id) REFERENCES public.organizations (org_id),
+    CONSTRAINT fk_workspaces_org FOREIGN KEY (org_id) REFERENCES {{system_schema}}.organizations (org_id),
     CONSTRAINT uq_workspace_slug UNIQUE (org_id, slug),
     CONSTRAINT chk_ws_status CHECK (status IN ('ACTIVE', 'SUSPENDED', 'DELETED'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_workspaces_org ON public.workspaces (org_id);
-CREATE INDEX IF NOT EXISTS idx_workspaces_status ON public.workspaces (status);
+CREATE INDEX IF NOT EXISTS idx_workspaces_org ON {{system_schema}}.workspaces (org_id);
+CREATE INDEX IF NOT EXISTS idx_workspaces_status ON {{system_schema}}.workspaces (status);

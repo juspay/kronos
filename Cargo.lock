@@ -2583,6 +2583,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "kronos-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "kronos-common",
+ "sqlx",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "kronos-common"
 version = "0.1.0"
 dependencies = [
@@ -2625,6 +2639,16 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "kronos-embedded-worker"
+version = "0.1.0"
+dependencies = [
+ "kronos-common",
+ "sqlx",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

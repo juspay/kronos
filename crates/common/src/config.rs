@@ -168,6 +168,38 @@ impl MetricsEnv {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct SchemaEnv {
+    pub system_schema: String,
+    pub tenant_schema_prefix: String,
+}
+
+impl SchemaEnv {
+    fn new() -> Self {
+        Self {
+            system_schema: get_from_env_or_default(
+                "TE_SYSTEM_SCHEMA",
+                "public".to_string(),
+            ),
+            tenant_schema_prefix: get_from_env_or_default(
+                "TE_TENANT_SCHEMA_PREFIX",
+                String::new(),
+            ),
+        }
+    }
+
+    /// Convert env-loaded values into a [`SchemaConfig`] value.
+    ///
+    /// Callers should call [`SchemaConfig::validate`] before using the result;
+    /// [`AppConfig::from_env`] already does this on startup.
+    pub fn to_schema_config(&self) -> crate::schema_config::SchemaConfig {
+        crate::schema_config::SchemaConfig {
+            system_schema: self.system_schema.clone(),
+            tenant_schema_prefix: self.tenant_schema_prefix.clone(),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Top-level config
 // ---------------------------------------------------------------------------
@@ -179,6 +211,7 @@ pub struct AppConfig {
     pub worker: WorkerEnv,
     pub crypto: CryptoEnv,
     pub metrics: MetricsEnv,
+    pub schema: SchemaEnv,
 }
 
 impl AppConfig {
@@ -213,6 +246,13 @@ impl AppConfig {
             .await
             .map_err(|e| anyhow::anyhow!(e))?;
         let metrics = MetricsEnv::new();
+        let schema = SchemaEnv::new();
+
+        // Validate schema config early so misconfiguration fails fast at startup.
+        schema
+            .to_schema_config()
+            .validate()
+            .map_err(|e| anyhow::anyhow!("invalid schema config: {}", e))?;
 
         Ok(Self {
             db,
@@ -220,6 +260,53 @@ impl AppConfig {
             worker,
             crypto,
             metrics,
+            schema,
         })
+    }
+}
+
+#[cfg(test)]
+mod schema_env_tests {
+    use super::*;
+
+    #[test]
+    fn defaults_match_today() {
+        let saved_sys = std::env::var("TE_SYSTEM_SCHEMA").ok();
+        let saved_prefix = std::env::var("TE_TENANT_SCHEMA_PREFIX").ok();
+        std::env::remove_var("TE_SYSTEM_SCHEMA");
+        std::env::remove_var("TE_TENANT_SCHEMA_PREFIX");
+
+        let s = SchemaEnv::new();
+        assert_eq!(s.system_schema, "public");
+        assert_eq!(s.tenant_schema_prefix, "");
+
+        if let Some(v) = saved_sys {
+            std::env::set_var("TE_SYSTEM_SCHEMA", v);
+        }
+        if let Some(v) = saved_prefix {
+            std::env::set_var("TE_TENANT_SCHEMA_PREFIX", v);
+        }
+    }
+
+    #[test]
+    fn picks_up_non_default_values() {
+        let saved_sys = std::env::var("TE_SYSTEM_SCHEMA").ok();
+        let saved_prefix = std::env::var("TE_TENANT_SCHEMA_PREFIX").ok();
+
+        std::env::set_var("TE_SYSTEM_SCHEMA", "kronos_test_env");
+        std::env::set_var("TE_TENANT_SCHEMA_PREFIX", "k_");
+
+        let s = SchemaEnv::new();
+        assert_eq!(s.system_schema, "kronos_test_env");
+        assert_eq!(s.tenant_schema_prefix, "k_");
+
+        match saved_sys {
+            Some(v) => std::env::set_var("TE_SYSTEM_SCHEMA", v),
+            None => std::env::remove_var("TE_SYSTEM_SCHEMA"),
+        }
+        match saved_prefix {
+            Some(v) => std::env::set_var("TE_TENANT_SCHEMA_PREFIX", v),
+            None => std::env::remove_var("TE_TENANT_SCHEMA_PREFIX"),
+        }
     }
 }

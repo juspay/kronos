@@ -34,12 +34,12 @@ db-up:
 db-down:
     docker compose down
 
-# Run SQL migrations
+# Run SQL migrations via the kronos-migrate binary.
+# Defaults to system_schema=public, tenant_schema_prefix="" (preserves today's layout).
+# Override via TE_SYSTEM_SCHEMA / TE_TENANT_SCHEMA_PREFIX env vars.
 db-migrate:
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260317000000_initial.sql
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260318000000_multi_tenancy.sql
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260322000000_txn_based_pickup.sql
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260322000001_pg_cron.sql
+    cargo run -p kronos-client --bin kronos-migrate -- \
+        --database-url "$TE_DATABASE_URL"
 
 # Reset database (drop + recreate + migrate)
 db-reset:

@@ -16,11 +16,12 @@ pub fn validate_schema_name(name: &str) -> bool {
     !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// Builds the schema name from org_id and workspace slug.
+/// Builds the per-workspace schema name from `{prefix}{org_id}_{workspace_slug}`.
 /// Replaces hyphens with underscores since PostgreSQL schema names can't contain hyphens.
-pub fn build_schema_name(org_id: &str, workspace_slug: &str) -> String {
+pub fn build_schema_name(prefix: &str, org_id: &str, workspace_slug: &str) -> String {
     format!(
-        "{}_{}",
+        "{}{}_{}",
+        prefix,
         org_id.replace('-', "_"),
         workspace_slug.replace('-', "_")
     )
@@ -33,6 +34,7 @@ pub struct SchemaRegistry {
     pool: PgPool,
     cache: Arc<RwLock<CachedSchemas>>,
     ttl: Duration,
+    system_schema: String,
 }
 
 struct CachedSchemas {
@@ -41,14 +43,15 @@ struct CachedSchemas {
 }
 
 impl SchemaRegistry {
-    pub fn new(pool: PgPool, ttl_secs: u64) -> Self {
+    pub fn new(pool: PgPool, system_schema: String, ttl_secs: u64) -> Self {
         Self {
             pool,
             cache: Arc::new(RwLock::new(CachedSchemas {
                 schemas: Vec::new(),
-                fetched_at: Instant::now() - Duration::from_secs(ttl_secs + 1), // force initial fetch
+                fetched_at: Instant::now() - Duration::from_secs(ttl_secs + 1),
             })),
             ttl: Duration::from_secs(ttl_secs),
+            system_schema,
         }
     }
 
@@ -61,11 +64,15 @@ impl SchemaRegistry {
             }
         }
 
-        // Refresh
-        let schemas: Vec<(String,)> =
-            sqlx::query_as("SELECT schema_name FROM public.workspaces WHERE status = 'ACTIVE'")
-                .fetch_all(&self.pool)
-                .await?;
+        // Refresh — system_schema is a validated identifier so quoting it is safe.
+        // We assert the validator on construction in the call site; here we just use it.
+        let query = format!(
+            "SELECT schema_name FROM {}.workspaces WHERE status = 'ACTIVE'",
+            quote_ident(&self.system_schema)
+        );
+        let schemas: Vec<(String,)> = sqlx::query_as(&query)
+            .fetch_all(&self.pool)
+            .await?;
 
         let schemas: Vec<String> = schemas.into_iter().map(|r| r.0).collect();
 
@@ -74,5 +81,49 @@ impl SchemaRegistry {
         cache.fetched_at = Instant::now();
 
         Ok(schemas)
+    }
+}
+
+/// Quotes a Postgres identifier safely (doubles internal double-quotes).
+/// Callers must still validate against `is_valid_pg_identifier` upstream;
+/// this is defense in depth, not the primary check.
+fn quote_ident(ident: &str) -> String {
+    format!("\"{}\"", ident.replace('"', "\"\""))
+}
+
+#[cfg(test)]
+mod build_schema_name_tests {
+    use super::*;
+
+    #[test]
+    fn service_mode_no_prefix() {
+        assert_eq!(
+            build_schema_name("", "myorg", "prod"),
+            "myorg_prod"
+        );
+    }
+
+    #[test]
+    fn library_mode_kronos_prefix() {
+        assert_eq!(
+            build_schema_name("kronos_", "myorg", "prod"),
+            "kronos_myorg_prod"
+        );
+    }
+
+    #[test]
+    fn hyphens_in_org_id_become_underscores() {
+        assert_eq!(
+            build_schema_name("", "abc-123", "prod"),
+            "abc_123_prod"
+        );
+    }
+
+    #[test]
+    fn hyphens_in_slug_become_underscores() {
+        assert_eq!(
+            build_schema_name("kronos_", "myorg", "prod-east"),
+            "kronos_myorg_prod_east"
+        );
     }
 }

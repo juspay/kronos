@@ -11,7 +11,7 @@ DO $$ DECLARE
     cron_job_name TEXT;
     cron_command TEXT;
 BEGIN
-    FOR ws IN SELECT schema_name FROM public.workspaces WHERE status = 'ACTIVE' LOOP
+    FOR ws IN SELECT schema_name FROM {{system_schema}}.workspaces WHERE status = 'ACTIVE' LOOP
         FOR job IN EXECUTE format(
             'SELECT job_id, cron_expression, endpoint FROM %I.jobs WHERE trigger_type = ''CRON'' AND status = ''ACTIVE''',
             ws.schema_name
