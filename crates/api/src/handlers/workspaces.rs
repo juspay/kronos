@@ -21,7 +21,7 @@ pub async fn create(
         .await?
         .ok_or_else(|| AppError::OrgNotFound(format!("Organization {} not found", org_id)))?;
 
-    let schema_name = build_schema_name(&org_id, &body.slug);
+    let schema_name = build_schema_name("", &org_id, &body.slug);
 
     let workspace =
         db::workspaces::create(&state.pool, &org_id, &body.name, &body.slug, &schema_name)

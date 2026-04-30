@@ -16,11 +16,12 @@ pub fn validate_schema_name(name: &str) -> bool {
     !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// Builds the schema name from org_id and workspace slug.
+/// Builds the per-workspace schema name from `{prefix}{org_id}_{workspace_slug}`.
 /// Replaces hyphens with underscores since PostgreSQL schema names can't contain hyphens.
-pub fn build_schema_name(org_id: &str, workspace_slug: &str) -> String {
+pub fn build_schema_name(prefix: &str, org_id: &str, workspace_slug: &str) -> String {
     format!(
-        "{}_{}",
+        "{}{}_{}",
+        prefix,
         org_id.replace('-', "_"),
         workspace_slug.replace('-', "_")
     )
@@ -74,5 +75,42 @@ impl SchemaRegistry {
         cache.fetched_at = Instant::now();
 
         Ok(schemas)
+    }
+}
+
+#[cfg(test)]
+mod build_schema_name_tests {
+    use super::*;
+
+    #[test]
+    fn service_mode_no_prefix() {
+        assert_eq!(
+            build_schema_name("", "myorg", "prod"),
+            "myorg_prod"
+        );
+    }
+
+    #[test]
+    fn library_mode_kronos_prefix() {
+        assert_eq!(
+            build_schema_name("kronos_", "myorg", "prod"),
+            "kronos_myorg_prod"
+        );
+    }
+
+    #[test]
+    fn hyphens_in_org_id_become_underscores() {
+        assert_eq!(
+            build_schema_name("", "abc-123", "prod"),
+            "abc_123_prod"
+        );
+    }
+
+    #[test]
+    fn hyphens_in_slug_become_underscores() {
+        assert_eq!(
+            build_schema_name("kronos_", "myorg", "prod-east"),
+            "kronos_myorg_prod_east"
+        );
     }
 }
