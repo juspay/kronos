@@ -34,6 +34,7 @@ pub struct SchemaRegistry {
     pool: PgPool,
     cache: Arc<RwLock<CachedSchemas>>,
     ttl: Duration,
+    system_schema: String,
 }
 
 struct CachedSchemas {
@@ -42,14 +43,15 @@ struct CachedSchemas {
 }
 
 impl SchemaRegistry {
-    pub fn new(pool: PgPool, ttl_secs: u64) -> Self {
+    pub fn new(pool: PgPool, system_schema: String, ttl_secs: u64) -> Self {
         Self {
             pool,
             cache: Arc::new(RwLock::new(CachedSchemas {
                 schemas: Vec::new(),
-                fetched_at: Instant::now() - Duration::from_secs(ttl_secs + 1), // force initial fetch
+                fetched_at: Instant::now() - Duration::from_secs(ttl_secs + 1),
             })),
             ttl: Duration::from_secs(ttl_secs),
+            system_schema,
         }
     }
 
@@ -62,11 +64,15 @@ impl SchemaRegistry {
             }
         }
 
-        // Refresh
-        let schemas: Vec<(String,)> =
-            sqlx::query_as("SELECT schema_name FROM public.workspaces WHERE status = 'ACTIVE'")
-                .fetch_all(&self.pool)
-                .await?;
+        // Refresh — system_schema is a validated identifier so quoting it is safe.
+        // We assert the validator on construction in the call site; here we just use it.
+        let query = format!(
+            "SELECT schema_name FROM {}.workspaces WHERE status = 'ACTIVE'",
+            quote_ident(&self.system_schema)
+        );
+        let schemas: Vec<(String,)> = sqlx::query_as(&query)
+            .fetch_all(&self.pool)
+            .await?;
 
         let schemas: Vec<String> = schemas.into_iter().map(|r| r.0).collect();
 
@@ -76,6 +82,13 @@ impl SchemaRegistry {
 
         Ok(schemas)
     }
+}
+
+/// Quotes a Postgres identifier safely (doubles internal double-quotes).
+/// Callers must still validate against `is_valid_pg_identifier` upstream;
+/// this is defense in depth, not the primary check.
+fn quote_ident(ident: &str) -> String {
+    format!("\"{}\"", ident.replace('"', "\"\""))
 }
 
 #[cfg(test)]
