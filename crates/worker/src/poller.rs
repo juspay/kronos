@@ -18,7 +18,11 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
     let worker_id = format!("worker_{}", Uuid::new_v4().simple());
     let semaphore = Arc::new(Semaphore::new(config.worker.max_concurrent));
     let poll_interval = Duration::from_millis(config.worker.poll_interval_ms);
-    let schema_registry = SchemaRegistry::new(pool.clone(), "public".to_string(), 30);
+    let schema_registry = SchemaRegistry::new(
+        pool.clone(),
+        config.schema.system_schema.clone(),
+        30,
+    );
 
     let ctx = Arc::new(PipelineContext {
         pool: pool.clone(),
