@@ -188,6 +188,10 @@ impl SchemaEnv {
         }
     }
 
+    /// Convert env-loaded values into a [`SchemaConfig`] value.
+    ///
+    /// Callers should call [`SchemaConfig::validate`] before using the result;
+    /// [`AppConfig::from_env`] already does this on startup.
     pub fn to_schema_config(&self) -> crate::schema_config::SchemaConfig {
         crate::schema_config::SchemaConfig {
             system_schema: self.system_schema.clone(),
@@ -286,6 +290,9 @@ mod schema_env_tests {
 
     #[test]
     fn picks_up_non_default_values() {
+        let saved_sys = std::env::var("TE_SYSTEM_SCHEMA").ok();
+        let saved_prefix = std::env::var("TE_TENANT_SCHEMA_PREFIX").ok();
+
         std::env::set_var("TE_SYSTEM_SCHEMA", "kronos_test_env");
         std::env::set_var("TE_TENANT_SCHEMA_PREFIX", "k_");
 
@@ -293,7 +300,13 @@ mod schema_env_tests {
         assert_eq!(s.system_schema, "kronos_test_env");
         assert_eq!(s.tenant_schema_prefix, "k_");
 
-        std::env::remove_var("TE_SYSTEM_SCHEMA");
-        std::env::remove_var("TE_TENANT_SCHEMA_PREFIX");
+        match saved_sys {
+            Some(v) => std::env::set_var("TE_SYSTEM_SCHEMA", v),
+            None => std::env::remove_var("TE_SYSTEM_SCHEMA"),
+        }
+        match saved_prefix {
+            Some(v) => std::env::set_var("TE_TENANT_SCHEMA_PREFIX", v),
+            None => std::env::remove_var("TE_TENANT_SCHEMA_PREFIX"),
+        }
     }
 }
