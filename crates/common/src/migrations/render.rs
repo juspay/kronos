@@ -87,4 +87,25 @@ mod tests {
         let err = render("anything", &cfg).unwrap_err();
         assert!(matches!(err, RenderError::InvalidConfig(_)));
     }
+
+    #[test]
+    fn service_default_renders_to_public_schema() {
+        let cfg = SchemaConfig::service_default();
+        let template = include_str!("../../../../migrations/20260318000000_multi_tenancy.sql");
+        let rendered = render(template, &cfg).unwrap();
+        assert!(rendered.contains("public.organizations"));
+        assert!(rendered.contains("public.workspaces"));
+        assert!(!rendered.contains("{{"));
+    }
+
+    #[test]
+    fn library_default_renders_to_kronos_schema() {
+        let cfg = SchemaConfig::library_default();
+        let template = include_str!("../../../../migrations/20260318000000_multi_tenancy.sql");
+        let rendered = render(template, &cfg).unwrap();
+        assert!(rendered.contains("kronos.organizations"));
+        assert!(rendered.contains("kronos.workspaces"));
+        assert!(!rendered.contains("public.organizations"));
+        assert!(!rendered.contains("{{"));
+    }
 }
