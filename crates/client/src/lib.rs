@@ -1,3 +1,7 @@
-//! Kronos library API. Today this crate is an inert library shell;
-//! subsequent tasks in Plan 1 add the migration entry point, and later
-//! plans add the enqueue + CRUD surface.
+//! Kronos library API. Today this crate exposes only the migration entry
+//! point; subsequent plans add the enqueue + CRUD surface.
+
+pub mod migrate;
+
+pub use kronos_common::schema_config::SchemaConfig;
+pub use migrate::{migrate, MigrateError, Migration, MIGRATIONS};
