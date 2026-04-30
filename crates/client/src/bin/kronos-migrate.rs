@@ -10,7 +10,7 @@ use sqlx::PgPool;
 #[command(about = "Render and apply Kronos migrations")]
 struct Args {
     /// Postgres connection URL.
-    #[arg(long, env = "TE_DATABASE_URL")]
+    #[arg(long, env = "TE_DATABASE_URL", hide_env_values = true)]
     database_url: String,
 
     /// System schema for shared tables (organizations, workspaces).
@@ -31,10 +31,15 @@ async fn main() -> anyhow::Result<()> {
         system_schema: args.system_schema,
         tenant_schema_prefix: args.tenant_schema_prefix,
     };
+    cfg.validate()
+        .map_err(|e| anyhow::anyhow!("invalid schema config: {}", e))?;
 
     let pool = PgPool::connect(&args.database_url).await?;
     migrate(&pool, &cfg).await?;
-    println!("migrations applied (system_schema={}, tenant_schema_prefix={:?})",
-        cfg.system_schema, cfg.tenant_schema_prefix);
+    tracing::info!(
+        system_schema = %cfg.system_schema,
+        tenant_schema_prefix = ?cfg.tenant_schema_prefix,
+        "migrations applied"
+    );
     Ok(())
 }
