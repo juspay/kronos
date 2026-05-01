@@ -2682,21 +2682,15 @@ name = "kronos-worker"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "chrono",
  "dotenvy",
  "kronos-common",
- "metrics",
- "rand 0.8.5",
+ "kronos-embedded-worker",
  "rdkafka",
  "redis",
- "reqwest",
- "serde",
- "serde_json",
  "sqlx",
  "tokio",
  "tracing",
  "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]

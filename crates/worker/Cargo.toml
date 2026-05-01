@@ -9,26 +9,19 @@ path = "src/main.rs"
 
 [features]
 default = []
-kafka = ["rdkafka"]
-redis-stream = ["redis"]
+kafka = ["kronos-embedded-worker/kafka", "rdkafka"]
+redis-stream = ["kronos-embedded-worker/redis-stream", "redis"]
 kms = ["kronos-common/kms"]
 
 [dependencies]
 kronos-common = { path = "../common" }
+kronos-embedded-worker = { path = "../embedded-worker" }
 tokio.workspace = true
 sqlx.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-reqwest.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-uuid.workspace = true
-chrono.workspace = true
-rand.workspace = true
 dotenvy.workspace = true
 anyhow.workspace = true
-
-metrics.workspace = true
 
 rdkafka = { workspace = true, optional = true }
 redis = { workspace = true, optional = true }
