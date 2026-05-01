@@ -2,6 +2,9 @@ use kronos_common::config::AppConfig;
 use kronos_common::schema_config::SchemaConfig;
 use sqlx::PgPool;
 
+use crate::error::BuildError;
+use crate::worker::{Worker, WorkerConfig};
+
 /// Builder for a [`Worker`]. See `Worker::builder`.
 pub struct WorkerBuilder {
     pub(crate) pool: PgPool,
@@ -107,4 +110,69 @@ impl WorkerBuilder {
     pub fn secret_cache_ttl_sec_for_test(&self) -> u64 { self.secret_cache_ttl_sec }
     #[doc(hidden)]
     pub fn shutdown_timeout_sec_for_test(&self) -> u64 { self.shutdown_timeout_sec }
+}
+
+impl WorkerBuilder {
+    /// Validate the config, probe the system schema, and produce a [`Worker`].
+    /// When `install_metrics_recorder(true)` was called, the metrics recorder
+    /// is installed on `metrics_port` exactly once before returning.
+    pub async fn build(self) -> Result<Worker, BuildError> {
+        // 1. Schema-name shape validation (no DB call).
+        let cfg = SchemaConfig {
+            system_schema: self.system_schema.clone(),
+            tenant_schema_prefix: self.tenant_schema_prefix.clone(),
+        };
+        cfg.validate().map_err(BuildError::InvalidSchemaConfig)?;
+
+        // 2. Encryption key required for v1.
+        let encryption_key = self
+            .encryption_key
+            .clone()
+            .ok_or(BuildError::EncryptionKeyMissing)?;
+
+        // 3. System-schema existence probe via to_regclass (null-safe; no parse error
+        //    when schema or table is missing). system_schema is already shape-validated,
+        //    so quoting it is safe.
+        let qualified_orgs = format!("\"{}\".organizations", self.system_schema);
+        let qualified_ws = format!("\"{}\".workspaces", self.system_schema);
+        let probe: (Option<String>, Option<String>) = sqlx::query_as(
+            "SELECT to_regclass($1)::text, to_regclass($2)::text",
+        )
+        .bind(&qualified_orgs)
+        .bind(&qualified_ws)
+        .fetch_one(&self.pool)
+        .await?;
+
+        if probe.0.is_none() {
+            return Err(BuildError::SystemSchemaMissing {
+                schema: self.system_schema.clone(),
+                table: "organizations".into(),
+            });
+        }
+        if probe.1.is_none() {
+            return Err(BuildError::SystemSchemaMissing {
+                schema: self.system_schema.clone(),
+                table: "workspaces".into(),
+            });
+        }
+
+        // 4. Optional metrics recorder install — service-binary opt-in.
+        if self.install_metrics_recorder {
+            kronos_common::metrics::install_recorder_with_listener(self.metrics_port);
+        }
+
+        Ok(Worker {
+            pool: self.pool,
+            cfg: WorkerConfig {
+                system_schema: self.system_schema,
+                tenant_schema_prefix: self.tenant_schema_prefix,
+                max_concurrent: self.max_concurrent,
+                poll_interval_ms: self.poll_interval_ms,
+                config_cache_ttl_sec: self.config_cache_ttl_sec,
+                secret_cache_ttl_sec: self.secret_cache_ttl_sec,
+                shutdown_timeout_sec: self.shutdown_timeout_sec,
+                encryption_key,
+            },
+        })
+    }
 }

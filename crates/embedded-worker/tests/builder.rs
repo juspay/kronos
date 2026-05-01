@@ -64,3 +64,71 @@ async fn from_app_config_pulls_through_service_defaults() {
     std::env::remove_var("TE_DATABASE_URL");
     std::env::remove_var("TE_ENCRYPTION_KEY");
 }
+
+// The tests below need a running Postgres at TE_DATABASE_URL.
+// Run with: `cargo test -p kronos-embedded-worker --test builder -- --ignored --test-threads=1`
+use kronos_embedded_worker::BuildError;
+
+fn db_url() -> String {
+    std::env::var("TE_DATABASE_URL").unwrap_or_else(|_| {
+        "postgres://kronos:kronos@localhost:5432/taskexecutor".to_string()
+    })
+}
+
+#[tokio::test]
+#[ignore]
+async fn build_rejects_invalid_schema_config() {
+    let pool = sqlx::PgPool::connect(&db_url()).await.unwrap();
+    let err = kronos_embedded_worker::Worker::builder(pool)
+        .system_schema("public; DROP TABLE x".into())
+        .encryption_key("0".repeat(64))
+        .build()
+        .await
+        .expect_err("build must reject SQL-injection-style schema names");
+    assert!(matches!(err, BuildError::InvalidSchemaConfig(_)));
+}
+
+#[tokio::test]
+#[ignore]
+async fn build_rejects_missing_system_schema() {
+    let pool = sqlx::PgPool::connect(&db_url()).await.unwrap();
+    let err = kronos_embedded_worker::Worker::builder(pool)
+        .system_schema("kronos_does_not_exist_42".into())
+        .encryption_key("0".repeat(64))
+        .build()
+        .await
+        .expect_err("build must reject when system schema is missing");
+    match err {
+        BuildError::SystemSchemaMissing { schema, table } => {
+            assert_eq!(schema, "kronos_does_not_exist_42");
+            assert_eq!(table, "organizations");
+        }
+        other => panic!("expected SystemSchemaMissing, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn build_succeeds_with_default_public_schema() {
+    let pool = sqlx::PgPool::connect(&db_url()).await.unwrap();
+    let _worker = kronos_embedded_worker::Worker::builder(pool)
+        .system_schema("public".into())
+        .tenant_schema_prefix("".into())
+        .encryption_key("0".repeat(64))
+        .build()
+        .await
+        .expect("build should succeed against a migrated public schema");
+}
+
+#[tokio::test]
+#[ignore]
+async fn build_rejects_missing_encryption_key() {
+    let pool = sqlx::PgPool::connect(&db_url()).await.unwrap();
+    let err = kronos_embedded_worker::Worker::builder(pool)
+        .system_schema("public".into())
+        .tenant_schema_prefix("".into())
+        .build()
+        .await
+        .expect_err("build must reject when encryption_key is unset");
+    assert!(matches!(err, BuildError::EncryptionKeyMissing));
+}
