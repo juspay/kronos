@@ -1,8 +1,13 @@
 //! Kronos worker pipeline as an embeddable library. Moved from `kronos-worker`
-//! in Plan 2 of the embedded-mode initiative; the public builder/handle API is
-//! introduced in Tasks 3-5.
+//! in Plan 2 of the embedded-mode initiative.
 
 pub mod backoff;
 pub mod dispatcher;
 pub mod pipeline;
 pub mod poller;
+
+mod builder;
+mod error;
+
+pub use builder::WorkerBuilder;
+pub use error::BuildError;
