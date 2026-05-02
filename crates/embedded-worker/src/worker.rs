@@ -5,7 +5,7 @@ use crate::handle::WorkerHandle;
 use tokio::sync::oneshot;
 
 /// A configured Kronos worker. Construct via [`Worker::builder`] and run with
-/// [`Worker::run_until_ctrl_c`] (added in Task 5) or [`Worker::start`] (Task 5).
+/// [`Worker::run_until_ctrl_c`] or [`Worker::start`].
 #[derive(Debug)]
 pub struct Worker {
     pub(crate) pool: PgPool,
@@ -61,6 +61,11 @@ impl Worker {
     /// Spawn the worker loop on the current Tokio runtime and return a handle.
     /// The handle's `shutdown()` triggers a graceful drain bounded by
     /// `shutdown_timeout_sec`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called outside the context of a Tokio runtime, because it
+    /// uses [`tokio::spawn`] internally.
     pub fn start(self) -> WorkerHandle {
         let (tx, rx) = oneshot::channel::<()>();
         let join = tokio::spawn(async move {
@@ -71,7 +76,7 @@ impl Worker {
         });
         WorkerHandle {
             shutdown_tx: Some(tx),
-            join,
+            join: Some(join),
         }
     }
 }

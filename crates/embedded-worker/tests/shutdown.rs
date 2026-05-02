@@ -10,6 +10,7 @@ fn db_url() -> String {
     })
 }
 
+// TODO(plan-2 task 7): cover mid-claim shutdown via integration suite
 #[tokio::test]
 #[ignore]
 async fn start_then_shutdown_returns_clean() {
