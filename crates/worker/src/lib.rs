@@ -1,4 +1,16 @@
-//! Temporary shim for Task 2 of Plan 2. `kronos-worker` becomes binary-only in
-//! Task 6, at which point this file is deleted.
+//! Temporary shim for Plan 2. Deleted in Task 6.
+use kronos_common::config::AppConfig;
+use sqlx::PgPool;
 
-pub use kronos_embedded_worker::poller;
+pub mod poller {
+    use super::*;
+    pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
+        kronos_embedded_worker::Worker::builder(pool)
+            .from_app_config(&config)
+            .build()
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?
+            .run_until_ctrl_c()
+            .await
+    }
+}

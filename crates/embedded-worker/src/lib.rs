@@ -8,8 +8,10 @@ pub mod poller;
 
 mod builder;
 mod error;
+mod handle;
 mod worker;
 
 pub use builder::WorkerBuilder;
 pub use error::BuildError;
+pub use handle::WorkerHandle;
 pub use worker::Worker;

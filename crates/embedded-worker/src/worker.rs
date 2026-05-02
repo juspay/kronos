@@ -1,6 +1,9 @@
 use sqlx::PgPool;
 use std::fmt;
 
+use crate::handle::WorkerHandle;
+use tokio::sync::oneshot;
+
 /// A configured Kronos worker. Construct via [`Worker::builder`] and run with
 /// [`Worker::run_until_ctrl_c`] (added in Task 5) or [`Worker::start`] (Task 5).
 #[derive(Debug)]
@@ -44,5 +47,31 @@ impl Worker {
     /// Start a builder for a Worker bound to `pool`.
     pub fn builder(pool: PgPool) -> crate::builder::WorkerBuilder {
         crate::builder::WorkerBuilder::new(pool)
+    }
+
+    /// Run the worker loop until SIGINT (Ctrl-C). Service-binary convenience.
+    /// Embedded hosts that need their own shutdown story should use [`Worker::start`].
+    pub async fn run_until_ctrl_c(self) -> anyhow::Result<()> {
+        let shutdown = async {
+            let _ = tokio::signal::ctrl_c().await;
+        };
+        crate::poller::run_loop(self.pool, self.cfg, shutdown).await
+    }
+
+    /// Spawn the worker loop on the current Tokio runtime and return a handle.
+    /// The handle's `shutdown()` triggers a graceful drain bounded by
+    /// `shutdown_timeout_sec`.
+    pub fn start(self) -> WorkerHandle {
+        let (tx, rx) = oneshot::channel::<()>();
+        let join = tokio::spawn(async move {
+            let shutdown = async move {
+                let _ = rx.await;
+            };
+            crate::poller::run_loop(self.pool, self.cfg, shutdown).await
+        });
+        WorkerHandle {
+            shutdown_tx: Some(tx),
+            join,
+        }
     }
 }
