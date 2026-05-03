@@ -2685,8 +2685,6 @@ dependencies = [
  "dotenvy",
  "kronos-common",
  "kronos-embedded-worker",
- "rdkafka",
- "redis",
  "sqlx",
  "tokio",
  "tracing",

@@ -1,4 +1,5 @@
 use kronos_common::config::AppConfig;
+use kronos_embedded_worker::Worker;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -13,11 +14,13 @@ async fn main() -> anyhow::Result<()> {
     let config = AppConfig::from_env().await?;
     let pool = sqlx::PgPool::connect(&config.db.url).await?;
 
-    kronos_common::metrics::install_recorder_with_listener(config.metrics.port);
-
     tracing::info!("Worker starting (metrics on port {})", config.metrics.port);
 
-    kronos_worker::poller::run(pool, config).await?;
-
-    Ok(())
+    Worker::builder(pool)
+        .from_app_config(&config)
+        .install_metrics_recorder(true)
+        .build()
+        .await?
+        .run_until_ctrl_c()
+        .await
 }

@@ -9,9 +9,9 @@ path = "src/main.rs"
 
 [features]
 default = []
-kafka = ["kronos-embedded-worker/kafka", "rdkafka"]
-redis-stream = ["kronos-embedded-worker/redis-stream", "redis"]
-kms = ["kronos-common/kms"]
+kafka = ["kronos-embedded-worker/kafka"]
+redis-stream = ["kronos-embedded-worker/redis-stream"]
+kms = ["kronos-embedded-worker/kms", "kronos-common/kms"]
 
 [dependencies]
 kronos-common = { path = "../common" }
@@ -22,6 +22,3 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 dotenvy.workspace = true
 anyhow.workspace = true
-
-rdkafka = { workspace = true, optional = true }
-redis = { workspace = true, optional = true }
