@@ -69,9 +69,20 @@ check:
 
 export SMITHY_MAVEN_REPOS := "https://repo.maven.apache.org/maven2|https://sandbox.assets.juspay.in/smithy/m2"
 
-# Generate TypeScript SDK, Rust SDK, and OpenAPI spec from Smithy models
-smithy-build:
+# Validate Smithy models. Run before regeneration to surface model errors
+# with clean messages instead of cryptic codegen failures.
+smithy-validate:
+    cd smithy && smithy validate
+
+# Full regeneration: validate models, run smithy-build, then sync the
+# committed Rust SDK at sdks/rust/. Edit smithy/model/* → run this →
+# commit the resulting diff (model + sdks/rust/) in the same PR.
+smithy-build: smithy-validate
     cd smithy && smithy build
+    # Wipe everything except README.md (which warns "DO NOT EDIT" and must survive regeneration)
+    find sdks/rust -mindepth 1 -maxdepth 1 ! -name 'README.md' -exec rm -rf {} +
+    cp -R smithy/build/smithy/source/rust-client-codegen/. sdks/rust/
+    @echo "Regenerated sdks/rust. Review with: git diff -- sdks/rust"
 
 # Build the generated TypeScript SDK (npm install + compile)
 build-sdk: smithy-build
@@ -83,6 +94,12 @@ cli-install: build-sdk
 
 # Regenerate SDK and reinstall CLI (after Smithy model changes)
 sdk-refresh: build-sdk cli-install
+
+# CI guard: regenerate everything and fail if sdks/rust/ has drifted from
+# the model. Keeps the committed SDK honest without trusting contributor discipline.
+smithy-check: smithy-build
+    @git diff --exit-code -- sdks/rust || \
+        (echo "ERROR: sdks/rust is out of sync with smithy/model/. Run 'just smithy-build' and commit." && exit 1)
 
 # ─── Run Services ─────────────────────────────────────────────
 

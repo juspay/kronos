@@ -6,6 +6,12 @@ members = [
     "crates/mock-server",
     "crates/dashboard",
 ]
+exclude = [
+    # Generated client SDK — committed for downstream consumers (e.g. aarokya)
+    # to depend on via `git`. Pins a different MSRV (1.82) and runtime stack
+    # than the server workspace, so it stays out of the workspace build graph.
+    "sdks/rust",
+]
 resolver = "2"
 
 [workspace.package]
