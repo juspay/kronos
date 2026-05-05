@@ -18,16 +18,16 @@ pub async fn create(
     ws: Workspace,
     body: web::Json<CreateJob>,
 ) -> Result<HttpResponse, AppError> {
-    // TODO 2: this can be removed after doing TODO 1
+    let prefix = state.prefix();
+
     let trigger = TriggerType::from_str_val(&body.trigger)
         .ok_or_else(|| AppError::InvalidRequest(format!("Invalid trigger: {}", body.trigger)))?;
 
-    // TODO 3: this can be moved to a middleware, so that we can scope each req to a schema directly
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
 
-    let ep = db::endpoints::get(&mut *conn, &body.endpoint)
+    let ep = db::endpoints::get(&mut *conn, prefix, &body.endpoint)
         .await?
         .ok_or_else(|| AppError::EndpointNotFound(body.endpoint.clone()))?;
 
@@ -35,7 +35,7 @@ pub async fn create(
 
     if let Some(ref ps_name) = ep.payload_spec_ref {
         if let Some(ref input) = body.input {
-            let spec = db::payload_specs::get(&mut *conn, ps_name)
+            let spec = db::payload_specs::get(&mut *conn, prefix, ps_name)
                 .await?
                 .ok_or_else(|| AppError::InvalidPayloadSpecRef(ps_name.clone()))?;
             validate_input(input, &spec.schema_json)?;
@@ -44,9 +44,9 @@ pub async fn create(
 
     if let Some(ref key) = body.idempotency_key {
         if let Some(existing) =
-            db::jobs::get_by_idempotency(&mut *conn, &body.endpoint, key).await?
+            db::jobs::get_by_idempotency(&mut *conn, prefix, &body.endpoint, key).await?
         {
-            let exec = db::executions::get_for_job(&mut *conn, &existing.job_id).await?;
+            let exec = db::executions::get_for_job(&mut *conn, prefix, &existing.job_id).await?;
             return Ok(HttpResponse::Ok()
                 .json(serde_json::json!({ "data": job_response(&existing, exec.as_ref()) })));
         }
@@ -73,6 +73,7 @@ pub async fn create(
 
             let result = db::jobs::create_immediate(
                 &mut *tx,
+                prefix,
                 &body.endpoint,
                 &ep.endpoint_type,
                 key,
@@ -128,6 +129,7 @@ pub async fn create(
 
             let result = db::jobs::create_delayed(
                 &mut *tx,
+                prefix,
                 &body.endpoint,
                 &ep.endpoint_type,
                 key,
@@ -191,6 +193,7 @@ pub async fn create(
 
             let job = db::jobs::create_cron(
                 &mut *conn,
+                prefix,
                 &body.endpoint,
                 &ep.endpoint_type,
                 body.input.as_ref(),
@@ -202,9 +205,11 @@ pub async fn create(
             )
             .await?;
 
-            // Register with pg_cron for automatic execution materialization
+            // Register with pg_cron for automatic execution materialization (when pg_cron feature enabled)
+            #[cfg(feature = "pg_cron")]
             if let Err(e) = db::jobs::register_pg_cron(
                 &state.pool,
+                prefix,
                 &ws.0.schema_name,
                 &job.job_id,
                 cron_expr.as_str(),
@@ -246,12 +251,13 @@ pub async fn list(
     ws: Workspace,
     params: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, AppError> {
+    let prefix = state.prefix();
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
-    let items = db::jobs::list(&mut *conn, cursor.as_deref(), limit + 1).await?;
+    let items = db::jobs::list(&mut *conn, prefix, cursor.as_deref(), limit + 1).await?;
 
     let has_more = items.len() as i64 > limit;
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
@@ -274,14 +280,15 @@ pub async fn get(
     ws: Workspace,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
+    let prefix = state.prefix();
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let job_id = path.into_inner();
-    let job = db::jobs::get(&mut *conn, &job_id)
+    let job = db::jobs::get(&mut *conn, prefix, &job_id)
         .await?
         .ok_or_else(|| AppError::JobNotFound(job_id))?;
-    let exec = db::executions::get_for_job(&mut *conn, &job.job_id).await?;
+    let exec = db::executions::get_for_job(&mut *conn, prefix, &job.job_id).await?;
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": job_response(&job, exec.as_ref()) })))
 }
 
@@ -292,11 +299,12 @@ pub async fn update(
     path: web::Path<String>,
     body: web::Json<UpdateJob>,
 ) -> Result<HttpResponse, AppError> {
+    let prefix = state.prefix();
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let job_id = path.into_inner();
-    let old_job = db::jobs::get(&mut *conn, &job_id)
+    let old_job = db::jobs::get(&mut *conn, prefix, &job_id)
         .await?
         .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?;
 
@@ -351,23 +359,29 @@ pub async fn update(
         .await
         .map_err(AppError::from)?;
 
-    let created = db::jobs::retire_and_replace(&mut *tx, &job_id, &new_job).await?;
+    let created = db::jobs::retire_and_replace(&mut *tx, prefix, &job_id, &new_job).await?;
 
     tx.commit().await.map_err(AppError::from)?;
 
-    // Unschedule old pg_cron job and register new one
-    if let Err(e) = db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await {
-        tracing::error!(job_id = %job_id, "Failed to unregister old pg_cron job: {}", e);
-    }
-    if let Err(e) = db::jobs::register_pg_cron(
-        &state.pool,
-        &ws.0.schema_name,
-        &created.job_id,
-        cron_expr.as_str(),
-    )
-    .await
+    // Unschedule old pg_cron job and register new one (when pg_cron feature enabled)
+    #[cfg(feature = "pg_cron")]
     {
-        tracing::error!(job_id = %created.job_id, "Failed to register new pg_cron job: {}", e);
+        if let Err(e) =
+            db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await
+        {
+            tracing::error!(job_id = %job_id, "Failed to unregister old pg_cron job: {}", e);
+        }
+        if let Err(e) = db::jobs::register_pg_cron(
+            &state.pool,
+            prefix,
+            &ws.0.schema_name,
+            &created.job_id,
+            cron_expr.as_str(),
+        )
+        .await
+        {
+            tracing::error!(job_id = %created.job_id, "Failed to register new pg_cron job: {}", e);
+        }
     }
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
@@ -392,11 +406,12 @@ pub async fn cancel(
     ws: Workspace,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
+    let prefix = state.prefix();
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let job_id = path.into_inner();
-    let job = db::jobs::get(&mut *conn, &job_id)
+    let job = db::jobs::get(&mut *conn, prefix, &job_id)
         .await?
         .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?;
 
@@ -405,16 +420,18 @@ pub async fn cancel(
     }
 
     if job.trigger_type != "CRON" {
-        db::executions::cancel_pending_for_job(&mut *conn, &job_id).await?;
+        db::executions::cancel_pending_for_job(&mut *conn, prefix, &job_id).await?;
     }
 
-    let cancelled = db::jobs::cancel(&mut *conn, &job_id)
+    let cancelled = db::jobs::cancel(&mut *conn, prefix, &job_id)
         .await?
         .ok_or_else(|| AppError::Conflict("Job could not be cancelled".into()))?;
 
-    // Unregister from pg_cron if this was a CRON job
+    // Unregister from pg_cron if this was a CRON job (when pg_cron feature enabled)
+    #[cfg(feature = "pg_cron")]
     if job.trigger_type == "CRON" {
-        if let Err(e) = db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await
+        if let Err(e) =
+            db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await
         {
             tracing::error!(job_id = %job_id, "Failed to unregister pg_cron job: {}", e);
         }
@@ -429,15 +446,16 @@ pub async fn status(
     ws: Workspace,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
+    let prefix = state.prefix();
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let job_id = path.into_inner();
-    let job = db::jobs::get(&mut *conn, &job_id)
+    let job = db::jobs::get(&mut *conn, prefix, &job_id)
         .await?
         .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?;
 
-    let execs = db::executions::list_for_job(&mut *conn, &job_id, None, 200).await?;
+    let execs = db::executions::list_for_job(&mut *conn, prefix, &job_id, None, 200).await?;
 
     let active = execs
         .iter()
@@ -498,15 +516,16 @@ pub async fn versions(
     ws: Workspace,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
+    let prefix = state.prefix();
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let job_id = path.into_inner();
-    let _ = db::jobs::get(&mut *conn, &job_id)
+    let _ = db::jobs::get(&mut *conn, prefix, &job_id)
         .await?
         .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?;
 
-    let versions = db::jobs::get_versions(&mut *conn, &job_id).await?;
+    let versions = db::jobs::get_versions(&mut *conn, prefix, &job_id).await?;
     let items: Vec<serde_json::Value> = versions.into_iter().map(|j| job_summary(&j)).collect();
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": items })))
@@ -519,18 +538,20 @@ pub async fn list_executions(
     path: web::Path<String>,
     params: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, AppError> {
+    let prefix = state.prefix();
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let job_id = path.into_inner();
-    let _ = db::jobs::get(&mut *conn, &job_id)
+    let _ = db::jobs::get(&mut *conn, prefix, &job_id)
         .await?
         .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?;
 
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
     let items =
-        db::executions::list_for_job(&mut *conn, &job_id, cursor.as_deref(), limit + 1).await?;
+        db::executions::list_for_job(&mut *conn, prefix, &job_id, cursor.as_deref(), limit + 1)
+            .await?;
 
     let has_more = items.len() as i64 > limit;
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
@@ -623,4 +644,3 @@ fn job_summary(job: &kronos_common::models::Job) -> serde_json::Value {
         "created_at": job.created_at,
     })
 }
-

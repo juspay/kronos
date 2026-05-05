@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use sqlx::PgPool;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -16,6 +17,11 @@ pub fn validate_schema_name(name: &str) -> bool {
     !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
+/// Validates that a table prefix contains only safe characters (empty is also valid).
+pub fn validate_table_prefix(prefix: &str) -> bool {
+    prefix.is_empty() || prefix.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 /// Builds the schema name from org_id and workspace slug.
 /// Replaces hyphens with underscores since PostgreSQL schema names can't contain hyphens.
 pub fn build_schema_name(org_id: &str, workspace_slug: &str) -> String {
@@ -26,8 +32,17 @@ pub fn build_schema_name(org_id: &str, workspace_slug: &str) -> String {
     )
 }
 
+/// Trait for discovering active workspace schemas.
+/// Implement this to tell Kronos's worker where to find the list of workspaces.
+/// Kronos ships `SchemaRegistry` as the default implementation.
+#[async_trait]
+pub trait SchemaProvider: Send + Sync + 'static {
+    async fn get_active_schemas(&self) -> Result<Vec<String>, sqlx::Error>;
+}
+
 /// Cached registry of active workspace schemas.
-/// Used by worker and scheduler to iterate tenants.
+/// Default `SchemaProvider` implementation — queries Kronos's own
+/// `public.workspaces` table. Used by standalone Kronos.
 #[derive(Clone)]
 pub struct SchemaRegistry {
     pool: PgPool,
@@ -51,8 +66,11 @@ impl SchemaRegistry {
             ttl: Duration::from_secs(ttl_secs),
         }
     }
+}
 
-    pub async fn get_active_schemas(&self) -> Result<Vec<String>, sqlx::Error> {
+#[async_trait]
+impl SchemaProvider for SchemaRegistry {
+    async fn get_active_schemas(&self) -> Result<Vec<String>, sqlx::Error> {
         // Check cache first
         {
             let cache = self.cache.read().await;

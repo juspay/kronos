@@ -1,4 +1,7 @@
-use crate::env::{get_from_env_or_default, get_from_env_unsafe};
+use crate::{
+    env::{get_from_env_or_default, get_from_env_unsafe},
+    tenant::validate_table_prefix,
+};
 
 // ---------------------------------------------------------------------------
 // Sensitive-env reader: transparently KMS-decrypts when the feature is active
@@ -39,13 +42,27 @@ impl SensitiveEnvReader {
 pub struct DbEnv {
     pub url: String,
     pub pool_size: u32,
+    /// Prefix for all per-workspace Kronos tables. Default empty (tables stay `jobs`, etc.).
+    /// Set to e.g. `sched` to get `sched_jobs`, `sched_executions`, etc.
+    pub table_prefix: String,
 }
 
 impl DbEnv {
     async fn new(reader: &SensitiveEnvReader) -> Result<Self, String> {
         let url = reader.read("TE_DATABASE_URL").await?;
         let pool_size = get_from_env_or_default("TE_DB_POOL_SIZE", 50);
-        Ok(Self { url, pool_size })
+        let table_prefix = get_from_env_or_default("TE_TABLE_PREFIX", String::new());
+        if !validate_table_prefix(&table_prefix) {
+            return Err(format!(
+                "TE_TABLE_PREFIX '{}' is invalid: only alphanumeric and underscore allowed",
+                table_prefix
+            ));
+        }
+        Ok(Self {
+            url,
+            pool_size,
+            table_prefix,
+        })
     }
 }
 

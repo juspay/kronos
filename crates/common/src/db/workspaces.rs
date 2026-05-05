@@ -105,11 +105,22 @@ async fn provision_schema(pool: &PgPool, schema_name: &str) -> Result<(), sqlx::
     let create_schema = format!("CREATE SCHEMA IF NOT EXISTS \"{}\"", schema_name);
     sqlx::query(&create_schema).execute(pool).await?;
 
-    // Run workspace DDL within the new schema using raw_sql which supports multiple statements
-    let ddl = format!(
-        "SET search_path TO \"{schema_name}\"; {WORKSPACE_SCHEMA_V1} SET search_path TO public;"
-    );
-    sqlx::raw_sql(&ddl).execute(pool).await?;
+    let mut conn = pool.acquire().await?;
+
+    sqlx::query(&format!("SET search_path TO \"{}\"", schema_name))
+        .execute(&mut *conn)
+        .await?;
+
+    for stmt in WORKSPACE_SCHEMA_V1.split(';') {
+        let stmt = stmt.trim();
+        if !stmt.is_empty() {
+            sqlx::query(stmt).execute(&mut *conn).await?;
+        }
+    }
+
+    sqlx::query("SET search_path TO public")
+        .execute(&mut *conn)
+        .await?;
 
     Ok(())
 }

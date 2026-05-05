@@ -12,6 +12,7 @@ default = []
 kafka = ["rdkafka"]
 redis-stream = ["redis"]
 kms = ["kronos-common/kms"]
+pg_cron = []
 
 [dependencies]
 kronos-common = { path = "../common" }
@@ -24,9 +25,13 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true
 chrono.workspace = true
+chrono-tz.workspace = true
+cron.workspace = true
 rand.workspace = true
 dotenvy.workspace = true
 anyhow.workspace = true
+tokio-util.workspace = true
+async-trait.workspace = true
 
 metrics.workspace = true
 

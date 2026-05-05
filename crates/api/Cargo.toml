@@ -10,6 +10,7 @@ path = "src/main.rs"
 [features]
 default = []
 kms = ["kronos-common/kms"]
+pg_cron = []
 
 [dependencies]
 kronos-common = { path = "../common" }

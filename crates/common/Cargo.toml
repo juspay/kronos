@@ -11,6 +11,7 @@ kms = ["aws-config", "aws-sdk-kms"]
 aws-config = { workspace = true, optional = true }
 aws-sdk-kms = { workspace = true, optional = true }
 tokio.workspace = true
+async-trait.workspace = true
 sqlx.workspace = true
 serde.workspace = true
 serde_json.workspace = true

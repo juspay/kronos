@@ -1,4 +1,5 @@
-use kronos_common::config::AppConfig;
+use kronos_common::{config::AppConfig, tenant::SchemaRegistry};
+use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -17,7 +18,19 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("Worker starting (metrics on port {})", config.metrics.port);
 
-    kronos_worker::poller::run(pool, config).await?;
+    // Standalone: use Kronos's own public.workspaces table for schema discovery.
+    let schema_provider = SchemaRegistry::new(pool.clone(), 30);
+
+    // Cancel on Ctrl-C
+    let cancel = CancellationToken::new();
+    let cancel_clone = cancel.clone();
+    tokio::spawn(async move {
+        let _ = tokio::signal::ctrl_c().await;
+        tracing::info!("Ctrl-C received, cancelling worker...");
+        cancel_clone.cancel();
+    });
+
+    kronos_worker::poller::run(pool, config, schema_provider, cancel).await?;
 
     Ok(())
 }

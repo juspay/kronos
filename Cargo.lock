@@ -2589,6 +2589,7 @@ dependencies = [
  "actix-web",
  "aes-gcm",
  "anyhow",
+ "async-trait",
  "aws-config",
  "aws-sdk-kms",
  "base64 0.22.1",
@@ -2647,7 +2648,10 @@ name = "kronos-worker"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "chrono",
+ "chrono-tz",
+ "cron",
  "dotenvy",
  "kronos-common",
  "metrics",
@@ -2659,6 +2663,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "tokio",
+ "tokio-util",
  "tracing",
  "tracing-subscriber",
  "uuid",

@@ -20,11 +20,12 @@ pub async fn create(
         ));
     }
 
+    let prefix = state.prefix();
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
 
-    let spec = db::payload_specs::create(&mut *conn, &body.name, &body.schema)
+    let spec = db::payload_specs::create(&mut *conn, prefix, &body.name, &body.schema)
         .await
         .map_err(|e| match e {
             sqlx::Error::Database(ref db_err) if db_err.constraint().is_some() => {
@@ -47,12 +48,13 @@ pub async fn list(
     ws: Workspace,
     params: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, AppError> {
+    let prefix = state.prefix();
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
-    let items = db::payload_specs::list(&mut *conn, cursor.as_deref(), limit + 1).await?;
+    let items = db::payload_specs::list(&mut *conn, prefix, cursor.as_deref(), limit + 1).await?;
 
     let has_more = items.len() as i64 > limit;
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
@@ -84,11 +86,12 @@ pub async fn get(
     ws: Workspace,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
+    let prefix = state.prefix();
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let name = path.into_inner();
-    let spec = db::payload_specs::get(&mut *conn, &name)
+    let spec = db::payload_specs::get(&mut *conn, prefix, &name)
         .await?
         .ok_or_else(|| AppError::PayloadSpecNotFound(name))?;
 
@@ -111,12 +114,13 @@ pub async fn update(
         ));
     }
 
+    let prefix = state.prefix();
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let name = path.into_inner();
 
-    let spec = db::payload_specs::update(&mut *conn, &name, &body.schema)
+    let spec = db::payload_specs::update(&mut *conn, prefix, &name, &body.schema)
         .await?
         .ok_or_else(|| AppError::PayloadSpecNotFound(name))?;
 
@@ -132,17 +136,18 @@ pub async fn delete(
     ws: Workspace,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
+    let prefix = state.prefix();
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let name = path.into_inner();
-    if db::payload_specs::has_dependent_endpoints(&mut *conn, &name).await? {
+    if db::payload_specs::has_dependent_endpoints(&mut *conn, prefix, &name).await? {
         return Err(AppError::Conflict(format!(
             "Payload spec '{}' has dependent endpoints",
             name
         )));
     }
-    if !db::payload_specs::delete(&mut *conn, &name).await? {
+    if !db::payload_specs::delete(&mut *conn, prefix, &name).await? {
         return Err(AppError::PayloadSpecNotFound(name));
     }
     Ok(HttpResponse::NoContent().finish())
