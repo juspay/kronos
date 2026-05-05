@@ -11,9 +11,9 @@ silently.
 After changing anything under `smithy/model/`:
 
 ```bash
-just smithy-build       # validates model, regenerates, syncs sdks/rust/
-git diff -- sdks/rust   # review the resulting diff
-git add smithy/ sdks/rust/
+just smithy-build       # validates model, regenerates, syncs crates/client/
+git diff -- crates/client   # review the resulting diff
+git add smithy/ crates/client/
 git commit              # commit model + generated SDK in the same PR
 ```
 

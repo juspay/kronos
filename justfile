@@ -79,10 +79,11 @@ smithy-validate:
 # commit the resulting diff (model + sdks/rust/) in the same PR.
 smithy-build: smithy-validate
     cd smithy && smithy build
-    # Wipe everything except README.md (which warns "DO NOT EDIT" and must survive regeneration)
-    find sdks/rust -mindepth 1 -maxdepth 1 ! -name 'README.md' -exec rm -rf {} +
-    cp -R smithy/build/smithy/source/rust-client-codegen/. sdks/rust/
-    @echo "Regenerated sdks/rust. Review with: git diff -- sdks/rust"
+    rm -rf crates/client
+    cp -R smithy/build/smithy/source/rust-client-codegen crates/client
+    # Restore the tracked README.md (DO NOT EDIT warning) that the wipe removed
+    git checkout -- crates/client/README.md
+    @echo "Regenerated crates/client. Review with: git diff -- crates/client"
 
 # Build the generated TypeScript SDK (npm install + compile)
 build-sdk: smithy-build
