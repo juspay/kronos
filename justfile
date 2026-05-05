@@ -69,9 +69,21 @@ check:
 
 export SMITHY_MAVEN_REPOS := "https://repo.maven.apache.org/maven2|https://sandbox.assets.juspay.in/smithy/m2"
 
-# Generate TypeScript SDK, Rust SDK, and OpenAPI spec from Smithy models
-smithy-build:
+# Validate Smithy models. Run before regeneration to surface model errors
+# with clean messages instead of cryptic codegen failures.
+smithy-validate:
+    cd smithy && smithy validate
+
+# Full regeneration: validate models, run smithy-build, then sync the
+# committed Rust SDK at sdks/rust/. Edit smithy/model/* → run this →
+# commit the resulting diff (model + sdks/rust/) in the same PR.
+smithy-build: smithy-validate
     cd smithy && smithy build
+    rm -rf crates/client
+    cp -R smithy/build/smithy/source/rust-client-codegen crates/client
+    # Restore the tracked README.md (DO NOT EDIT warning) that the wipe removed
+    git checkout -- crates/client/README.md
+    @echo "Regenerated crates/client. Review with: git diff -- crates/client"
 
 # Build the generated TypeScript SDK (npm install + compile)
 build-sdk: smithy-build
