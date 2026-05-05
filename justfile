@@ -82,13 +82,6 @@ smithy-build: smithy-validate
     # Wipe everything except README.md (which warns "DO NOT EDIT" and must survive regeneration)
     find sdks/rust -mindepth 1 -maxdepth 1 ! -name 'README.md' -exec rm -rf {} +
     cp -R smithy/build/smithy/source/rust-client-codegen/. sdks/rust/
-    # smithy-rs emits the `pub use` block in error mod files in JVM HashMap
-    # iteration order (nondeterministic across processes). Sort that block so
-    # the committed SDK is byte-stable across regenerations. Narrow scope —
-    # only the two known-affected files; other generated files are stable.
-    for f in sdks/rust/src/types/error.rs sdks/rust/src/types/error/builders.rs; do \
-        { head -n 1 "$f"; grep '^pub use ' "$f" | sort | sed 'G'; sed -n '/^mod /,$p' "$f"; } > "$f.tmp" && mv "$f.tmp" "$f"; \
-    done
     @echo "Regenerated sdks/rust. Review with: git diff -- sdks/rust"
 
 # Build the generated TypeScript SDK (npm install + compile)
@@ -101,12 +94,6 @@ cli-install: build-sdk
 
 # Regenerate SDK and reinstall CLI (after Smithy model changes)
 sdk-refresh: build-sdk cli-install
-
-# CI guard: regenerate everything and fail if sdks/rust/ has drifted from
-# the model. Keeps the committed SDK honest without trusting contributor discipline.
-smithy-check: smithy-build
-    @git diff --exit-code -- sdks/rust || \
-        (echo "ERROR: sdks/rust is out of sync with smithy/model/. Run 'just smithy-build' and commit." && exit 1)
 
 # ─── Run Services ─────────────────────────────────────────────
 

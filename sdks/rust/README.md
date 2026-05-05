@@ -17,8 +17,11 @@ git add smithy/ sdks/rust/
 git commit              # commit model + generated SDK in the same PR
 ```
 
-CI runs `just smithy-check` to fail builds where the committed SDK has
-drifted from the model.
+> **Note:** there is no CI guard for drift right now. smithy-rs codegen
+> emits some `pub use` blocks in JVM HashMap iteration order (non-stable
+> across processes), so a naive `git diff --exit-code` check is too noisy
+> to enforce. A canonicalization step + drift check will be added in a
+> follow-up. Until then, please regenerate before committing model changes.
 
 ## Why is this committed?
 
