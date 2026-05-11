@@ -85,5 +85,11 @@ leptos_router = "0.7"
 leptos_meta = "0.7"
 leptos_actix = "0.7"
 
+# Async utilities
+tokio-util = { version = "0.7" }
+
+# Async trait
+async-trait = "0.1"
+
 # Misc
 dotenvy = "0.15"

@@ -16,6 +16,7 @@ pub struct PipelineContext {
     pub config_cache: ConfigCache,
     pub secret_cache: SecretCache,
     pub encryption_key: String,
+    pub table_prefix: String,
 }
 
 pub async fn process_execution(
@@ -31,16 +32,18 @@ pub async fn process_execution(
     attempt_count: i64,
     max_attempts: i64,
 ) {
+    let prefix = ctx.table_prefix.as_str();
     let started_at = Utc::now();
 
     // 1. Load endpoint
-    let endpoint = match db::endpoints::get(&mut *conn, endpoint_name).await {
+    let endpoint = match db::endpoints::get(&mut *conn, prefix, endpoint_name).await {
         Ok(Some(ep)) => ep,
         Ok(None) => {
             tracing::error!(execution_id, "Endpoint not found: {}", endpoint_name);
-            let _ = db::executions::complete_failed(&mut *conn, execution_id).await;
+            let _ = db::executions::complete_failed(&mut *conn, prefix, execution_id).await;
             log_execution(
                 &mut *conn,
+                prefix,
                 execution_id,
                 attempt_count,
                 "ERROR",
@@ -51,7 +54,7 @@ pub async fn process_execution(
         }
         Err(e) => {
             tracing::error!(execution_id, "Failed to load endpoint: {}", e);
-            let _ = db::executions::complete_failed(&mut *conn, execution_id).await;
+            let _ = db::executions::complete_failed(&mut *conn, prefix, execution_id).await;
             return;
         }
     };
@@ -64,9 +67,10 @@ pub async fn process_execution(
             Ok(vals) => vals,
             Err(e) => {
                 tracing::error!(execution_id, "Config resolution failed: {}", e);
-                let _ = db::executions::complete_failed(&mut *conn, execution_id).await;
+                let _ = db::executions::complete_failed(&mut *conn, prefix, execution_id).await;
                 record_attempt(
                     &mut *conn,
+                    prefix,
                     execution_id,
                     attempt_count,
                     "FAILED",
@@ -79,6 +83,7 @@ pub async fn process_execution(
                 .await;
                 log_execution(
                     &mut *conn,
+                    prefix,
                     execution_id,
                     attempt_count,
                     "ERROR",
@@ -96,9 +101,10 @@ pub async fn process_execution(
         Ok(vals) => vals,
         Err(e) => {
             tracing::error!(execution_id, "Secret resolution failed: {}", e);
-            let _ = db::executions::complete_failed(&mut *conn, execution_id).await;
+            let _ = db::executions::complete_failed(&mut *conn, prefix, execution_id).await;
             record_attempt(
                 &mut *conn,
+                prefix,
                 execution_id,
                 attempt_count,
                 "FAILED",
@@ -111,6 +117,7 @@ pub async fn process_execution(
             .await;
             log_execution(
                 &mut *conn,
+                prefix,
                 execution_id,
                 attempt_count,
                 "ERROR",
@@ -131,9 +138,10 @@ pub async fn process_execution(
             Ok(v) => v,
             Err(e) => {
                 tracing::error!(execution_id, "Template resolution failed: {}", e);
-                let _ = db::executions::complete_failed(&mut *conn, execution_id).await;
+                let _ = db::executions::complete_failed(&mut *conn, prefix, execution_id).await;
                 record_attempt(
                     &mut *conn,
+                    prefix,
                     execution_id,
                     attempt_count,
                     "FAILED",
@@ -146,6 +154,7 @@ pub async fn process_execution(
                 .await;
                 log_execution(
                     &mut *conn,
+                    prefix,
                     execution_id,
                     attempt_count,
                     "ERROR",
@@ -166,9 +175,10 @@ pub async fn process_execution(
         }
     }
 
-    // 3. Dispatch
+    // 4. Dispatch
     log_execution(
         &mut *conn,
+        prefix,
         execution_id,
         attempt_count,
         "INFO",
@@ -196,7 +206,7 @@ pub async fn process_execution(
     let duration_ms = (completed_at - started_at).num_milliseconds();
     let duration_secs = duration_ms as f64 / 1000.0;
 
-    // 4. Record attempt + finalize
+    // 5. Record attempt + finalize
     match result {
         DispatchResult::Success { output } => {
             metrics::counter!(m::EXECUTIONS_COMPLETED_TOTAL,
@@ -214,6 +224,7 @@ pub async fn process_execution(
 
             record_attempt(
                 &mut *conn,
+                prefix,
                 execution_id,
                 attempt_count,
                 "SUCCESS",
@@ -222,9 +233,11 @@ pub async fn process_execution(
                 None,
             )
             .await;
-            let _ = db::executions::complete_success(&mut *conn, execution_id, &output).await;
+            let _ =
+                db::executions::complete_success(&mut *conn, prefix, execution_id, &output).await;
             log_execution(
                 &mut *conn,
+                prefix,
                 execution_id,
                 attempt_count,
                 "INFO",
@@ -235,6 +248,7 @@ pub async fn process_execution(
         DispatchResult::Failure { error } => {
             record_attempt(
                 &mut *conn,
+                prefix,
                 execution_id,
                 attempt_count,
                 "FAILED",
@@ -246,9 +260,12 @@ pub async fn process_execution(
 
             if attempt_count < max_attempts {
                 let backoff_ms = backoff::compute_backoff(&retry_policy, attempt_count);
-                let _ = db::executions::complete_retry(&mut *conn, execution_id, backoff_ms).await;
+                let _ =
+                    db::executions::complete_retry(&mut *conn, prefix, execution_id, backoff_ms)
+                        .await;
                 log_execution(
                     &mut *conn,
+                    prefix,
                     execution_id,
                     attempt_count,
                     "WARN",
@@ -272,9 +289,10 @@ pub async fn process_execution(
                 )
                 .record(duration_secs);
 
-                let _ = db::executions::complete_failed(&mut *conn, execution_id).await;
+                let _ = db::executions::complete_failed(&mut *conn, prefix, execution_id).await;
                 log_execution(
                     &mut *conn,
+                    prefix,
                     execution_id,
                     attempt_count,
                     "ERROR",
@@ -298,7 +316,7 @@ async fn load_config(
         return flatten_json_object(&cached);
     }
 
-    let config = db::configs::get(conn, name)
+    let config = db::configs::get(conn, &ctx.table_prefix, name)
         .await
         .map_err(|e| format!("Failed to load config '{}': {}", name, e))?
         .ok_or_else(|| format!("Config '{}' not found", name))?;
@@ -344,7 +362,7 @@ async fn load_single_secret(
         return Ok(cached);
     }
 
-    let secret = db::secrets::get(conn, name)
+    let secret = db::secrets::get(conn, &ctx.table_prefix, name)
         .await
         .map_err(|e| format!("Failed to load secret '{}': {}", name, e))?
         .ok_or_else(|| format!("Secret '{}' not found", name))?;
@@ -367,6 +385,7 @@ fn flatten_json_object(
 
 async fn record_attempt(
     conn: &mut sqlx::PgConnection,
+    prefix: &str,
     execution_id: &str,
     attempt_number: i64,
     status: &str,
@@ -378,6 +397,7 @@ async fn record_attempt(
     let duration_ms = (completed_at - started_at).num_milliseconds();
     if let Err(e) = db::attempts::insert(
         conn,
+        prefix,
         execution_id,
         attempt_number,
         status,
@@ -395,13 +415,14 @@ async fn record_attempt(
 
 async fn log_execution(
     conn: &mut sqlx::PgConnection,
+    prefix: &str,
     execution_id: &str,
     attempt_number: i64,
     level: &str,
     message: &str,
 ) {
     if let Err(e) =
-        db::execution_logs::insert(conn, execution_id, attempt_number, level, message).await
+        db::execution_logs::insert(conn, prefix, execution_id, attempt_number, level, message).await
     {
         tracing::error!(execution_id, "Failed to write execution log: {}", e);
     }
