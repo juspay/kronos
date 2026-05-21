@@ -21,6 +21,10 @@ jobs:
           - binary: kronos-api
             features: ""
             include_dashboard: "true"
+          - binary: kronos-api
+            features: "kms"
+            image_name: "kronos-api-kms"
+            include_dashboard: "true"
           - binary: kronos-worker
             features: ""
             include_dashboard: "false"
@@ -43,7 +47,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.binary }}
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image_name || matrix.binary }}
           tags: |
             type=raw,value=${{ steps.version.outputs.tag }}
             type=raw,value=latest
