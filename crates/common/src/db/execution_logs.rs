@@ -1,15 +1,13 @@
-use crate::{db::tbl, models::ExecutionLog};
-use sqlx::PgConnection;
+use crate::{db::{tbl, DbContext}, models::ExecutionLog};
 
 pub async fn insert(
-    conn: &mut PgConnection,
-    prefix: &str,
+    db: &mut DbContext<'_>,
     execution_id: &str,
     attempt_number: i64,
     level: &str,
     message: &str,
 ) -> Result<(), sqlx::Error> {
-    let t = tbl(prefix, "execution_logs");
+    let t = tbl(db.prefix, "execution_logs");
     sqlx::query(&format!(
         "INSERT INTO {t} (execution_id, attempt_number, level, message)
          VALUES ($1, $2, $3, $4)"
@@ -18,21 +16,20 @@ pub async fn insert(
     .bind(attempt_number)
     .bind(level)
     .bind(message)
-    .execute(&mut *conn)
+    .execute(&mut *db.conn)
     .await?;
     Ok(())
 }
 
 pub async fn list_for_execution(
-    conn: &mut PgConnection,
-    prefix: &str,
+    db: &mut DbContext<'_>,
     execution_id: &str,
 ) -> Result<Vec<ExecutionLog>, sqlx::Error> {
-    let t = tbl(prefix, "execution_logs");
+    let t = tbl(db.prefix, "execution_logs");
     sqlx::query_as::<_, ExecutionLog>(&format!(
         "SELECT * FROM {t} WHERE execution_id = $1 ORDER BY logged_at ASC"
     ))
     .bind(execution_id)
-    .fetch_all(&mut *conn)
+    .fetch_all(&mut *db.conn)
     .await
 }

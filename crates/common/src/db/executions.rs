@@ -1,5 +1,5 @@
-use crate::{db::tbl, models::Execution};
-use sqlx::{prelude::FromRow, PgConnection};
+use crate::{db::{tbl, DbContext}, models::Execution};
+use sqlx::prelude::FromRow;
 
 #[derive(FromRow)]
 pub struct ClaimedExecution {
@@ -13,11 +13,10 @@ pub struct ClaimedExecution {
 }
 
 pub async fn claim(
-    conn: &mut PgConnection,
-    prefix: &str,
+    db: &mut DbContext<'_>,
     worker_id: &str,
 ) -> Result<Option<ClaimedExecution>, sqlx::Error> {
-    let t = tbl(prefix, "executions");
+    let t = tbl(db.prefix, "executions");
     let row: Option<ClaimedExecution> = sqlx::query_as(&format!(
         "UPDATE {t}
          SET status = 'RUNNING',
@@ -36,19 +35,18 @@ pub async fn claim(
          RETURNING execution_id, job_id, endpoint, endpoint_type, input, attempt_count, max_attempts"
     ))
     .bind(worker_id)
-    .fetch_optional(&mut *conn)
+    .fetch_optional(&mut *db.conn)
     .await?;
 
     Ok(row)
 }
 
 pub async fn complete_success(
-    conn: &mut PgConnection,
-    prefix: &str,
+    db: &mut DbContext<'_>,
     execution_id: &str,
     output: &serde_json::Value,
 ) -> Result<(), sqlx::Error> {
-    let t = tbl(prefix, "executions");
+    let t = tbl(db.prefix, "executions");
     sqlx::query(&format!(
         "UPDATE {t}
          SET status = 'SUCCESS', output = $2, completed_at = now(),
@@ -57,18 +55,17 @@ pub async fn complete_success(
     ))
     .bind(execution_id)
     .bind(output)
-    .execute(&mut *conn)
+    .execute(&mut *db.conn)
     .await?;
     Ok(())
 }
 
 pub async fn complete_retry(
-    conn: &mut PgConnection,
-    prefix: &str,
+    db: &mut DbContext<'_>,
     execution_id: &str,
     backoff_ms: i64,
 ) -> Result<(), sqlx::Error> {
-    let t = tbl(prefix, "executions");
+    let t = tbl(db.prefix, "executions");
     sqlx::query(&format!(
         "UPDATE {t}
          SET status = CASE WHEN attempt_count >= max_attempts THEN 'FAILED' ELSE 'RETRYING' END,
@@ -83,17 +80,16 @@ pub async fn complete_retry(
     ))
     .bind(execution_id)
     .bind(backoff_ms)
-    .execute(&mut *conn)
+    .execute(&mut *db.conn)
     .await?;
     Ok(())
 }
 
 pub async fn complete_failed(
-    conn: &mut PgConnection,
-    prefix: &str,
+    db: &mut DbContext<'_>,
     execution_id: &str,
 ) -> Result<(), sqlx::Error> {
-    let t = tbl(prefix, "executions");
+    let t = tbl(db.prefix, "executions");
     sqlx::query(&format!(
         "UPDATE {t}
          SET status = 'FAILED', completed_at = now(),
@@ -102,45 +98,42 @@ pub async fn complete_failed(
          WHERE execution_id = $1 AND status = 'RUNNING'"
     ))
     .bind(execution_id)
-    .execute(&mut *conn)
+    .execute(&mut *db.conn)
     .await?;
     Ok(())
 }
 
 pub async fn get(
-    conn: &mut PgConnection,
-    prefix: &str,
+    db: &mut DbContext<'_>,
     execution_id: &str,
 ) -> Result<Option<Execution>, sqlx::Error> {
-    let t = tbl(prefix, "executions");
+    let t = tbl(db.prefix, "executions");
     sqlx::query_as::<_, Execution>(&format!("SELECT * FROM {t} WHERE execution_id = $1"))
         .bind(execution_id)
-        .fetch_optional(&mut *conn)
+        .fetch_optional(&mut *db.conn)
         .await
 }
 
 pub async fn get_for_job(
-    conn: &mut PgConnection,
-    prefix: &str,
+    db: &mut DbContext<'_>,
     job_id: &str,
 ) -> Result<Option<Execution>, sqlx::Error> {
-    let t = tbl(prefix, "executions");
+    let t = tbl(db.prefix, "executions");
     sqlx::query_as::<_, Execution>(&format!(
         "SELECT * FROM {t} WHERE job_id = $1 ORDER BY created_at DESC LIMIT 1"
     ))
     .bind(job_id)
-    .fetch_optional(&mut *conn)
+    .fetch_optional(&mut *db.conn)
     .await
 }
 
 pub async fn list_for_job(
-    conn: &mut PgConnection,
-    prefix: &str,
+    db: &mut DbContext<'_>,
     job_id: &str,
     cursor: Option<&str>,
     limit: i64,
 ) -> Result<Vec<Execution>, sqlx::Error> {
-    let t = tbl(prefix, "executions");
+    let t = tbl(db.prefix, "executions");
     match cursor {
         Some(c) => {
             sqlx::query_as::<_, Execution>(&format!(
@@ -151,7 +144,7 @@ pub async fn list_for_job(
             .bind(job_id)
             .bind(c)
             .bind(limit)
-            .fetch_all(&mut *conn)
+            .fetch_all(&mut *db.conn)
             .await
         }
         None => {
@@ -160,41 +153,38 @@ pub async fn list_for_job(
             ))
             .bind(job_id)
             .bind(limit)
-            .fetch_all(&mut *conn)
+            .fetch_all(&mut *db.conn)
             .await
         }
     }
 }
 
 pub async fn cancel(
-    conn: &mut PgConnection,
-    prefix: &str,
+    db: &mut DbContext<'_>,
     execution_id: &str,
 ) -> Result<Option<Execution>, sqlx::Error> {
-    let t = tbl(prefix, "executions");
+    let t = tbl(db.prefix, "executions");
     sqlx::query_as::<_, Execution>(&format!(
         "UPDATE {t} SET status = 'CANCELLED', completed_at = now()
          WHERE execution_id = $1 AND status IN ('PENDING', 'QUEUED')
          RETURNING *"
     ))
     .bind(execution_id)
-    .fetch_optional(&mut *conn)
+    .fetch_optional(&mut *db.conn)
     .await
 }
 
-
 pub async fn cancel_pending_for_job(
-    conn: &mut PgConnection,
-    prefix: &str,
+    db: &mut DbContext<'_>,
     job_id: &str,
 ) -> Result<u64, sqlx::Error> {
-    let t = tbl(prefix, "executions");
+    let t = tbl(db.prefix, "executions");
     let result = sqlx::query(&format!(
         "UPDATE {t} SET status = 'CANCELLED', completed_at = now()
          WHERE job_id = $1 AND status IN ('PENDING', 'QUEUED')"
     ))
     .bind(job_id)
-    .execute(&mut *conn)
+    .execute(&mut *db.conn)
     .await?;
     Ok(result.rows_affected())
 }

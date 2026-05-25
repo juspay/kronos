@@ -1,7 +1,8 @@
 use kronos_common::{
     cache::{ConfigCache, SecretCache},
     config::AppConfig,
-    db, metrics as m,
+    db::{self, DbContext},
+    metrics as m,
     tenant::SchemaProvider,
 };
 use reqwest::Client;
@@ -125,7 +126,12 @@ async fn claim_and_process(
             }
         };
 
-        let exec = match db::executions::claim(&mut *tx, prefix, worker_id).await {
+        // Bundle connection + prefix into a DbContext.
+        // NLL ensures the borrow of tx via db is released after the last use
+        // of db (process_execution), allowing tx.commit() below.
+        let mut db = DbContext::new(&mut *tx, prefix);
+
+        let exec = match db::executions::claim(&mut db, worker_id).await {
             Ok(Some(exec)) => exec,
             Ok(None) => continue,
             Err(e) => {
@@ -134,7 +140,7 @@ async fn claim_and_process(
             }
         };
 
-        let job = match db::jobs::get(&mut *tx, prefix, &exec.job_id).await {
+        let job = match db::jobs::get(&mut db, &exec.job_id).await {
             Ok(Some(job)) => job,
             Ok(None) => {
                 tracing::error!(schema = %schema_name, "Associated job for execution {} not found", exec.execution_id);
@@ -143,8 +149,7 @@ async fn claim_and_process(
             Err(e) => {
                 tracing::error!(schema = %schema_name, "Failed to fetch associated job: {}", e);
                 tracing::warn!(schema = %schema_name, "Marking execution as failed: {}", e);
-                let _ =
-                    db::executions::complete_failed(&mut *tx, prefix, &exec.execution_id).await;
+                let _ = db::executions::complete_failed(&mut db, &exec.execution_id).await;
                 continue;
             }
         };
@@ -165,7 +170,7 @@ async fn claim_and_process(
 
         pipeline::process_execution(
             ctx,
-            &mut *tx,
+            &mut db,
             schema_name,
             &exec.execution_id,
             idempotency_key,
@@ -178,6 +183,7 @@ async fn claim_and_process(
         )
         .await;
 
+        // db last used above; NLL releases the borrow of tx here
         if let Err(e) = tx.commit().await {
             tracing::error!(
                 execution_id = %exec.execution_id,
@@ -192,4 +198,3 @@ async fn claim_and_process(
 
     false
 }
-

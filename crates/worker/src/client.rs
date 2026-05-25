@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use kronos_common::{
     cache::{ConfigCache, SecretCache},
     db,
+    db::DbContext,
     models::Execution,
     tenant::{SchemaProvider, validate_table_prefix},
 };
@@ -160,17 +161,16 @@ impl KronosLibraryClient {
         let ikey = idempotency_key.unwrap_or("");
 
         let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
+        let mut db = DbContext::new(&mut *conn, prefix);
 
-        // First look up the endpoint to get its type
-        let ep = db::endpoints::get(&mut *conn, prefix, endpoint)
+        let ep = db::endpoints::get(&mut db, endpoint)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Endpoint '{}' not found in schema '{}'", endpoint, schema_name))?;
 
         let execution_id = match trigger {
             JobTrigger::Immediate => {
                 let result = db::jobs::create_immediate(
-                    &mut *conn,
-                    prefix,
+                    &mut db,
                     endpoint,
                     ep.endpoint_type.as_str(),
                     ikey,
@@ -182,8 +182,7 @@ impl KronosLibraryClient {
             }
             JobTrigger::Delayed { run_at } => {
                 let result = db::jobs::create_delayed(
-                    &mut *conn,
-                    prefix,
+                    &mut db,
                     endpoint,
                     ep.endpoint_type.as_str(),
                     ikey,
@@ -202,8 +201,7 @@ impl KronosLibraryClient {
                 first_run_at,
             } => {
                 let job = db::jobs::create_cron(
-                    &mut *conn,
-                    prefix,
+                    &mut db,
                     endpoint,
                     ep.endpoint_type.as_str(),
                     Some(&input),
@@ -232,32 +230,13 @@ impl KronosLibraryClient {
     ) -> anyhow::Result<()> {
         let prefix = self.ctx.table_prefix.as_str();
         let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
+        let mut db = DbContext::new(&mut *conn, prefix);
 
-        // Upsert: try insert, if conflict update spec and retry_policy
-        let existing = db::endpoints::get(&mut *conn, prefix, name).await?;
+        let existing = db::endpoints::get(&mut db, name).await?;
         if existing.is_none() {
-            db::endpoints::create(
-                &mut *conn,
-                prefix,
-                name,
-                endpoint_type,
-                None,
-                None,
-                &spec,
-                retry_policy.as_ref(),
-            )
-            .await?;
+            db::endpoints::create(&mut db, name, endpoint_type, None, None, &spec, retry_policy.as_ref()).await?;
         } else {
-            db::endpoints::update(
-                &mut *conn,
-                prefix,
-                name,
-                Some(&spec),
-                None,
-                None,
-                retry_policy.as_ref(),
-            )
-            .await?;
+            db::endpoints::update(&mut db, name, Some(&spec), None, None, retry_policy.as_ref()).await?;
         }
 
         Ok(())
@@ -271,7 +250,8 @@ impl KronosLibraryClient {
     ) -> anyhow::Result<()> {
         let prefix = self.ctx.table_prefix.as_str();
         let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        db::endpoints::delete(&mut *conn, prefix, name).await?;
+        let mut db = DbContext::new(&mut *conn, prefix);
+        db::endpoints::delete(&mut db, name).await?;
         Ok(())
     }
 
@@ -286,10 +266,11 @@ impl KronosLibraryClient {
         let prefix = self.ctx.table_prefix.as_str();
         let encrypted = kronos_common::crypto::encrypt(plaintext, &self.ctx.encryption_key)?;
         let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        if db::secrets::get(&mut *conn, prefix, name).await?.is_some() {
-            db::secrets::update(&mut *conn, prefix, name, &encrypted).await?;
+        let mut db = DbContext::new(&mut *conn, prefix);
+        if db::secrets::get(&mut db, name).await?.is_some() {
+            db::secrets::update(&mut db, name, &encrypted).await?;
         } else {
-            db::secrets::create(&mut *conn, prefix, name, &encrypted).await?;
+            db::secrets::create(&mut db, name, &encrypted).await?;
         }
         Ok(())
     }
@@ -302,7 +283,8 @@ impl KronosLibraryClient {
     ) -> anyhow::Result<()> {
         let prefix = self.ctx.table_prefix.as_str();
         let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        db::secrets::delete(&mut *conn, prefix, name).await?;
+        let mut db = DbContext::new(&mut *conn, prefix);
+        db::secrets::delete(&mut db, name).await?;
         Ok(())
     }
 
@@ -310,14 +292,17 @@ impl KronosLibraryClient {
     pub async fn cancel_job(&self, schema_name: &str, job_id: &str) -> anyhow::Result<()> {
         let prefix = self.ctx.table_prefix.as_str();
         let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        let job = db::jobs::get(&mut *conn, prefix, job_id)
+        let mut db = DbContext::new(&mut *conn, prefix);
+
+        let job = db::jobs::get(&mut db, job_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Job '{}' not found", job_id))?;
 
         if job.trigger_type != "CRON" {
-            db::executions::cancel_pending_for_job(&mut *conn, prefix, job_id).await?;
+            db::executions::cancel_pending_for_job(&mut db, job_id).await?;
         }
-        db::jobs::cancel(&mut *conn, prefix, job_id).await?;
+        db::jobs::cancel(&mut db, job_id).await?;
+        drop(db);
         if job.trigger_type == "CRON" {
             db::jobs::unregister_pg_cron(&self.pool, schema_name, job_id).await?;
         }
@@ -332,7 +317,8 @@ impl KronosLibraryClient {
     ) -> anyhow::Result<Option<Execution>> {
         let prefix = self.ctx.table_prefix.as_str();
         let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        Ok(db::executions::get(&mut *conn, prefix, execution_id).await?)
+        let mut db = DbContext::new(&mut *conn, prefix);
+        Ok(db::executions::get(&mut db, execution_id).await?)
     }
 
     /// Start the background worker. Returns a JoinHandle — the caller should

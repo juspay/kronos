@@ -3,6 +3,7 @@ use crate::router::AppState;
 use actix_web::{web, HttpResponse};
 use kronos_common::{
     crypto, db,
+    db::DbContext,
     error::AppError,
     models::secret::{CreateSecret, SecretResponse, UpdateSecret},
     pagination::{encode_cursor, PaginatedResponse, PaginationParams},
@@ -21,8 +22,9 @@ pub async fn create(
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, prefix);
 
-    let secret = db::secrets::create(&mut *conn, prefix, &body.name, &encrypted)
+    let secret = db::secrets::create(&mut db, &body.name, &encrypted)
         .await
         .map_err(|e| match e {
             sqlx::Error::Database(ref db_err) if db_err.constraint().is_some() => {
@@ -47,9 +49,10 @@ pub async fn list(
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, prefix);
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
-    let items = db::secrets::list(&mut *conn, prefix, cursor.as_deref(), limit + 1).await?;
+    let items = db::secrets::list(&mut db, cursor.as_deref(), limit + 1).await?;
 
     let has_more = items.len() as i64 > limit;
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
@@ -84,8 +87,9 @@ pub async fn get(
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, prefix);
     let name = path.into_inner();
-    let secret = db::secrets::get(&mut *conn, prefix, &name)
+    let secret = db::secrets::get(&mut db, &name)
         .await?
         .ok_or_else(|| AppError::SecretNotFound(name))?;
 
@@ -109,8 +113,9 @@ pub async fn update(
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, prefix);
 
-    let secret = db::secrets::update(&mut *conn, prefix, &name, &encrypted)
+    let secret = db::secrets::update(&mut db, &name, &encrypted)
         .await?
         .ok_or_else(|| AppError::SecretNotFound(name))?;
 
@@ -129,14 +134,15 @@ pub async fn delete(
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, prefix);
     let name = path.into_inner();
-    if db::secrets::has_dependent_endpoints(&mut *conn, prefix, &name).await? {
+    if db::secrets::has_dependent_endpoints(&mut db, &name).await? {
         return Err(AppError::Conflict(format!(
             "Secret '{}' is referenced by endpoints",
             name
         )));
     }
-    if !db::secrets::delete(&mut *conn, prefix, &name).await? {
+    if !db::secrets::delete(&mut db, &name).await? {
         return Err(AppError::SecretNotFound(name));
     }
     Ok(HttpResponse::NoContent().finish())

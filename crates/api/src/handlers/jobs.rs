@@ -5,6 +5,7 @@ use chrono::Utc;
 use kronos_common::metrics as m;
 use kronos_common::{
     db,
+    db::DbContext,
     error::AppError,
     models::job::{CreateJob, TriggerType, UpdateJob},
     models::pg_cron_expr::PgCronExpr,
@@ -26,8 +27,9 @@ pub async fn create(
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, prefix);
 
-    let ep = db::endpoints::get(&mut *conn, prefix, &body.endpoint)
+    let ep = db::endpoints::get(&mut db, &body.endpoint)
         .await?
         .ok_or_else(|| AppError::EndpointNotFound(body.endpoint.clone()))?;
 
@@ -35,7 +37,7 @@ pub async fn create(
 
     if let Some(ref ps_name) = ep.payload_spec_ref {
         if let Some(ref input) = body.input {
-            let spec = db::payload_specs::get(&mut *conn, prefix, ps_name)
+            let spec = db::payload_specs::get(&mut db, ps_name)
                 .await?
                 .ok_or_else(|| AppError::InvalidPayloadSpecRef(ps_name.clone()))?;
             validate_input(input, &spec.schema_json)?;
@@ -44,15 +46,16 @@ pub async fn create(
 
     if let Some(ref key) = body.idempotency_key {
         if let Some(existing) =
-            db::jobs::get_by_idempotency(&mut *conn, prefix, &body.endpoint, key).await?
+            db::jobs::get_by_idempotency(&mut db, &body.endpoint, key).await?
         {
-            let exec = db::executions::get_for_job(&mut *conn, prefix, &existing.job_id).await?;
+            let exec = db::executions::get_for_job(&mut db, &existing.job_id).await?;
             return Ok(HttpResponse::Ok()
                 .json(serde_json::json!({ "data": job_response(&existing, exec.as_ref()) })));
         }
     }
 
-    // Drop the scoped connection before starting transactions for IMMEDIATE/DELAYED
+    // Drop the scoped connection (and its DbContext) before starting transactions
+    drop(db);
     drop(conn);
 
     match trigger {
@@ -70,10 +73,10 @@ pub async fn create(
                 kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
                     .await
                     .map_err(AppError::from)?;
+            let mut db = DbContext::new(&mut *tx, prefix);
 
             let result = db::jobs::create_immediate(
-                &mut *tx,
-                prefix,
+                &mut db,
                 &body.endpoint,
                 &ep.endpoint_type,
                 key,
@@ -88,6 +91,7 @@ pub async fn create(
                 _ => AppError::from(e),
             })?;
 
+            drop(db);
             tx.commit().await.map_err(AppError::from)?;
 
             metrics::counter!(m::JOBS_CREATED_TOTAL,
@@ -126,10 +130,10 @@ pub async fn create(
                 kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
                     .await
                     .map_err(AppError::from)?;
+            let mut db = DbContext::new(&mut *tx, prefix);
 
             let result = db::jobs::create_delayed(
-                &mut *tx,
-                prefix,
+                &mut db,
                 &body.endpoint,
                 &ep.endpoint_type,
                 key,
@@ -139,6 +143,7 @@ pub async fn create(
             )
             .await?;
 
+            drop(db);
             tx.commit().await.map_err(AppError::from)?;
 
             metrics::counter!(m::JOBS_CREATED_TOTAL,
@@ -190,10 +195,10 @@ pub async fn create(
                 kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
                     .await
                     .map_err(AppError::from)?;
+            let mut db = DbContext::new(&mut *conn, prefix);
 
             let job = db::jobs::create_cron(
-                &mut *conn,
-                prefix,
+                &mut db,
                 &body.endpoint,
                 &ep.endpoint_type,
                 body.input.as_ref(),
@@ -253,9 +258,10 @@ pub async fn list(
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, prefix);
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
-    let items = db::jobs::list(&mut *conn, prefix, cursor.as_deref(), limit + 1).await?;
+    let items = db::jobs::list(&mut db, cursor.as_deref(), limit + 1).await?;
 
     let has_more = items.len() as i64 > limit;
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
@@ -282,11 +288,12 @@ pub async fn get(
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, prefix);
     let job_id = path.into_inner();
-    let job = db::jobs::get(&mut *conn, prefix, &job_id)
+    let job = db::jobs::get(&mut db, &job_id)
         .await?
         .ok_or_else(|| AppError::JobNotFound(job_id))?;
-    let exec = db::executions::get_for_job(&mut *conn, prefix, &job.job_id).await?;
+    let exec = db::executions::get_for_job(&mut db, &job.job_id).await?;
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": job_response(&job, exec.as_ref()) })))
 }
 
@@ -302,9 +309,12 @@ pub async fn update(
         .await
         .map_err(AppError::from)?;
     let job_id = path.into_inner();
-    let old_job = db::jobs::get(&mut *conn, prefix, &job_id)
-        .await?
-        .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?;
+    let old_job = {
+        let mut db = DbContext::new(&mut *conn, prefix);
+        db::jobs::get(&mut db, &job_id)
+            .await?
+            .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?
+    };
 
     if old_job.trigger_type != "CRON" {
         return Err(AppError::JobNotUpdatable(
@@ -356,9 +366,11 @@ pub async fn update(
     let mut tx = kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *tx, prefix);
 
-    let created = db::jobs::retire_and_replace(&mut *tx, prefix, &job_id, &new_job).await?;
+    let created = db::jobs::retire_and_replace(&mut db, &job_id, &new_job).await?;
 
+    drop(db);
     tx.commit().await.map_err(AppError::from)?;
 
     if let Err(e) =
@@ -404,8 +416,9 @@ pub async fn cancel(
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, prefix);
     let job_id = path.into_inner();
-    let job = db::jobs::get(&mut *conn, prefix, &job_id)
+    let job = db::jobs::get(&mut db, &job_id)
         .await?
         .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?;
 
@@ -414,12 +427,14 @@ pub async fn cancel(
     }
 
     if job.trigger_type != "CRON" {
-        db::executions::cancel_pending_for_job(&mut *conn, prefix, &job_id).await?;
+        db::executions::cancel_pending_for_job(&mut db, &job_id).await?;
     }
 
-    let cancelled = db::jobs::cancel(&mut *conn, prefix, &job_id)
+    let cancelled = db::jobs::cancel(&mut db, &job_id)
         .await?
         .ok_or_else(|| AppError::Conflict("Job could not be cancelled".into()))?;
+
+    drop(db);
 
     if job.trigger_type == "CRON" {
         if let Err(e) =
@@ -442,12 +457,13 @@ pub async fn status(
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, prefix);
     let job_id = path.into_inner();
-    let job = db::jobs::get(&mut *conn, prefix, &job_id)
+    let job = db::jobs::get(&mut db, &job_id)
         .await?
         .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?;
 
-    let execs = db::executions::list_for_job(&mut *conn, prefix, &job_id, None, 200).await?;
+    let execs = db::executions::list_for_job(&mut db, &job_id, None, 200).await?;
 
     let active = execs
         .iter()
@@ -512,12 +528,13 @@ pub async fn versions(
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, prefix);
     let job_id = path.into_inner();
-    let _ = db::jobs::get(&mut *conn, prefix, &job_id)
+    let _ = db::jobs::get(&mut db, &job_id)
         .await?
         .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?;
 
-    let versions = db::jobs::get_versions(&mut *conn, prefix, &job_id).await?;
+    let versions = db::jobs::get_versions(&mut db, &job_id).await?;
     let items: Vec<serde_json::Value> = versions.into_iter().map(|j| job_summary(&j)).collect();
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": items })))
@@ -534,16 +551,16 @@ pub async fn list_executions(
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, prefix);
     let job_id = path.into_inner();
-    let _ = db::jobs::get(&mut *conn, prefix, &job_id)
+    let _ = db::jobs::get(&mut db, &job_id)
         .await?
         .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?;
 
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
     let items =
-        db::executions::list_for_job(&mut *conn, prefix, &job_id, cursor.as_deref(), limit + 1)
-            .await?;
+        db::executions::list_for_job(&mut db, &job_id, cursor.as_deref(), limit + 1).await?;
 
     let has_more = items.len() as i64 > limit;
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();

@@ -3,6 +3,7 @@ use crate::router::AppState;
 use actix_web::{web, HttpResponse};
 use kronos_common::{
     db,
+    db::DbContext,
     error::AppError,
     models::endpoint::{CreateEndpoint, EndpointType, UpdateEndpoint},
     pagination::{encode_cursor, PaginatedResponse, PaginationParams},
@@ -25,14 +26,15 @@ pub async fn create(
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, prefix);
 
     if let Some(ref ps) = body.payload_spec {
-        if db::payload_specs::get(&mut *conn, prefix, ps).await?.is_none() {
+        if db::payload_specs::get(&mut db, ps).await?.is_none() {
             return Err(AppError::InvalidPayloadSpecRef(ps.clone()));
         }
     }
     if let Some(ref cfg) = body.config {
-        if db::configs::get(&mut *conn, prefix, cfg).await?.is_none() {
+        if db::configs::get(&mut db, cfg).await?.is_none() {
             return Err(AppError::InvalidConfigRef(cfg.clone()));
         }
     }
@@ -43,8 +45,7 @@ pub async fn create(
         .map(|rp| serde_json::to_value(rp).unwrap());
 
     let ep = db::endpoints::create(
-        &mut *conn,
-        prefix,
+        &mut db,
         &body.name,
         &body.endpoint_type,
         body.payload_spec.as_deref(),
@@ -73,9 +74,10 @@ pub async fn list(
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, prefix);
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
-    let items = db::endpoints::list(&mut *conn, prefix, cursor.as_deref(), limit + 1).await?;
+    let items = db::endpoints::list(&mut db, cursor.as_deref(), limit + 1).await?;
 
     let has_more = items.len() as i64 > limit;
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
@@ -102,8 +104,9 @@ pub async fn get(
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, prefix);
     let name = path.into_inner();
-    let ep = db::endpoints::get(&mut *conn, prefix, &name)
+    let ep = db::endpoints::get(&mut db, &name)
         .await?
         .ok_or_else(|| AppError::EndpointNotFound(name))?;
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": endpoint_to_json(&ep) })))
@@ -120,14 +123,15 @@ pub async fn update(
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, prefix);
     let name = path.into_inner();
     if let Some(ref ps) = body.payload_spec {
-        if db::payload_specs::get(&mut *conn, prefix, ps).await?.is_none() {
+        if db::payload_specs::get(&mut db, ps).await?.is_none() {
             return Err(AppError::InvalidPayloadSpecRef(ps.clone()));
         }
     }
     if let Some(ref cfg) = body.config {
-        if db::configs::get(&mut *conn, prefix, cfg).await?.is_none() {
+        if db::configs::get(&mut db, cfg).await?.is_none() {
             return Err(AppError::InvalidConfigRef(cfg.clone()));
         }
     }
@@ -138,8 +142,7 @@ pub async fn update(
         .map(|rp| serde_json::to_value(rp).unwrap());
 
     let ep = db::endpoints::update(
-        &mut *conn,
-        prefix,
+        &mut db,
         &name,
         body.spec.as_ref(),
         body.config.as_deref(),
@@ -162,14 +165,15 @@ pub async fn delete(
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, prefix);
     let name = path.into_inner();
-    if db::endpoints::has_active_jobs(&mut *conn, prefix, &name).await? {
+    if db::endpoints::has_active_jobs(&mut db, &name).await? {
         return Err(AppError::Conflict(format!(
             "Endpoint '{}' has active jobs",
             name
         )));
     }
-    if !db::endpoints::delete(&mut *conn, prefix, &name).await? {
+    if !db::endpoints::delete(&mut db, &name).await? {
         return Err(AppError::EndpointNotFound(name));
     }
     Ok(HttpResponse::NoContent().finish())
