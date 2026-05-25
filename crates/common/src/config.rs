@@ -124,6 +124,8 @@ pub struct WorkerEnv {
     pub config_cache_ttl_sec: u64,
     pub secret_cache_ttl_sec: u64,
     pub shutdown_timeout_sec: u64,
+    /// How often the reaper sweeps for expired CRON jobs to retire + unschedule.
+    pub reaper_interval_sec: u64,
 }
 
 impl WorkerEnv {
@@ -137,6 +139,7 @@ impl WorkerEnv {
                 "TE_WORKER_SHUTDOWN_TIMEOUT_SEC",
                 30,
             ),
+            reaper_interval_sec: get_from_env_or_default("TE_WORKER_REAPER_INTERVAL_SEC", 30),
         }
     }
 }

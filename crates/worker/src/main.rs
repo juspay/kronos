@@ -17,7 +17,14 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("Worker starting (metrics on port {})", config.metrics.port);
 
+    // Reap expired CRON jobs in the background (retire + unschedule from pg_cron).
+    // Aborted when the poller returns on shutdown; its work is idempotent so a
+    // mid-sweep abort is recovered on the next process start.
+    let reaper = tokio::spawn(kronos_worker::reaper::run(pool.clone(), config.clone()));
+
     kronos_worker::poller::run(pool, config).await?;
+
+    reaper.abort();
 
     Ok(())
 }
