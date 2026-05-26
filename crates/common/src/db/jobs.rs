@@ -306,6 +306,27 @@ pub async fn unregister_pg_cron(
     Ok(())
 }
 
+/// Unschedule a CRON job's pg_cron entry on an existing connection (e.g. inside a
+/// transaction), so it can be made atomic with another change such as retirement.
+///
+/// Existence-guarded via `WHERE jobname = $1`: a missing entry is a no-op rather
+/// than an error (plain `cron.unschedule(name)` raises when the entry is absent).
+/// A genuine failure still propagates, so a caller can roll back and retry.
+pub async fn unschedule_pg_cron_conn(
+    conn: &mut PgConnection,
+    schema_name: &str,
+    job_id: &str,
+) -> Result<(), sqlx::Error> {
+    let cron_job_name = format!("kronos_{}_{}", schema_name, job_id);
+
+    sqlx::query("SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname = $1")
+        .bind(&cron_job_name)
+        .execute(&mut *conn)
+        .await?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

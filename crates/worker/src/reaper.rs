@@ -45,12 +45,21 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
 }
 
 /// Retire expired CRON jobs in a single schema and unschedule their pg_cron
-/// entries. Retirement is committed first so that even if unscheduling is
-/// interrupted, the job is RETIRED — and the pg_cron command's `status = 'ACTIVE'`
-/// guard already prevents a RETIRED job from materializing further executions.
+/// entries — both in one transaction so they are atomic.
+///
+/// Retiring and unscheduling together means a failed unschedule rolls the whole
+/// batch back, to be retried on the next sweep; we never commit a RETIRED job
+/// while leaving its pg_cron entry scheduled forever (a permanent leak, since
+/// future sweeps only look at ACTIVE jobs). The unschedule is existence-guarded,
+/// so an already-removed entry is a no-op rather than an error.
 async fn reap_schema(pool: &PgPool, schema_name: &str) -> anyhow::Result<()> {
     let mut tx = db::scoped::scoped_transaction(pool, schema_name).await?;
     let retired = db::jobs::retire_expired_cron_jobs(&mut *tx).await?;
+
+    for job_id in &retired {
+        db::jobs::unschedule_pg_cron_conn(&mut *tx, schema_name, job_id).await?;
+    }
+
     tx.commit().await?;
 
     if retired.is_empty() {
@@ -59,19 +68,8 @@ async fn reap_schema(pool: &PgPool, schema_name: &str) -> anyhow::Result<()> {
 
     metrics::counter!(m::CRON_JOBS_REAPED_TOTAL, "schema" => schema_name.to_string())
         .increment(retired.len() as u64);
-
     for job_id in &retired {
-        match db::jobs::unregister_pg_cron(pool, schema_name, job_id).await {
-            Ok(()) => {
-                tracing::info!(schema = %schema_name, job_id = %job_id, "Reaped expired CRON job")
-            }
-            // The job is already RETIRED; a leftover pg_cron entry is a harmless
-            // no-op (its command filters on status = 'ACTIVE'), so log and move on.
-            Err(e) => tracing::warn!(
-                schema = %schema_name, job_id = %job_id,
-                "Retired job but failed to unschedule pg_cron entry: {}", e
-            ),
-        }
+        tracing::info!(schema = %schema_name, job_id = %job_id, "Reaped expired CRON job");
     }
 
     Ok(())

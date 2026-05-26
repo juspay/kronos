@@ -30,12 +30,11 @@ BEGIN
                 ws.schema_name, job.job_id
             );
             cron_job_name := 'kronos_' || ws.schema_name || '_' || job.job_id;
-            -- cron.unschedule raises if the entry is missing; ignore that.
-            BEGIN
+            -- Existence-guarded: skip if the entry is already gone, but let any
+            -- genuine unschedule failure surface instead of swallowing it.
+            IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = cron_job_name) THEN
                 PERFORM cron.unschedule(cron_job_name);
-            EXCEPTION WHEN OTHERS THEN
-                NULL;
-            END;
+            END IF;
         END LOOP;
 
         -- 2. Re-register the still-active CRON jobs with the ends_at-guarded command.
