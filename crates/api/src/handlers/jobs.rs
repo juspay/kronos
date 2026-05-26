@@ -549,6 +549,8 @@ pub async fn list_executions(
                 "status": e.status,
                 "attempt_count": e.attempt_count,
                 "max_attempts": e.max_attempts,
+                "input": e.input,
+                "output": e.output,
                 "run_at": e.run_at,
                 "started_at": e.started_at,
                 "completed_at": e.completed_at,
