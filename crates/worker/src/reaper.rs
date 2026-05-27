@@ -9,10 +9,23 @@
 //! It runs as a lightweight background task alongside the poller. The work is
 //! idempotent: each sweep only retires jobs still `ACTIVE` past their end window,
 //! so a missed sweep simply gets picked up on the next tick.
+//!
+//! In a multi-pod deployment every pod runs this loop. Correctness does not rely
+//! on coordination — the retire query is a single-winner compare-and-set (see
+//! [`db::jobs::retire_expired_cron_jobs`]). To avoid every pod running the same
+//! no-op sweep each tick, each per-schema sweep first grabs a transaction-scoped
+//! advisory lock keyed on the schema; pods that don't get it skip that schema.
 
 use kronos_common::{config::AppConfig, db, metrics as m, tenant::SchemaRegistry};
+use rand::seq::SliceRandom;
 use sqlx::PgPool;
 use std::time::Duration;
+
+/// Advisory-lock namespace for per-schema reaper sweeps. Paired with
+/// `hashtext(schema)` it yields a unique lock so only one pod sweeps a given
+/// schema at a time. Purely a de-duplication optimization, not a correctness
+/// requirement — the retire `UPDATE` is itself single-winner across pods.
+const REAPER_SWEEP_LOCK_CLASS: i32 = 4242;
 
 /// Run the reaper loop until the process exits. Sweeps every
 /// `worker.reaper_interval_sec` seconds across all active workspace schemas.
@@ -28,13 +41,17 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
     loop {
         tokio::time::sleep(interval).await;
 
-        let schemas = match schema_registry.get_active_schemas().await {
+        let mut schemas = match schema_registry.get_active_schemas().await {
             Ok(s) => s,
             Err(e) => {
                 tracing::error!("Reaper failed to fetch active schemas: {}", e);
                 continue;
             }
         };
+
+        // Shuffle so pods don't all contend on the same schema's lock in the same
+        // order; spreads which pod ends up owning each schema's sweep.
+        schemas.shuffle(&mut rand::thread_rng());
 
         for schema_name in &schemas {
             if let Err(e) = reap_schema(&pool, schema_name).await {
@@ -47,6 +64,10 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
 /// Retire expired CRON jobs in a single schema and unschedule their pg_cron
 /// entries — both in one transaction so they are atomic.
 ///
+/// The sweep first tries a transaction-scoped advisory lock on the schema; if
+/// another pod already holds it, this pod skips the schema (the lock auto-releases
+/// when that pod's transaction ends — no manual unlock, no leak on crash).
+///
 /// Retiring and unscheduling together means a failed unschedule rolls the whole
 /// batch back, to be retried on the next sweep; we never commit a RETIRED job
 /// while leaving its pg_cron entry scheduled forever (a permanent leak, since
@@ -54,6 +75,20 @@ pub async fn run(pool: PgPool, config: AppConfig) -> anyhow::Result<()> {
 /// so an already-removed entry is a no-op rather than an error.
 async fn reap_schema(pool: &PgPool, schema_name: &str) -> anyhow::Result<()> {
     let mut tx = db::scoped::scoped_transaction(pool, schema_name).await?;
+
+    // Claim this schema's sweep. Transaction-scoped: released automatically on
+    // commit or rollback, so a crashed pod never strands the lock.
+    let acquired: bool = sqlx::query_scalar("SELECT pg_try_advisory_xact_lock($1, hashtext($2))")
+        .bind(REAPER_SWEEP_LOCK_CLASS)
+        .bind(schema_name)
+        .fetch_one(&mut *tx)
+        .await?;
+
+    if !acquired {
+        tracing::debug!(schema = %schema_name, "Reaper skipped schema; another pod holds the sweep lock");
+        return Ok(()); // tx dropped → rollback → advisory lock released
+    }
+
     let retired = db::jobs::retire_expired_cron_jobs(&mut *tx).await?;
 
     for job_id in &retired {
