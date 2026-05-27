@@ -26,17 +26,25 @@ pub async fn dispatch(client: &Client, spec: &Value, idempotency_key: &str) -> D
         _ => client.post(url),
     };
 
-    req = req.header("x-kronos-idempotency-key", idempotency_key);
-    req = req.timeout(Duration::from_millis(timeout_ms));
+    let mut has_user_idempotency_header = false;
 
     // Set headers
     if let Some(headers) = spec["headers"].as_object() {
         for (k, v) in headers {
             if let Some(val) = v.as_str() {
                 req = req.header(k.as_str(), val);
+                if k.eq_ignore_ascii_case("x-kronos-idempotency-key") {
+                    has_user_idempotency_header = true;
+                }
             }
         }
     }
+
+    if !has_user_idempotency_header {
+        req = req.header("x-kronos-idempotency-key", idempotency_key);
+    }
+
+    req = req.timeout(Duration::from_millis(timeout_ms));
 
     // Set body: use body_template if present, otherwise use body, otherwise send empty JSON object
     if let Some(body) = spec.get("body_template").or_else(|| spec.get("body")) {

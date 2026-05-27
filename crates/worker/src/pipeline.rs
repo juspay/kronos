@@ -126,8 +126,14 @@ pub async fn process_execution(
         .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
         .unwrap_or_default();
 
+    let mut execution_map: HashMap<String, serde_json::Value> = HashMap::new();
+    execution_map.insert("idempotency_key".to_string(), serde_json::json!(idempotency_key));
+    execution_map.insert("attempt_count".to_string(), serde_json::json!(attempt_count));
+    execution_map.insert("execution_id".to_string(), serde_json::json!(execution_id));
+    execution_map.insert("job_id".to_string(), serde_json::json!(_job_id));
+
     let resolved_spec =
-        match template::resolve(&endpoint.spec, &input_map, &config_values, &secret_values) {
+        match template::resolve(&endpoint.spec, &input_map, &config_values, &secret_values, &execution_map) {
             Ok(v) => v,
             Err(e) => {
                 tracing::error!(execution_id, "Template resolution failed: {}", e);

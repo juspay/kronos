@@ -5,24 +5,25 @@ pub fn resolve(
     input: &HashMap<String, serde_json::Value>,
     config: &HashMap<String, serde_json::Value>,
     secrets: &HashMap<String, String>,
+    execution: &HashMap<String, serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
     match value {
-        serde_json::Value::String(s) => resolve_string(s, input, config, secrets),
+        serde_json::Value::String(s) => resolve_string(s, input, config, secrets, execution),
         serde_json::Value::Object(map) => {
             let mut result = serde_json::Map::new();
             for (k, v) in map {
-                let resolved_key = match resolve_string(k, input, config, secrets)? {
+                let resolved_key = match resolve_string(k, input, config, secrets, execution)? {
                     serde_json::Value::String(s) => s,
                     other => other.to_string(),
                 };
-                result.insert(resolved_key, resolve(v, input, config, secrets)?);
+                result.insert(resolved_key, resolve(v, input, config, secrets, execution)?);
             }
             Ok(serde_json::Value::Object(result))
         }
         serde_json::Value::Array(arr) => {
             let resolved: Result<Vec<_>, _> = arr
                 .iter()
-                .map(|v| resolve(v, input, config, secrets))
+                .map(|v| resolve(v, input, config, secrets, execution))
                 .collect();
             Ok(serde_json::Value::Array(resolved?))
         }
@@ -35,10 +36,11 @@ fn resolve_string(
     input: &HashMap<String, serde_json::Value>,
     config: &HashMap<String, serde_json::Value>,
     secrets: &HashMap<String, String>,
+    execution: &HashMap<String, serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
     // Check if the entire string is a single template variable
     if let Some(var) = is_single_template(s) {
-        return resolve_variable(var, input, config, secrets);
+        return resolve_variable(var, input, config, secrets, execution);
     }
 
     // Otherwise do string interpolation
@@ -49,7 +51,7 @@ fn resolve_string(
         if let Some(close) = result[open..].find("}}") {
             let close = open + close + 2;
             let var = result[open + 2..close - 2].trim();
-            let resolved = resolve_variable(var, input, config, secrets)?;
+            let resolved = resolve_variable(var, input, config, secrets, execution)?;
             let replacement = match &resolved {
                 serde_json::Value::String(s) => s.clone(),
                 other => other.to_string(),
@@ -80,6 +82,7 @@ fn resolve_variable(
     input: &HashMap<String, serde_json::Value>,
     config: &HashMap<String, serde_json::Value>,
     secrets: &HashMap<String, String>,
+    execution: &HashMap<String, serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
     if let Some(key) = var.strip_prefix("input.") {
         input
@@ -95,6 +98,11 @@ fn resolve_variable(
         secrets
             .get(key)
             .map(|v| serde_json::Value::String(v.clone()))
+            .ok_or_else(|| format!("Unresolved template variable: {}", var))
+    } else if let Some(key) = var.strip_prefix("execution.") {
+        execution
+            .get(key)
+            .cloned()
             .ok_or_else(|| format!("Unresolved template variable: {}", var))
     } else {
         Err(format!("Unknown template namespace in: {}", var))
@@ -119,6 +127,8 @@ mod tests {
         let mut secrets = HashMap::new();
         secrets.insert("api_key".into(), "sk-123".into());
 
+        let execution = HashMap::new();
+
         let template = serde_json::json!({
             "url": "{{config.api_base_url}}/users/{{input.user_id}}",
             "headers": {
@@ -129,7 +139,7 @@ mod tests {
             }
         });
 
-        let result = resolve(&template, &input, &config, &secrets).unwrap();
+        let result = resolve(&template, &input, &config, &secrets, &execution).unwrap();
         assert_eq!(
             result["url"],
             serde_json::json!("https://api.example.com/users/u_abc")
@@ -142,12 +152,64 @@ mod tests {
     }
 
     #[test]
-    fn test_missing_variable() {
+    fn test_execution_idempotency_key() {
         let input = HashMap::new();
         let config = HashMap::new();
         let secrets = HashMap::new();
 
+        let mut execution = HashMap::new();
+        execution.insert(
+            "idempotency_key".into(),
+            serde_json::json!("my-idem-key-42"),
+        );
+
+        let template = serde_json::json!({
+            "headers": {
+                "Idempotency-Key": "{{execution.idempotency_key}}"
+            }
+        });
+
+        let result = resolve(&template, &input, &config, &secrets, &execution).unwrap();
+        assert_eq!(
+            result["headers"]["Idempotency-Key"],
+            serde_json::json!("my-idem-key-42")
+        );
+    }
+
+    #[test]
+    fn test_execution_interpolation() {
+        let input = HashMap::new();
+        let config = HashMap::new();
+        let secrets = HashMap::new();
+
+        let mut execution = HashMap::new();
+        execution.insert("idempotency_key".into(), serde_json::json!("abc"));
+
+        let template = serde_json::json!("key={{execution.idempotency_key}}-suffix");
+
+        let result = resolve(&template, &input, &config, &secrets, &execution).unwrap();
+        assert_eq!(result, serde_json::json!("key=abc-suffix"));
+    }
+
+    #[test]
+    fn test_execution_missing_key() {
+        let input = HashMap::new();
+        let config = HashMap::new();
+        let secrets = HashMap::new();
+        let execution = HashMap::new();
+
+        let template = serde_json::json!("{{execution.missing}}");
+        assert!(resolve(&template, &input, &config, &secrets, &execution).is_err());
+    }
+
+    #[test]
+    fn test_missing_variable() {
+        let input = HashMap::new();
+        let config = HashMap::new();
+        let secrets = HashMap::new();
+        let execution = HashMap::new();
+
         let template = serde_json::json!("{{input.missing}}");
-        assert!(resolve(&template, &input, &config, &secrets).is_err());
+        assert!(resolve(&template, &input, &config, &secrets, &execution).is_err());
     }
 }
