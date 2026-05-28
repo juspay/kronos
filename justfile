@@ -40,7 +40,6 @@ db-migrate:
     PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260318000000_multi_tenancy.sql
     PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260322000000_txn_based_pickup.sql
     PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260322000001_pg_cron.sql
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260525000000_cron_ends_at_guard.sql
 
 # Reset database (drop + recreate + migrate)
 db-reset:
