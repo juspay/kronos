@@ -10,8 +10,8 @@ pub enum EndpointType {
     KAFKA,
     REDIS_STREAM,
     /// In-process task run by the worker itself (e.g. the dogfooded CRON reaper).
-    /// Not user-creatable — provisioned by `worker::bootstrap` for internal jobs
-    /// whose "dispatch" is a Rust function rather than a network call.
+    /// Not user-creatable — provisioned at workspace-creation time for internal
+    /// jobs whose "dispatch" is a Rust function rather than a network call.
     INTERNAL,
 }
 

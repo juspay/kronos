@@ -17,16 +17,7 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("Worker starting (metrics on port {})", config.metrics.port);
 
-    // Provision kronos's own internal jobs (today: the dogfooded reaper) for
-    // every active workspace, then keep them in sync as new workspaces appear.
-    // The reaper sweep itself runs as a CRON-triggered execution claimed by the
-    // poller — see `worker::bootstrap`. Aborted when the poller returns on
-    // shutdown; every step is idempotent so a mid-pass abort recovers next pass.
-    let bootstrap = tokio::spawn(kronos_worker::bootstrap::run(pool.clone(), config.clone()));
-
     kronos_worker::poller::run(pool, config).await?;
-
-    bootstrap.abort();
 
     Ok(())
 }

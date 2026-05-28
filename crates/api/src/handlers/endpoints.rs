@@ -15,8 +15,8 @@ pub async fn create(
     body: web::Json<CreateEndpoint>,
 ) -> Result<HttpResponse, AppError> {
     // INTERNAL endpoints exist for kronos-driven internal tasks (e.g. the
-    // dogfooded reaper) and are provisioned by `worker::bootstrap` — never
-    // through the public API. Reject them explicitly so the constraint
+    // dogfooded reaper) and are provisioned at workspace-creation time —
+    // never through the public API. Reject them explicitly so the constraint
     // doesn't have to do it with an opaque "violates check" error.
     match EndpointType::from_str_val(&body.endpoint_type) {
         None | Some(EndpointType::INTERNAL) => {

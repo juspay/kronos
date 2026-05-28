@@ -8,12 +8,13 @@
 //!
 //! The sweep used to run as a tokio interval task in each worker pod, invisible
 //! to the rest of kronos. It is now itself a kronos CRON job: each workspace is
-//! provisioned (by [`crate::bootstrap`]) with an `INTERNAL` endpoint named
-//! `kronos.reaper` and a `* * * * *` job whose pg_cron tick materializes an
-//! execution into the workspace's own `executions` table. The worker claims it
-//! via the normal `SKIP LOCKED` path and the [`crate::dispatcher::internal`]
-//! arm calls [`reap_schema`] — same code, but now with attempts, retries,
-//! duration, metrics and a dashboard row, all for free.
+//! provisioned at creation time (see `db::workspaces::provision_reaper`) with
+//! an `INTERNAL` endpoint named `kronos.reaper` and a `* * * * *` job whose
+//! pg_cron tick materializes an execution into the workspace's own
+//! `executions` table. The worker claims it via the normal `SKIP LOCKED` path
+//! and the [`crate::dispatcher::internal`] arm calls [`reap_schema`] — same
+//! code, but now with attempts, retries, duration, metrics and a dashboard
+//! row, all for free.
 //!
 //! Coordination across pods is therefore implicit: pg_cron inserts exactly one
 //! execution per tick per schema, and `claim()` uses `FOR UPDATE SKIP LOCKED`,
