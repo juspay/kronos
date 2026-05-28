@@ -8,14 +8,14 @@
 //! pool, routed to the internal dispatcher, and visible in the dashboard like
 //! any user job.
 //!
-//! The startup migration (`20260528000000_dogfooded_reaper.sql`) seeds the same
-//! state for workspaces that already exist when this code first ships; this
-//! module's job is to keep newly-provisioned workspaces in sync after that.
-//! It runs as a lightweight tokio loop: SchemaRegistry refreshes every 30s, so
-//! a freshly-created workspace gets its reaper job within roughly one bootstrap
-//! interval. Every step is idempotent — ON CONFLICT on the endpoint and on the
-//! job's `(endpoint, idempotency_key)` unique index, and `cron.schedule` upserts
-//! by name — so concurrent worker pods racing through bootstrap don't conflict.
+//! Runs as a lightweight tokio loop: every pass walks the active workspaces
+//! and ensures the endpoint, job, and pg_cron entry all exist. SchemaRegistry
+//! refreshes every 30s, so a freshly-created workspace gets its reaper job
+//! within roughly one bootstrap interval. Every step is idempotent — ON
+//! CONFLICT on the endpoint and on the job's `(endpoint, idempotency_key)`
+//! unique index, and `cron.schedule` upserts by name — so concurrent worker
+//! pods racing through bootstrap don't conflict, and the first pass after a
+//! fresh install does the same provisioning work as a steady-state pass.
 
 use kronos_common::{config::AppConfig, db, tenant::SchemaRegistry};
 use sqlx::PgPool;
