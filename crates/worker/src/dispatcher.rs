@@ -1,4 +1,5 @@
 pub mod http;
+pub mod internal;
 #[cfg(feature = "kafka")]
 pub mod kafka;
 #[cfg(feature = "redis-stream")]

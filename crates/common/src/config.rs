@@ -124,17 +124,10 @@ pub struct WorkerEnv {
     pub config_cache_ttl_sec: u64,
     pub secret_cache_ttl_sec: u64,
     pub shutdown_timeout_sec: u64,
-    /// How often the reaper sweeps for expired CRON jobs to retire + unschedule.
-    pub reaper_interval_sec: u64,
 }
 
 impl WorkerEnv {
     fn new() -> Self {
-        // Clamp to >= 1s: a 0 interval would make the reaper sleep(0) and spin in a
-        // tight loop, hammering the DB every iteration.
-        let reaper_interval_sec =
-            get_from_env_or_default("TE_WORKER_REAPER_INTERVAL_SEC", 30).max(1);
-
         Self {
             max_concurrent: get_from_env_or_default("TE_WORKER_MAX_CONCURRENT", 50),
             poll_interval_ms: get_from_env_or_default("TE_WORKER_POLL_INTERVAL_MS", 200),
@@ -144,7 +137,6 @@ impl WorkerEnv {
                 "TE_WORKER_SHUTDOWN_TIMEOUT_SEC",
                 30,
             ),
-            reaper_interval_sec,
         }
     }
 }
