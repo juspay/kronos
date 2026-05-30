@@ -24,7 +24,7 @@ pub async fn process_execution(
     schema_name: &str,
     execution_id: &str,
     idempotency_key: &str,
-    _job_id: &str,
+    job_id: &str,
     endpoint_name: &str,
     endpoint_type: &str,
     input: Option<&serde_json::Value>,
@@ -130,7 +130,7 @@ pub async fn process_execution(
     execution_map.insert("idempotency_key".to_string(), serde_json::json!(idempotency_key));
     execution_map.insert("attempt_count".to_string(), serde_json::json!(attempt_count));
     execution_map.insert("execution_id".to_string(), serde_json::json!(execution_id));
-    execution_map.insert("job_id".to_string(), serde_json::json!(_job_id));
+    execution_map.insert("job_id".to_string(), serde_json::json!(job_id));
 
     let resolved_spec =
         match template::resolve(&endpoint.spec, &input_map, &config_values, &secret_values, &execution_map) {
