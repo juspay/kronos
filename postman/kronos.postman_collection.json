@@ -72,7 +72,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Aarokya\",\n  \"slug\": \"aarokya\"\n}"
+              "raw": "{\n  \"name\": \"Example Org\",\n  \"slug\": \"example-org\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/orgs",
@@ -129,7 +129,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"aarokya-prod\",\n  \"slug\": \"aarokya-prod\"\n}"
+              "raw": "{\n  \"name\": \"example-workspace\",\n  \"slug\": \"example-workspace\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/orgs/{{org_id}}/workspaces",
@@ -188,7 +188,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"policy-renewal-spec\",\n  \"schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"user_id\":   { \"type\": \"string\" },\n      \"policy_id\": { \"type\": \"string\" }\n    },\n    \"required\": [\"user_id\", \"policy_id\"]\n  }\n}"
+              "raw": "{\n  \"name\": \"example-payload-spec\",\n  \"schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"user_id\":   { \"type\": \"string\" },\n      \"resource_id\": { \"type\": \"string\" }\n    },\n    \"required\": [\"user_id\", \"resource_id\"]\n  }\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/payload-specs",
@@ -243,14 +243,14 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/v1/payload-specs/policy-renewal-spec",
+              "raw": "{{base_url}}/v1/payload-specs/example-payload-spec",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "v1",
                 "payload-specs",
-                "policy-renewal-spec"
+                "example-payload-spec"
               ]
             }
           }
@@ -275,17 +275,17 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"user_id\":   { \"type\": \"string\" },\n      \"policy_id\": { \"type\": \"string\" },\n      \"reason\":    { \"type\": \"string\" }\n    },\n    \"required\": [\"user_id\", \"policy_id\"]\n  }\n}"
+              "raw": "{\n  \"schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"user_id\":   { \"type\": \"string\" },\n      \"resource_id\": { \"type\": \"string\" },\n      \"reason\":    { \"type\": \"string\" }\n    },\n    \"required\": [\"user_id\", \"resource_id\"]\n  }\n}"
             },
             "url": {
-              "raw": "{{base_url}}/v1/payload-specs/policy-renewal-spec",
+              "raw": "{{base_url}}/v1/payload-specs/example-payload-spec",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "v1",
                 "payload-specs",
-                "policy-renewal-spec"
+                "example-payload-spec"
               ]
             }
           }
@@ -305,14 +305,14 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/v1/payload-specs/policy-renewal-spec",
+              "raw": "{{base_url}}/v1/payload-specs/example-payload-spec",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "v1",
                 "payload-specs",
-                "policy-renewal-spec"
+                "example-payload-spec"
               ]
             }
           }
@@ -342,7 +342,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"aarokya-http-config\",\n  \"values\": {\n    \"timeout_ms\": 5000,\n    \"max_retries\": 3\n  }\n}"
+              "raw": "{\n  \"name\": \"example-config\",\n  \"values\": {\n    \"timeout_ms\": 5000,\n    \"max_retries\": 3\n  }\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/configs",
@@ -397,14 +397,14 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/v1/configs/aarokya-http-config",
+              "raw": "{{base_url}}/v1/configs/example-config",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "v1",
                 "configs",
-                "aarokya-http-config"
+                "example-config"
               ]
             }
           }
@@ -432,14 +432,14 @@
               "raw": "{\n  \"values\": {\n    \"timeout_ms\": 10000,\n    \"max_retries\": 5\n  }\n}"
             },
             "url": {
-              "raw": "{{base_url}}/v1/configs/aarokya-http-config",
+              "raw": "{{base_url}}/v1/configs/example-config",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "v1",
                 "configs",
-                "aarokya-http-config"
+                "example-config"
               ]
             }
           }
@@ -459,14 +459,14 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/v1/configs/aarokya-http-config",
+              "raw": "{{base_url}}/v1/configs/example-config",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "v1",
                 "configs",
-                "aarokya-http-config"
+                "example-config"
               ]
             }
           }
@@ -496,7 +496,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"aarokya-internal-key\",\n  \"value\": \"nh-key-2026\"\n}"
+              "raw": "{\n  \"name\": \"example-secret\",\n  \"value\": \"s3cr3t-value\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/secrets",
@@ -551,14 +551,14 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/v1/secrets/aarokya-internal-key",
+              "raw": "{{base_url}}/v1/secrets/example-secret",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "v1",
                 "secrets",
-                "aarokya-internal-key"
+                "example-secret"
               ]
             }
           }
@@ -586,14 +586,14 @@
               "raw": "{\n  \"value\": \"new-secret-value\"\n}"
             },
             "url": {
-              "raw": "{{base_url}}/v1/secrets/aarokya-internal-key",
+              "raw": "{{base_url}}/v1/secrets/example-secret",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "v1",
                 "secrets",
-                "aarokya-internal-key"
+                "example-secret"
               ]
             }
           }
@@ -613,14 +613,14 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/v1/secrets/aarokya-internal-key",
+              "raw": "{{base_url}}/v1/secrets/example-secret",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "v1",
                 "secrets",
-                "aarokya-internal-key"
+                "example-secret"
               ]
             }
           }
@@ -650,7 +650,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"aarokya-policy-renewal\",\n  \"type\": \"HTTP\",\n  \"payload_spec\": \"policy-renewal-spec\",\n  \"config\": \"aarokya-http-config\",\n  \"spec\": {\n    \"url\": \"http://localhost:8080/internal/policies/renew\",\n    \"method\": \"POST\",\n    \"headers\": {\n      \"Content-Type\": \"application/json\",\n      \"X-Api-Key\": \"nh-key-2026\"\n    }\n  },\n  \"retry_policy\": {\n    \"max_attempts\": 3,\n    \"backoff\": \"exponential\",\n    \"initial_delay_ms\": 1000,\n    \"max_delay_ms\": 30000\n  }\n}"
+              "raw": "{\n  \"name\": \"example-endpoint\",\n  \"type\": \"HTTP\",\n  \"payload_spec\": \"example-payload-spec\",\n  \"config\": \"example-config\",\n  \"spec\": {\n    \"url\": \"http://localhost:8080/internal/example\",\n    \"method\": \"POST\",\n    \"headers\": {\n      \"Content-Type\": \"application/json\",\n      \"X-Api-Key\": \"s3cr3t-value\",\n      \"X-Execution-Id\": \"{{execution.execution_id}}\"\n    }\n  },\n  \"retry_policy\": {\n    \"max_attempts\": 3,\n    \"backoff\": \"exponential\",\n    \"initial_delay_ms\": 1000,\n    \"max_delay_ms\": 30000\n  }\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/endpoints",
@@ -705,14 +705,14 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/v1/endpoints/aarokya-policy-renewal",
+              "raw": "{{base_url}}/v1/endpoints/example-endpoint",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "v1",
                 "endpoints",
-                "aarokya-policy-renewal"
+                "example-endpoint"
               ]
             }
           }
@@ -737,17 +737,17 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"spec\": {\n    \"url\": \"http://localhost:8080/internal/policies/renew\",\n    \"method\": \"POST\",\n    \"headers\": {\n      \"Content-Type\": \"application/json\",\n      \"X-Api-Key\": \"nh-key-2026\"\n    }\n  },\n  \"retry_policy\": {\n    \"max_attempts\": 5,\n    \"backoff\": \"exponential\",\n    \"initial_delay_ms\": 2000,\n    \"max_delay_ms\": 60000\n  }\n}"
+              "raw": "{\n  \"spec\": {\n    \"url\": \"http://localhost:8080/internal/example\",\n    \"method\": \"POST\",\n    \"headers\": {\n      \"Content-Type\": \"application/json\",\n      \"X-Api-Key\": \"s3cr3t-value\",\n      \"X-Execution-Id\": \"{{execution.execution_id}}\"\n    }\n  },\n  \"retry_policy\": {\n    \"max_attempts\": 5,\n    \"backoff\": \"exponential\",\n    \"initial_delay_ms\": 2000,\n    \"max_delay_ms\": 60000\n  }\n}"
             },
             "url": {
-              "raw": "{{base_url}}/v1/endpoints/aarokya-policy-renewal",
+              "raw": "{{base_url}}/v1/endpoints/example-endpoint",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "v1",
                 "endpoints",
-                "aarokya-policy-renewal"
+                "example-endpoint"
               ]
             }
           }
@@ -767,14 +767,14 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/v1/endpoints/aarokya-policy-renewal",
+              "raw": "{{base_url}}/v1/endpoints/example-endpoint",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "v1",
                 "endpoints",
-                "aarokya-policy-renewal"
+                "example-endpoint"
               ]
             }
           }
@@ -819,7 +819,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"endpoint\": \"aarokya-policy-renewal\",\n  \"trigger\": \"CRON\",\n  \"cron\": \"0 30 4 * * *\",\n  \"timezone\": \"Asia/Kolkata\",\n  \"input\": {\n    \"user_id\": \"usr_test_001\",\n    \"policy_id\": \"pol_test_001\"\n  }\n}",
+              "raw": "{\n  \"endpoint\": \"example-endpoint\",\n  \"trigger\": \"CRON\",\n  \"cron\": \"0 30 4 * * *\",\n  \"timezone\": \"Asia/Kolkata\",\n  \"input\": {\n    \"user_id\": \"usr_test_001\",\n    \"resource_id\": \"res_test_001\"\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -874,7 +874,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"endpoint\": \"aarokya-policy-renewal\",\n  \"trigger\": \"IMMEDIATE\",\n  \"input\": {\n    \"user_id\": \"usr_test_001\",\n    \"policy_id\": \"pol_test_001\"\n  },\n  \"idempotency_key\": \"renew-pol-test-001-v1\"\n}"
+              "raw": "{\n  \"endpoint\": \"example-endpoint\",\n  \"trigger\": \"IMMEDIATE\",\n  \"input\": {\n    \"user_id\": \"usr_test_001\",\n    \"resource_id\": \"res_test_001\"\n  },\n  \"idempotency_key\": \"example-idem-key-v1\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/jobs",
@@ -923,7 +923,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"endpoint\": \"aarokya-policy-renewal\",\n  \"trigger\": \"DELAYED\",\n  \"run_at\": \"2026-04-30T10:00:00Z\",\n  \"input\": {\n    \"user_id\": \"usr_test_001\",\n    \"policy_id\": \"pol_test_001\"\n  }\n}"
+              "raw": "{\n  \"endpoint\": \"example-endpoint\",\n  \"trigger\": \"DELAYED\",\n  \"run_at\": \"2026-04-30T10:00:00Z\",\n  \"input\": {\n    \"user_id\": \"usr_test_001\",\n    \"resource_id\": \"res_test_001\"\n  }\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/jobs",
