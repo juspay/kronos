@@ -1,5 +1,7 @@
 use crate::db::jobs::register_pg_cron;
 use crate::db::scoped::scoped_transaction;
+use crate::models::endpoint::EndpointType;
+use crate::models::job::TriggerType;
 use crate::models::workspace::Workspace;
 use crate::tenant::validate_schema_name;
 use sqlx::PgPool;
@@ -147,11 +149,15 @@ async fn provision_reaper(
 ) -> Result<(), sqlx::Error> {
     let mut tx = scoped_transaction(pool, schema_name).await?;
 
+    let reaper_spec = serde_json::json!({ "task": "reaper" });
+
     sqlx::query(
         "INSERT INTO endpoints (name, endpoint_type, spec) \
-         VALUES ($1, 'INTERNAL', '{\"task\":\"reaper\"}'::jsonb)",
+         VALUES ($1, $2, $3)",
     )
     .bind(REAPER_ENDPOINT_NAME)
+    .bind(EndpointType::INTERNAL.to_string())
+    .bind(&reaper_spec)
     .execute(&mut *tx)
     .await?;
 
@@ -159,10 +165,12 @@ async fn provision_reaper(
         "INSERT INTO jobs ( \
             endpoint, endpoint_type, trigger_type, \
             cron_expression, cron_timezone, cron_next_run_at \
-         ) VALUES ($1, 'INTERNAL', 'CRON', $2, 'UTC', now()) \
+         ) VALUES ($1, $2, $3, $4, 'UTC', now()) \
          RETURNING job_id",
     )
     .bind(REAPER_ENDPOINT_NAME)
+    .bind(EndpointType::INTERNAL.to_string())
+    .bind(TriggerType::CRON.as_str())
     .bind(cron_expression)
     .fetch_one(&mut *tx)
     .await?;
