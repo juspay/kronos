@@ -1,4 +1,4 @@
-use crate::db::jobs::register_pg_cron;
+use crate::db::jobs::register_pg_cron_conn;
 use crate::db::scoped::scoped_transaction;
 use crate::models::endpoint::EndpointType;
 use crate::models::job::TriggerType;
@@ -133,11 +133,10 @@ async fn provision_schema(pool: &PgPool, schema_name: &str) -> Result<(), sqlx::
 
 /// Install the dogfooded reaper for a freshly-provisioned workspace: an
 /// `INTERNAL` endpoint, a CRON job firing on `cron_expression`, and the
-/// matching pg_cron entry that materializes one execution per tick. The
-/// endpoint + job inserts run in a single scoped transaction so a partial
-/// provisioning never leaves an endpoint without its job (or vice versa); the
-/// pg_cron registration follows because `cron.schedule` writes to the `cron`
-/// schema and so can't share the workspace tx.
+/// matching pg_cron entry that materializes one execution per tick. All three
+/// run inside the same scoped transaction so a failure at any step rolls the
+/// whole provisioning back — we never commit a job row without its pg_cron
+/// schedule (which would leave a phantom row that never fires).
 ///
 /// `cron_expression` is the caller-supplied schedule (typically from
 /// `AppConfig::reaper::cron_expression`); it is validated as a 5-field
@@ -175,9 +174,9 @@ async fn provision_reaper(
     .fetch_one(&mut *tx)
     .await?;
 
-    tx.commit().await?;
+    register_pg_cron_conn(&mut *tx, schema_name, &job_id, cron_expression).await?;
 
-    register_pg_cron(pool, schema_name, &job_id, cron_expression).await?;
+    tx.commit().await?;
 
     Ok(())
 }

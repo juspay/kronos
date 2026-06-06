@@ -290,6 +290,34 @@ pub async fn register_pg_cron(
     Ok(())
 }
 
+/// Register a CRON job with pg_cron on an existing connection (e.g. inside a
+/// transaction), so the registration can commit atomically with the surrounding
+/// row inserts. Mirrors [`unschedule_pg_cron_conn`] on the inverse path.
+///
+/// `cron.schedule` upserts by job name, so a caller that re-runs this against
+/// the same `(schema_name, job_id)` simply replaces the previous command in
+/// place — no manual existence check needed. A genuine failure (bad cron
+/// expression, missing pg_cron extension) propagates, letting the caller roll
+/// back the surrounding transaction.
+pub async fn register_pg_cron_conn(
+    conn: &mut PgConnection,
+    schema_name: &str,
+    job_id: &str,
+    cron_expression: &str,
+) -> Result<(), sqlx::Error> {
+    let cron_job_name = format!("kronos_{}_{}", schema_name, job_id);
+    let command = build_cron_command(schema_name, job_id);
+
+    sqlx::query("SELECT cron.schedule($1, $2, $3)")
+        .bind(&cron_job_name)
+        .bind(cron_expression)
+        .bind(&command)
+        .execute(&mut *conn)
+        .await?;
+
+    Ok(())
+}
+
 /// Unregister a CRON job from pg_cron.
 pub async fn unregister_pg_cron(
     pool: &PgPool,
