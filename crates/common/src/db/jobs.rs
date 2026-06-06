@@ -423,7 +423,7 @@ pub async fn register_pg_cron(
 
 /// Register a CRON job with pg_cron on an existing connection (e.g. inside a
 /// transaction), so the registration can commit atomically with the surrounding
-/// row inserts. Mirrors [`unschedule_pg_cron_conn`] on the inverse path.
+/// row inserts. Mirrors [`unregister_pg_cron_conn`] on the inverse path.
 ///
 /// `cron.schedule` upserts by job name, so a caller that re-runs this against
 /// the same `(schema_name, job_id)` simply replaces the previous command in
@@ -472,7 +472,7 @@ pub async fn unregister_pg_cron(
 /// Existence-guarded via `WHERE jobname = $1`: a missing entry is a no-op rather
 /// than an error (plain `cron.unschedule(name)` raises when the entry is absent).
 /// A genuine failure still propagates, so a caller can roll back and retry.
-pub async fn unschedule_pg_cron_conn(
+pub async fn unregister_pg_cron_conn(
     conn: &mut PgConnection,
     schema_name: &str,
     job_id: &str,
