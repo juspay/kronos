@@ -171,6 +171,11 @@ test-delayed:
 test-cron:
     cd cli && npx tsx src/test-cron.ts
 
+# Verify public API guards for INTERNAL jobs/endpoints (dogfooded reaper).
+# API-only — no worker/scheduler required.
+test-internal-guards:
+    cd cli && npx tsx src/test-internal-guards.ts
+
 # Full integration test: setup → dev services → run test
 test-e2e: build
     #!/usr/bin/env bash
@@ -206,7 +211,7 @@ test-e2e: build
         sleep 1
     done
 
-    cd cli && npx tsx src/test-immediate.ts && npx tsx src/test-delayed.ts && npx tsx src/test-cron.ts
+    cd cli && npx tsx src/test-immediate.ts && npx tsx src/test-delayed.ts && npx tsx src/test-cron.ts && npx tsx src/test-internal-guards.ts
     EXIT_CODE=$?
 
     echo "Shutting down services..."
