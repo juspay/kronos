@@ -1,10 +1,10 @@
 use chrono::Utc;
 use kronos_common::{
     cache::{ConfigCache, SecretCache},
-    crypto, db, metrics as m, template,
+    crypto, db, db::DbContext, metrics as m, template,
 };
 use reqwest::Client;
-use sqlx::{PgConnection, PgPool};
+use sqlx::PgPool;
 use std::collections::HashMap;
 
 use crate::backoff;
@@ -16,11 +16,12 @@ pub struct PipelineContext {
     pub config_cache: ConfigCache,
     pub secret_cache: SecretCache,
     pub encryption_key: String,
+    pub table_prefix: String,
 }
 
 pub async fn process_execution(
     ctx: &PipelineContext,
-    conn: &mut PgConnection,
+    db: &mut DbContext<'_>,
     schema_name: &str,
     execution_id: &str,
     idempotency_key: &str,
@@ -34,24 +35,18 @@ pub async fn process_execution(
     let started_at = Utc::now();
 
     // 1. Load endpoint
-    let endpoint = match db::endpoints::get(&mut *conn, endpoint_name).await {
+    let endpoint = match db::endpoints::get(db, endpoint_name).await {
         Ok(Some(ep)) => ep,
         Ok(None) => {
             tracing::error!(execution_id, "Endpoint not found: {}", endpoint_name);
-            let _ = db::executions::complete_failed(&mut *conn, execution_id).await;
-            log_execution(
-                &mut *conn,
-                execution_id,
-                attempt_count,
-                "ERROR",
-                &format!("Endpoint not found: {}", endpoint_name),
-            )
-            .await;
+            let _ = db::executions::complete_failed(db, execution_id).await;
+            log_execution(db, execution_id, attempt_count, "ERROR",
+                &format!("Endpoint not found: {}", endpoint_name)).await;
             return;
         }
         Err(e) => {
             tracing::error!(execution_id, "Failed to load endpoint: {}", e);
-            let _ = db::executions::complete_failed(&mut *conn, execution_id).await;
+            let _ = db::executions::complete_failed(db, execution_id).await;
             return;
         }
     };
@@ -60,31 +55,15 @@ pub async fn process_execution(
     let retry_policy = endpoint.get_retry_policy();
 
     let config_values = if let Some(ref config_name) = endpoint.config_ref {
-        match load_config(ctx, &mut *conn, config_name).await {
+        match load_config(ctx, db, config_name).await {
             Ok(vals) => vals,
             Err(e) => {
                 tracing::error!(execution_id, "Config resolution failed: {}", e);
-                let _ = db::executions::complete_failed(&mut *conn, execution_id).await;
-                record_attempt(
-                    &mut *conn,
-                    execution_id,
-                    attempt_count,
-                    "FAILED",
-                    started_at,
-                    None,
-                    Some(&serde_json::json!({
-                        "type": "TEMPLATE_RESOLUTION_FAILED", "message": e
-                    })),
-                )
-                .await;
-                log_execution(
-                    &mut *conn,
-                    execution_id,
-                    attempt_count,
-                    "ERROR",
-                    &format!("Template resolution failed: {}", e),
-                )
-                .await;
+                let _ = db::executions::complete_failed(db, execution_id).await;
+                record_attempt(db, execution_id, attempt_count, "FAILED", started_at, None,
+                    Some(&serde_json::json!({ "type": "TEMPLATE_RESOLUTION_FAILED", "message": e }))).await;
+                log_execution(db, execution_id, attempt_count, "ERROR",
+                    &format!("Template resolution failed: {}", e)).await;
                 return;
             }
         }
@@ -92,31 +71,15 @@ pub async fn process_execution(
         HashMap::new()
     };
 
-    let secret_values = match load_secrets(ctx, &mut *conn, &endpoint.spec).await {
+    let secret_values = match load_secrets(ctx, db, &endpoint.spec).await {
         Ok(vals) => vals,
         Err(e) => {
             tracing::error!(execution_id, "Secret resolution failed: {}", e);
-            let _ = db::executions::complete_failed(&mut *conn, execution_id).await;
-            record_attempt(
-                &mut *conn,
-                execution_id,
-                attempt_count,
-                "FAILED",
-                started_at,
-                None,
-                Some(&serde_json::json!({
-                    "type": "TEMPLATE_RESOLUTION_FAILED", "message": e
-                })),
-            )
-            .await;
-            log_execution(
-                &mut *conn,
-                execution_id,
-                attempt_count,
-                "ERROR",
-                &format!("Secret resolution failed: {}", e),
-            )
-            .await;
+            let _ = db::executions::complete_failed(db, execution_id).await;
+            record_attempt(db, execution_id, attempt_count, "FAILED", started_at, None,
+                Some(&serde_json::json!({ "type": "TEMPLATE_RESOLUTION_FAILED", "message": e }))).await;
+            log_execution(db, execution_id, attempt_count, "ERROR",
+                &format!("Secret resolution failed: {}", e)).await;
             return;
         }
     };
@@ -137,27 +100,11 @@ pub async fn process_execution(
             Ok(v) => v,
             Err(e) => {
                 tracing::error!(execution_id, "Template resolution failed: {}", e);
-                let _ = db::executions::complete_failed(&mut *conn, execution_id).await;
-                record_attempt(
-                    &mut *conn,
-                    execution_id,
-                    attempt_count,
-                    "FAILED",
-                    started_at,
-                    None,
-                    Some(&serde_json::json!({
-                        "type": "TEMPLATE_RESOLUTION_FAILED", "message": e
-                    })),
-                )
-                .await;
-                log_execution(
-                    &mut *conn,
-                    execution_id,
-                    attempt_count,
-                    "ERROR",
-                    &format!("Template resolution failed: {}", e),
-                )
-                .await;
+                let _ = db::executions::complete_failed(db, execution_id).await;
+                record_attempt(db, execution_id, attempt_count, "FAILED", started_at, None,
+                    Some(&serde_json::json!({ "type": "TEMPLATE_RESOLUTION_FAILED", "message": e }))).await;
+                log_execution(db, execution_id, attempt_count, "ERROR",
+                    &format!("Template resolution failed: {}", e)).await;
                 return;
             }
         };
@@ -172,21 +119,18 @@ pub async fn process_execution(
         }
     }
 
-    // 3. Dispatch
-    log_execution(
-        &mut *conn,
-        execution_id,
-        attempt_count,
-        "INFO",
-        &format!("Dispatching {} to {}", endpoint_type, endpoint_name),
-    )
-    .await;
+    // 4. Dispatch
+    log_execution(db, execution_id, attempt_count, "INFO",
+        &format!("Dispatching {} to {}", endpoint_type, endpoint_name)).await;
 
     let result = match endpoint_type {
         "HTTP" => {
             dispatcher::http::dispatch(&ctx.http_client, &dispatch_spec, idempotency_key).await
         }
-        "INTERNAL" => dispatcher::internal::dispatch(&mut *conn, schema_name, &dispatch_spec).await,
+        "INTERNAL" => {
+            dispatcher::internal::dispatch(&mut *db.conn, db.prefix, schema_name, &dispatch_spec)
+                .await
+        }
         #[cfg(feature = "kafka")]
         "KAFKA" => dispatcher::kafka::dispatch(&dispatch_spec).await,
         #[cfg(feature = "redis-stream")]
@@ -203,7 +147,7 @@ pub async fn process_execution(
     let duration_ms = (completed_at - started_at).num_milliseconds();
     let duration_secs = duration_ms as f64 / 1000.0;
 
-    // 4. Record attempt + finalize
+    // 5. Record attempt + finalize
     match result {
         DispatchResult::Success { output } => {
             metrics::counter!(m::EXECUTIONS_COMPLETED_TOTAL,
@@ -219,52 +163,21 @@ pub async fn process_execution(
             )
             .record(duration_secs);
 
-            record_attempt(
-                &mut *conn,
-                execution_id,
-                attempt_count,
-                "SUCCESS",
-                started_at,
-                Some(&output),
-                None,
-            )
-            .await;
-            let _ = db::executions::complete_success(&mut *conn, execution_id, &output).await;
-            log_execution(
-                &mut *conn,
-                execution_id,
-                attempt_count,
-                "INFO",
-                &format!("Execution succeeded in {}ms", duration_ms),
-            )
-            .await;
+            record_attempt(db, execution_id, attempt_count, "SUCCESS", started_at,
+                Some(&output), None).await;
+            let _ = db::executions::complete_success(db, execution_id, &output).await;
+            log_execution(db, execution_id, attempt_count, "INFO",
+                &format!("Execution succeeded in {}ms", duration_ms)).await;
         }
         DispatchResult::Failure { error } => {
-            record_attempt(
-                &mut *conn,
-                execution_id,
-                attempt_count,
-                "FAILED",
-                started_at,
-                None,
-                Some(&error),
-            )
-            .await;
+            record_attempt(db, execution_id, attempt_count, "FAILED", started_at,
+                None, Some(&error)).await;
 
             if attempt_count < max_attempts {
                 let backoff_ms = backoff::compute_backoff(&retry_policy, attempt_count);
-                let _ = db::executions::complete_retry(&mut *conn, execution_id, backoff_ms).await;
-                log_execution(
-                    &mut *conn,
-                    execution_id,
-                    attempt_count,
-                    "WARN",
-                    &format!(
-                        "Attempt {} failed, retrying in {}ms: {}",
-                        attempt_count, backoff_ms, error
-                    ),
-                )
-                .await;
+                let _ = db::executions::complete_retry(db, execution_id, backoff_ms).await;
+                log_execution(db, execution_id, attempt_count, "WARN",
+                    &format!("Attempt {} failed, retrying in {}ms: {}", attempt_count, backoff_ms, error)).await;
             } else {
                 metrics::counter!(m::EXECUTIONS_COMPLETED_TOTAL,
                     "status" => "FAILED",
@@ -279,18 +192,9 @@ pub async fn process_execution(
                 )
                 .record(duration_secs);
 
-                let _ = db::executions::complete_failed(&mut *conn, execution_id).await;
-                log_execution(
-                    &mut *conn,
-                    execution_id,
-                    attempt_count,
-                    "ERROR",
-                    &format!(
-                        "Execution failed after {} attempts: {}",
-                        attempt_count, error
-                    ),
-                )
-                .await;
+                let _ = db::executions::complete_failed(db, execution_id).await;
+                log_execution(db, execution_id, attempt_count, "ERROR",
+                    &format!("Execution failed after {} attempts: {}", attempt_count, error)).await;
             }
         }
     }
@@ -298,26 +202,25 @@ pub async fn process_execution(
 
 async fn load_config(
     ctx: &PipelineContext,
-    conn: &mut sqlx::PgConnection,
+    db: &mut DbContext<'_>,
     name: &str,
 ) -> Result<HashMap<String, serde_json::Value>, String> {
     if let Some(cached) = ctx.config_cache.get(name) {
         return flatten_json_object(&cached);
     }
 
-    let config = db::configs::get(conn, name)
+    let config = db::configs::get(db, name)
         .await
         .map_err(|e| format!("Failed to load config '{}': {}", name, e))?
         .ok_or_else(|| format!("Config '{}' not found", name))?;
 
-    ctx.config_cache
-        .set(name.to_string(), config.values_json.clone());
+    ctx.config_cache.set(name.to_string(), config.values_json.clone());
     flatten_json_object(&config.values_json)
 }
 
 async fn load_secrets(
     ctx: &PipelineContext,
-    conn: &mut sqlx::PgConnection,
+    db: &mut DbContext<'_>,
     spec: &serde_json::Value,
 ) -> Result<HashMap<String, String>, String> {
     let spec_str = spec.to_string();
@@ -330,7 +233,7 @@ async fn load_secrets(
             let secret_name = &spec_str[abs_pos..abs_pos + end];
 
             if !secrets.contains_key(secret_name) {
-                let value = load_single_secret(ctx, conn, secret_name).await?;
+                let value = load_single_secret(ctx, db, secret_name).await?;
                 secrets.insert(secret_name.to_string(), value);
             }
             start = abs_pos + end + 2;
@@ -344,14 +247,14 @@ async fn load_secrets(
 
 async fn load_single_secret(
     ctx: &PipelineContext,
-    conn: &mut sqlx::PgConnection,
+    db: &mut DbContext<'_>,
     name: &str,
 ) -> Result<String, String> {
     if let Some(cached) = ctx.secret_cache.get(name) {
         return Ok(cached);
     }
 
-    let secret = db::secrets::get(conn, name)
+    let secret = db::secrets::get(db, name)
         .await
         .map_err(|e| format!("Failed to load secret '{}': {}", name, e))?
         .ok_or_else(|| format!("Secret '{}' not found", name))?;
@@ -373,7 +276,7 @@ fn flatten_json_object(
 }
 
 async fn record_attempt(
-    conn: &mut sqlx::PgConnection,
+    db: &mut DbContext<'_>,
     execution_id: &str,
     attempt_number: i64,
     status: &str,
@@ -384,7 +287,7 @@ async fn record_attempt(
     let completed_at = Utc::now();
     let duration_ms = (completed_at - started_at).num_milliseconds();
     if let Err(e) = db::attempts::insert(
-        conn,
+        db,
         execution_id,
         attempt_number,
         status,
@@ -401,14 +304,14 @@ async fn record_attempt(
 }
 
 async fn log_execution(
-    conn: &mut sqlx::PgConnection,
+    db: &mut DbContext<'_>,
     execution_id: &str,
     attempt_number: i64,
     level: &str,
     message: &str,
 ) {
     if let Err(e) =
-        db::execution_logs::insert(conn, execution_id, attempt_number, level, message).await
+        db::execution_logs::insert(db, execution_id, attempt_number, level, message).await
     {
         tracing::error!(execution_id, "Failed to write execution log: {}", e);
     }

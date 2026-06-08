@@ -24,6 +24,7 @@ use crate::reaper;
 /// to, so the task's effects commit atomically with the execution's outcome.
 pub async fn dispatch(
     conn: &mut PgConnection,
+    prefix: &str,
     schema_name: &str,
     spec: &Value,
 ) -> DispatchResult {
@@ -40,7 +41,7 @@ pub async fn dispatch(
     };
 
     match task {
-        "reaper" => match reaper::reap_schema(conn, schema_name).await {
+        "reaper" => match reaper::reap_schema(conn, prefix, schema_name).await {
             Ok(retired) => DispatchResult::Success {
                 output: serde_json::json!({
                     "task": "reaper",

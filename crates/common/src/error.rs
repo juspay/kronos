@@ -101,6 +101,11 @@ impl ResponseError for AppError {
 
     fn error_response(&self) -> HttpResponse {
         let (status, code) = self.status_and_code();
+        if status.is_server_error() {
+            tracing::error!(code, message = %self, "request error");
+        } else {
+            tracing::warn!(code, message = %self, "request error");
+        }
         let body = ErrorBody {
             error: ErrorDetail {
                 code,

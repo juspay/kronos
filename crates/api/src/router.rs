@@ -12,6 +12,12 @@ pub struct AppState {
     pub metrics_handle: PrometheusHandle,
 }
 
+impl AppState {
+    pub fn prefix(&self) -> &str {
+        self.config.db.table_prefix.as_str()
+    }
+}
+
 pub fn configure(
     prefix: &str,
     mode: &ServerMode,

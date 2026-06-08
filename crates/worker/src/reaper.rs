@@ -37,9 +37,10 @@ use sqlx::PgConnection;
 /// so an already-removed entry is a no-op rather than an error.
 pub async fn reap_schema(
     conn: &mut PgConnection,
+    prefix: &str,
     schema_name: &str,
 ) -> Result<Vec<String>, sqlx::Error> {
-    let retired = db::jobs::retire_expired_cron_jobs(conn).await?;
+    let retired = db::jobs::retire_expired_cron_jobs(conn, prefix).await?;
 
     for job_id in &retired {
         db::jobs::unschedule_pg_cron_conn(conn, schema_name, job_id).await?;

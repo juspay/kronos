@@ -68,6 +68,7 @@ async fn main() -> anyhow::Result<()> {
         let mut app = App::new()
             .app_data(web::Data::new(app_state.clone()))
             .wrap(cors)
+            .wrap(actix_web::middleware::Logger::default())
             .wrap(crate::middleware::RequestId);
 
         // Register API routes (specific paths first)

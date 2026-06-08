@@ -1,4 +1,4 @@
-use crate::models::job::Job;
+use crate::{db::{tbl, DbContext}, models::job::Job};
 use chrono::{DateTime, Utc};
 use sqlx::{PgConnection, PgPool};
 
@@ -10,37 +10,40 @@ pub struct CreateJobResult {
 }
 
 pub async fn create_immediate(
-    conn: &mut PgConnection,
+    db: &mut DbContext<'_>,
     endpoint: &str,
     endpoint_type: &str,
     idempotency_key: &str,
     input: Option<&serde_json::Value>,
     max_attempts: i64,
 ) -> Result<CreateJobResult, sqlx::Error> {
-    let job = sqlx::query_as::<_, Job>(
-        "INSERT INTO jobs (endpoint, endpoint_type, trigger_type, idempotency_key, input)
+    let tj = tbl(db.prefix, "jobs");
+    let te = tbl(db.prefix, "executions");
+
+    let job = sqlx::query_as::<_, Job>(&format!(
+        "INSERT INTO {tj} (endpoint, endpoint_type, trigger_type, idempotency_key, input)
          VALUES ($1, $2, 'IMMEDIATE', $3, $4)
-         RETURNING *",
-    )
+         RETURNING *"
+    ))
     .bind(endpoint)
     .bind(endpoint_type)
     .bind(idempotency_key)
     .bind(input)
-    .fetch_one(&mut *conn)
+    .fetch_one(&mut *db.conn)
     .await?;
 
-    let exec_row: (String, String, DateTime<Utc>) = sqlx::query_as(
-        "INSERT INTO executions (job_id, endpoint, endpoint_type, idempotency_key, status, run_at, input, max_attempts)
+    let exec_row: (String, String, DateTime<Utc>) = sqlx::query_as(&format!(
+        "INSERT INTO {te} (job_id, endpoint, endpoint_type, idempotency_key, status, run_at, input, max_attempts)
          VALUES ($1, $2, $3, $4, 'QUEUED', now(), $5, $6)
          RETURNING execution_id, status, created_at"
-    )
+    ))
     .bind(&job.job_id)
     .bind(endpoint)
     .bind(endpoint_type)
     .bind(idempotency_key)
     .bind(input)
     .bind(max_attempts)
-    .fetch_one(&mut *conn)
+    .fetch_one(&mut *db.conn)
     .await?;
 
     Ok(CreateJobResult {
@@ -52,7 +55,7 @@ pub async fn create_immediate(
 }
 
 pub async fn create_delayed(
-    conn: &mut PgConnection,
+    db: &mut DbContext<'_>,
     endpoint: &str,
     endpoint_type: &str,
     idempotency_key: &str,
@@ -60,24 +63,27 @@ pub async fn create_delayed(
     run_at: DateTime<Utc>,
     max_attempts: i64,
 ) -> Result<CreateJobResult, sqlx::Error> {
-    let job = sqlx::query_as::<_, Job>(
-        "INSERT INTO jobs (endpoint, endpoint_type, trigger_type, idempotency_key, input, run_at)
+    let tj = tbl(db.prefix, "jobs");
+    let te = tbl(db.prefix, "executions");
+
+    let job = sqlx::query_as::<_, Job>(&format!(
+        "INSERT INTO {tj} (endpoint, endpoint_type, trigger_type, idempotency_key, input, run_at)
          VALUES ($1, $2, 'DELAYED', $3, $4, $5)
-         RETURNING *",
-    )
+         RETURNING *"
+    ))
     .bind(endpoint)
     .bind(endpoint_type)
     .bind(idempotency_key)
     .bind(input)
     .bind(run_at)
-    .fetch_one(&mut *conn)
+    .fetch_one(&mut *db.conn)
     .await?;
 
-    let exec_row: (String, String, DateTime<Utc>) = sqlx::query_as(
-        "INSERT INTO executions (job_id, endpoint, endpoint_type, idempotency_key, status, run_at, input, max_attempts)
+    let exec_row: (String, String, DateTime<Utc>) = sqlx::query_as(&format!(
+        "INSERT INTO {te} (job_id, endpoint, endpoint_type, idempotency_key, status, run_at, input, max_attempts)
          VALUES ($1, $2, $3, $4, 'PENDING', $5, $6, $7)
          RETURNING execution_id, status, created_at"
-    )
+    ))
     .bind(&job.job_id)
     .bind(endpoint)
     .bind(endpoint_type)
@@ -85,7 +91,7 @@ pub async fn create_delayed(
     .bind(run_at)
     .bind(input)
     .bind(max_attempts)
-    .fetch_one(&mut *conn)
+    .fetch_one(&mut *db.conn)
     .await?;
 
     Ok(CreateJobResult {
@@ -97,7 +103,7 @@ pub async fn create_delayed(
 }
 
 pub async fn create_cron(
-    conn: &mut PgConnection,
+    db: &mut DbContext<'_>,
     endpoint: &str,
     endpoint_type: &str,
     input: Option<&serde_json::Value>,
@@ -107,11 +113,12 @@ pub async fn create_cron(
     ends_at: Option<DateTime<Utc>>,
     next_run_at: DateTime<Utc>,
 ) -> Result<Job, sqlx::Error> {
-    sqlx::query_as::<_, Job>(
-        "INSERT INTO jobs (endpoint, endpoint_type, trigger_type, input, cron_expression, cron_timezone, cron_starts_at, cron_ends_at, cron_next_run_at)
+    let tj = tbl(db.prefix, "jobs");
+    sqlx::query_as::<_, Job>(&format!(
+        "INSERT INTO {tj} (endpoint, endpoint_type, trigger_type, input, cron_expression, cron_timezone, cron_starts_at, cron_ends_at, cron_next_run_at)
          VALUES ($1, $2, 'CRON', $3, $4, $5, $6, $7, $8)
          RETURNING *"
-    )
+    ))
     .bind(endpoint)
     .bind(endpoint_type)
     .bind(input)
@@ -120,82 +127,97 @@ pub async fn create_cron(
     .bind(starts_at)
     .bind(ends_at)
     .bind(next_run_at)
-    .fetch_one(&mut *conn)
+    .fetch_one(&mut *db.conn)
     .await
 }
 
-pub async fn get(conn: &mut PgConnection, job_id: &str) -> Result<Option<Job>, sqlx::Error> {
-    sqlx::query_as::<_, Job>("SELECT * FROM jobs WHERE job_id = $1")
+pub async fn get(
+    db: &mut DbContext<'_>,
+    job_id: &str,
+) -> Result<Option<Job>, sqlx::Error> {
+    let t = tbl(db.prefix, "jobs");
+    sqlx::query_as::<_, Job>(&format!("SELECT * FROM {t} WHERE job_id = $1"))
         .bind(job_id)
-        .fetch_optional(&mut *conn)
+        .fetch_optional(&mut *db.conn)
         .await
 }
 
 pub async fn get_by_idempotency(
-    conn: &mut PgConnection,
+    db: &mut DbContext<'_>,
     endpoint: &str,
     key: &str,
 ) -> Result<Option<Job>, sqlx::Error> {
-    sqlx::query_as::<_, Job>("SELECT * FROM jobs WHERE endpoint = $1 AND idempotency_key = $2")
-        .bind(endpoint)
-        .bind(key)
-        .fetch_optional(&mut *conn)
-        .await
+    let t = tbl(db.prefix, "jobs");
+    sqlx::query_as::<_, Job>(&format!(
+        "SELECT * FROM {t} WHERE endpoint = $1 AND idempotency_key = $2"
+    ))
+    .bind(endpoint)
+    .bind(key)
+    .fetch_optional(&mut *db.conn)
+    .await
 }
 
 pub async fn list(
-    conn: &mut PgConnection,
+    db: &mut DbContext<'_>,
     cursor: Option<&str>,
     limit: i64,
 ) -> Result<Vec<Job>, sqlx::Error> {
+    let t = tbl(db.prefix, "jobs");
     match cursor {
-        Some(c) => sqlx::query_as::<_, Job>(
-            "SELECT * FROM jobs WHERE created_at < (SELECT created_at FROM jobs WHERE job_id = $1)
-                 ORDER BY created_at DESC LIMIT $2",
-        )
+        Some(c) => sqlx::query_as::<_, Job>(&format!(
+            "SELECT * FROM {t} WHERE created_at < (SELECT created_at FROM {t} WHERE job_id = $1)
+                 ORDER BY created_at DESC LIMIT $2"
+        ))
         .bind(c)
         .bind(limit)
-        .fetch_all(&mut *conn)
+        .fetch_all(&mut *db.conn)
         .await,
         None => {
-            sqlx::query_as::<_, Job>("SELECT * FROM jobs ORDER BY created_at DESC LIMIT $1")
-                .bind(limit)
-                .fetch_all(&mut *conn)
-                .await
+            sqlx::query_as::<_, Job>(&format!(
+                "SELECT * FROM {t} ORDER BY created_at DESC LIMIT $1"
+            ))
+            .bind(limit)
+            .fetch_all(&mut *db.conn)
+            .await
         }
     }
 }
 
-pub async fn cancel(conn: &mut PgConnection, job_id: &str) -> Result<Option<Job>, sqlx::Error> {
-    sqlx::query_as::<_, Job>(
-        "UPDATE jobs SET status = 'RETIRED', retired_at = now()
+pub async fn cancel(
+    db: &mut DbContext<'_>,
+    job_id: &str,
+) -> Result<Option<Job>, sqlx::Error> {
+    let t = tbl(db.prefix, "jobs");
+    sqlx::query_as::<_, Job>(&format!(
+        "UPDATE {t} SET status = 'RETIRED', retired_at = now()
          WHERE job_id = $1 AND status = 'ACTIVE'
-         RETURNING *",
-    )
+         RETURNING *"
+    ))
     .bind(job_id)
-    .fetch_optional(&mut *conn)
+    .fetch_optional(&mut *db.conn)
     .await
 }
 
 pub async fn retire_and_replace(
-    conn: &mut PgConnection,
+    db: &mut DbContext<'_>,
     old_job_id: &str,
     new_job: &Job,
 ) -> Result<Job, sqlx::Error> {
-    sqlx::query(
-        "UPDATE jobs SET status = 'RETIRED', retired_at = now(), replaced_by_id = $2
-         WHERE job_id = $1 AND status = 'ACTIVE'",
-    )
+    let t = tbl(db.prefix, "jobs");
+    sqlx::query(&format!(
+        "UPDATE {t} SET status = 'RETIRED', retired_at = now(), replaced_by_id = $2
+         WHERE job_id = $1 AND status = 'ACTIVE'"
+    ))
     .bind(old_job_id)
     .bind(&new_job.job_id)
-    .execute(&mut *conn)
+    .execute(&mut *db.conn)
     .await?;
 
-    let new = sqlx::query_as::<_, Job>(
-        "INSERT INTO jobs (endpoint, endpoint_type, trigger_type, input, cron_expression, cron_timezone, cron_starts_at, cron_ends_at, cron_next_run_at, version, previous_version_id)
+    let new = sqlx::query_as::<_, Job>(&format!(
+        "INSERT INTO {t} (endpoint, endpoint_type, trigger_type, input, cron_expression, cron_timezone, cron_starts_at, cron_ends_at, cron_next_run_at, version, previous_version_id)
          VALUES ($1, $2, 'CRON', $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING *"
-    )
+    ))
     .bind(&new_job.endpoint)
     .bind(&new_job.endpoint_type)
     .bind(&new_job.input)
@@ -206,23 +228,27 @@ pub async fn retire_and_replace(
     .bind(&new_job.cron_next_run_at)
     .bind(new_job.version)
     .bind(old_job_id)
-    .fetch_one(&mut *conn)
+    .fetch_one(&mut *db.conn)
     .await?;
 
     Ok(new)
 }
 
-pub async fn get_versions(conn: &mut PgConnection, job_id: &str) -> Result<Vec<Job>, sqlx::Error> {
-    sqlx::query_as::<_, Job>(
+pub async fn get_versions(
+    db: &mut DbContext<'_>,
+    job_id: &str,
+) -> Result<Vec<Job>, sqlx::Error> {
+    let t = tbl(db.prefix, "jobs");
+    sqlx::query_as::<_, Job>(&format!(
         "WITH RECURSIVE chain AS (
-            SELECT * FROM jobs WHERE job_id = $1
+            SELECT * FROM {t} WHERE job_id = $1
             UNION ALL
-            SELECT j.* FROM jobs j JOIN chain c ON j.job_id = c.previous_version_id
+            SELECT j.* FROM {t} j JOIN chain c ON j.job_id = c.previous_version_id
          )
-         SELECT * FROM chain ORDER BY version ASC",
-    )
+         SELECT * FROM chain ORDER BY version ASC"
+    ))
     .bind(job_id)
-    .fetch_all(&mut *conn)
+    .fetch_all(&mut *db.conn)
     .await
 }
 
@@ -234,13 +260,17 @@ pub async fn get_versions(conn: &mut PgConnection, job_id: &str) -> Result<Vec<J
 /// executions past `ends_at`, while this reaps the now-dormant job so it flips to
 /// RETIRED and its pg_cron entry can be removed instead of firing no-op inserts
 /// forever.
-pub async fn retire_expired_cron_jobs(conn: &mut PgConnection) -> Result<Vec<String>, sqlx::Error> {
-    let rows: Vec<(String,)> = sqlx::query_as(
-        "UPDATE jobs SET status = 'RETIRED', retired_at = now()
+pub async fn retire_expired_cron_jobs(
+    conn: &mut PgConnection,
+    prefix: &str,
+) -> Result<Vec<String>, sqlx::Error> {
+    let tj = tbl(prefix, "jobs");
+    let rows: Vec<(String,)> = sqlx::query_as(&format!(
+        "UPDATE {tj} SET status = 'RETIRED', retired_at = now()
          WHERE trigger_type = 'CRON' AND status = 'ACTIVE'
            AND cron_ends_at IS NOT NULL AND cron_ends_at <= now()
-         RETURNING job_id",
-    )
+         RETURNING job_id"
+    ))
     .fetch_all(&mut *conn)
     .await?;
     Ok(rows.into_iter().map(|r| r.0).collect())
@@ -250,35 +280,45 @@ pub async fn retire_expired_cron_jobs(conn: &mut PgConnection) -> Result<Vec<Str
 ///
 /// Materializes a QUEUED execution by joining `jobs` with `endpoints`. The
 /// `cron_ends_at` guard is critical: without it pg_cron keeps inserting
-/// executions every tick forever, ignoring the job's end window.
-fn build_cron_command(schema_name: &str, job_id: &str) -> String {
+/// executions every tick forever, ignoring the job's end window. Table names are
+/// resolved through `tbl(prefix, ..)` and schema-qualified because pg_cron runs
+/// this command outside any scoped connection (no search_path).
+fn build_cron_command(prefix: &str, schema_name: &str, job_id: &str) -> String {
+    let te = tbl(prefix, "executions");
+    let tj = tbl(prefix, "jobs");
+    let tend = tbl(prefix, "endpoints");
     format!(
-        "INSERT INTO \"{schema}\".executions \
+        "INSERT INTO \"{schema}\".\"{te}\" \
             (job_id, endpoint, endpoint_type, idempotency_key, status, input, run_at, max_attempts) \
          SELECT j.job_id, j.endpoint, j.endpoint_type, \
                 'cron_' || j.job_id || '_' || (EXTRACT(EPOCH FROM now()) * 1000)::BIGINT, \
                 'QUEUED', j.input, now(), \
                 COALESCE((e.retry_policy->>'max_attempts')::BIGINT, 1) \
-         FROM \"{schema}\".jobs j \
-         JOIN \"{schema}\".endpoints e ON e.name = j.endpoint \
+         FROM \"{schema}\".\"{tj}\" j \
+         JOIN \"{schema}\".\"{tend}\" e ON e.name = j.endpoint \
          WHERE j.job_id = '{job_id}' AND j.status = 'ACTIVE' \
            AND (j.cron_ends_at IS NULL OR j.cron_ends_at > now()) \
          ON CONFLICT (job_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING",
         schema = schema_name,
+        te = te,
+        tj = tj,
+        tend = tend,
         job_id = job_id,
     )
 }
 
-/// Register a CRON job with pg_cron. The pg_cron job will directly INSERT
-/// execution rows when the cron schedule fires.
+
+/// Register a CRON job with pg_cron. Uses the pool directly (pg_cron schedules
+/// run outside a transaction) and takes prefix/schema_name explicitly.
 pub async fn register_pg_cron(
     pool: &PgPool,
+    prefix: &str,
     schema_name: &str,
     job_id: &str,
     cron_expression: &str,
 ) -> Result<(), sqlx::Error> {
     let cron_job_name = format!("kronos_{}_{}", schema_name, job_id);
-    let command = build_cron_command(schema_name, job_id);
+    let command = build_cron_command(prefix, schema_name, job_id);
 
     sqlx::query("SELECT cron.schedule($1, $2, $3)")
         .bind(&cron_job_name)
@@ -301,12 +341,13 @@ pub async fn register_pg_cron(
 /// back the surrounding transaction.
 pub async fn register_pg_cron_conn(
     conn: &mut PgConnection,
+    prefix: &str,
     schema_name: &str,
     job_id: &str,
     cron_expression: &str,
 ) -> Result<(), sqlx::Error> {
     let cron_job_name = format!("kronos_{}_{}", schema_name, job_id);
-    let command = build_cron_command(schema_name, job_id);
+    let command = build_cron_command(prefix, schema_name, job_id);
 
     sqlx::query("SELECT cron.schedule($1, $2, $3)")
         .bind(&cron_job_name)
@@ -361,7 +402,7 @@ mod tests {
 
     #[test]
     fn cron_command_enforces_ends_at_window() {
-        let cmd = build_cron_command("ws_acme", "job-123");
+        let cmd = build_cron_command("", "ws_acme", "job-123");
         // The guard is the whole point of the fix: without it pg_cron keeps
         // materializing executions forever, past the job's end window.
         assert!(
@@ -372,11 +413,21 @@ mod tests {
 
     #[test]
     fn cron_command_targets_correct_schema_and_job() {
-        let cmd = build_cron_command("ws_acme", "job-123");
-        assert!(cmd.contains("\"ws_acme\".executions"));
-        assert!(cmd.contains("\"ws_acme\".jobs j"));
+        let cmd = build_cron_command("", "ws_acme", "job-123");
+        assert!(cmd.contains("\"ws_acme\".\"executions\""));
+        assert!(cmd.contains("\"ws_acme\".\"jobs\" j"));
         assert!(cmd.contains("j.job_id = 'job-123'"));
         // Only active jobs should materialize.
         assert!(cmd.contains("j.status = 'ACTIVE'"));
+    }
+
+    #[test]
+    fn cron_command_applies_table_prefix() {
+        // Library mode: a non-empty prefix produces prefixed table names within
+        // the schema (tbl(prefix, ..)), matching the rest of the DB layer.
+        let cmd = build_cron_command("sched", "ws_acme", "job-123");
+        assert!(cmd.contains("\"ws_acme\".\"sched_executions\""));
+        assert!(cmd.contains("\"ws_acme\".\"sched_jobs\" j"));
+        assert!(cmd.contains("\"ws_acme\".\"sched_endpoints\" e"));
     }
 }

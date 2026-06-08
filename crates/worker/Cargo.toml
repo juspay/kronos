@@ -27,6 +27,8 @@ chrono.workspace = true
 rand.workspace = true
 dotenvy.workspace = true
 anyhow.workspace = true
+tokio-util.workspace = true
+async-trait.workspace = true
 
 metrics.workspace = true
 
