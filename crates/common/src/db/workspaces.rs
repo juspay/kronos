@@ -6,7 +6,7 @@ use crate::models::workspace::Workspace;
 use crate::tenant::validate_schema_name;
 use sqlx::PgPool;
 
-const WORKSPACE_SCHEMA_V1: &str = include_str!("../../../../migrations/workspace_v1.sql");
+const WORKSPACE_SCHEMA_V1: &str = include_str!("../../migrations/workspace_v1.sql");
 
 /// Endpoint name kronos installs in every workspace for its dogfooded reaper.
 /// The reaper is an `INTERNAL` CRON job whose ticks materialize executions
@@ -40,7 +40,7 @@ pub async fn create(
     .await?;
 
     // Create the schema and apply workspace DDL
-    provision_schema(pool, schema_name).await?;
+    provision_schema(pool, schema_name, "").await?;
 
     // Install kronos's own dogfooded reaper into this workspace. Done as part
     // of provisioning rather than from a background loop, so a freshly-created
@@ -136,17 +136,24 @@ pub async fn resolve_schema(
     Ok(row.map(|r| r.0))
 }
 
-async fn provision_schema(pool: &PgPool, schema_name: &str) -> Result<(), sqlx::Error> {
-    let create_schema = format!("CREATE SCHEMA IF NOT EXISTS \"{}\"", schema_name);
-    sqlx::query(&create_schema).execute(pool).await?;
-
-    let mut conn = pool.acquire().await?;
-
-    sqlx::query(&format!("SET search_path TO \"{}\"", schema_name))
-        .execute(&mut *conn)
+pub async fn provision_schema(
+    pool: &PgPool,
+    schema_name: &str,
+    table_prefix: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(&format!("CREATE SCHEMA IF NOT EXISTS \"{}\"", schema_name))
+        .execute(pool)
         .await?;
 
-    let ddl = WORKSPACE_SCHEMA_V1.replace("{p}", "");
+    let mut conn = crate::db::scoped::scoped_connection(pool, schema_name).await?;
+
+    let p = if table_prefix.is_empty() {
+        String::new()
+    } else {
+        format!("{}_", table_prefix)
+    };
+
+    let ddl = WORKSPACE_SCHEMA_V1.replace("{p}", &p);
     for stmt in ddl.split(';') {
         let stmt = stmt.trim();
         if !stmt.is_empty() {

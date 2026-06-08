@@ -115,13 +115,7 @@ pub struct KronosLibraryClient {
 }
 
 impl KronosLibraryClient {
-    /// Create a new client.
-    ///
-    /// - `pool`: caller-owned sqlx pool pointing at the same PostgreSQL instance.
-    /// - `table_prefix`: prefix for all Kronos tables (e.g. `"sched"` → `sched_jobs`).
-    ///   Empty string means no prefix (original table names).
-    /// - `encryption_key`: 64 hex-char AES-256 key for secrets; pass zeros if not using secrets.
-    /// - `http_client`: optional reqwest client to reuse the caller's connection pool.
+    /// `table_prefix` must include the trailing underscore (e.g. `"sched_"`); use `""` for no prefix.
     pub fn new(
         pool: PgPool,
         table_prefix: &str,
@@ -436,26 +430,7 @@ impl KronosClient for KronosLibraryClient {
     }
 
     async fn provision_workspace(&self, schema_name: &str) -> anyhow::Result<()> {
-        const TEMPLATE: &str = include_str!("../../../migrations/workspace_v1.sql");
-
-        let prefix = &self.ctx.table_prefix;
-        let p = if prefix.is_empty() {
-            String::new()
-        } else {
-            format!("{}_", prefix)
-        };
-
-        let ddl = TEMPLATE.replace("{p}", &p);
-        let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-
-        for stmt in ddl.split(';') {
-            let stmt = stmt.trim();
-            if !stmt.is_empty() {
-                sqlx::query(stmt).execute(&mut *conn).await?;
-            }
-        }
-
-        Ok(())
+        Ok(db::workspaces::provision_schema(&self.pool, schema_name, &self.ctx.table_prefix).await?)
     }
 
     async fn cancel_job(&self, schema_name: &str, job_id: &str) -> anyhow::Result<()> {
