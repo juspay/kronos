@@ -347,7 +347,7 @@ impl KronosLibraryClient {
 /// Build an AppConfig from the PipelineContext and WorkerConfig for the poller.
 fn build_app_config(ctx: &PipelineContext, wc: &WorkerConfig) -> kronos_common::config::AppConfig {
     use kronos_common::config::{
-        AppConfig, CryptoEnv, DbEnv, MetricsEnv, ServerEnv, ServerMode, WorkerEnv,
+        AppConfig, CryptoEnv, DbEnv, MetricsEnv, ReaperEnv, ServerEnv, ServerMode, WorkerEnv,
     };
 
     AppConfig {
@@ -375,6 +375,11 @@ fn build_app_config(ctx: &PipelineContext, wc: &WorkerConfig) -> kronos_common::
             encryption_key: ctx.encryption_key.clone(),
         },
         metrics: MetricsEnv { port: 0 },
+        // Reaper schedule is consumed at workspace creation (API side), not by the
+        // worker poller; the library worker just runs reaper ticks as they arrive.
+        reaper: ReaperEnv {
+            cron_expression: "*/15 * * * *".to_string(),
+        },
     }
 }
 

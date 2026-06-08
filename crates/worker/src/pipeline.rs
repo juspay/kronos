@@ -127,6 +127,10 @@ pub async fn process_execution(
         "HTTP" => {
             dispatcher::http::dispatch(&ctx.http_client, &dispatch_spec, idempotency_key).await
         }
+        "INTERNAL" => {
+            dispatcher::internal::dispatch(&mut *db.conn, db.prefix, schema_name, &dispatch_spec)
+                .await
+        }
         #[cfg(feature = "kafka")]
         "KAFKA" => dispatcher::kafka::dispatch(&dispatch_spec).await,
         #[cfg(feature = "redis-stream")]

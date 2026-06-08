@@ -5,6 +5,7 @@ pub const JOBS_CREATED_TOTAL: &str = "kronos_jobs_created_total";
 pub const EXECUTIONS_CLAIMED_TOTAL: &str = "kronos_executions_claimed_total";
 pub const EXECUTIONS_COMPLETED_TOTAL: &str = "kronos_executions_completed_total";
 pub const WORKER_POLL_IDLE_TOTAL: &str = "kronos_worker_poll_idle_total";
+pub const CRON_JOBS_REAPED_TOTAL: &str = "kronos_cron_jobs_reaped_total";
 
 // Dispatcher-level counters
 pub const DISPATCH_TOTAL: &str = "kronos_dispatch_total";

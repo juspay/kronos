@@ -1,5 +1,6 @@
 use crate::{
     env::{get_from_env_or_default, get_from_env_unsafe},
+    models::pg_cron_expr::PgCronExpr,
     tenant::validate_table_prefix,
 };
 
@@ -185,6 +186,30 @@ impl MetricsEnv {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ReaperEnv {
+    /// pg_cron expression controlling how often kronos's own dogfooded reaper
+    /// fires per workspace. Read at workspace creation, baked into the
+    /// workspace's pg_cron entry; changing it after the fact only affects
+    /// newly-created workspaces. Validated as a 5-field PgCronExpr at startup
+    /// so a typo fails fast instead of breaking the first `POST /workspaces`.
+    pub cron_expression: String,
+}
+
+impl ReaperEnv {
+    fn new() -> Result<Self, String> {
+        let cron_expression =
+            get_from_env_or_default("TE_REAPER_CRON_EXPRESSION", "*/15 * * * *".to_string());
+        PgCronExpr::try_from(cron_expression.clone()).map_err(|e| {
+            format!(
+                "Invalid TE_REAPER_CRON_EXPRESSION '{}': {}",
+                cron_expression, e
+            )
+        })?;
+        Ok(Self { cron_expression })
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Top-level config
 // ---------------------------------------------------------------------------
@@ -196,6 +221,7 @@ pub struct AppConfig {
     pub worker: WorkerEnv,
     pub crypto: CryptoEnv,
     pub metrics: MetricsEnv,
+    pub reaper: ReaperEnv,
 }
 
 impl AppConfig {
@@ -230,6 +256,7 @@ impl AppConfig {
             .await
             .map_err(|e| anyhow::anyhow!(e))?;
         let metrics = MetricsEnv::new();
+        let reaper = ReaperEnv::new().map_err(|e| anyhow::anyhow!(e))?;
 
         Ok(Self {
             db,
@@ -237,6 +264,7 @@ impl AppConfig {
             worker,
             crypto,
             metrics,
+            reaper,
         })
     }
 }

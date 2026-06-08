@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS {p}endpoints (
     CONSTRAINT pk_{p}endpoints PRIMARY KEY (name),
     CONSTRAINT fk_{p}endpoints_payload_spec FOREIGN KEY (payload_spec_ref) REFERENCES {p}payload_specs (name),
     CONSTRAINT fk_{p}endpoints_config FOREIGN KEY (config_ref) REFERENCES {p}configs (name),
-    CONSTRAINT chk_{p}endpoint_type CHECK (endpoint_type IN ('HTTP', 'KAFKA', 'REDIS_STREAM'))
+    CONSTRAINT chk_{p}endpoint_type CHECK (endpoint_type IN ('HTTP', 'KAFKA', 'REDIS_STREAM', 'INTERNAL'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_{p}endpoints_type ON {p}endpoints (endpoint_type);
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS {p}jobs (
     CONSTRAINT fk_{p}jobs_endpoint FOREIGN KEY (endpoint) REFERENCES {p}endpoints (name),
     CONSTRAINT chk_{p}trigger_type CHECK (trigger_type IN ('IMMEDIATE', 'DELAYED', 'CRON')),
     CONSTRAINT chk_{p}job_status CHECK (status IN ('ACTIVE', 'RETIRED')),
-    CONSTRAINT chk_{p}job_endpoint_type CHECK (endpoint_type IN ('HTTP', 'KAFKA', 'REDIS_STREAM'))
+    CONSTRAINT chk_{p}job_endpoint_type CHECK (endpoint_type IN ('HTTP', 'KAFKA', 'REDIS_STREAM', 'INTERNAL'))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_{p}jobs_idempotency

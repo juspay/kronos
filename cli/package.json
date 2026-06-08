@@ -8,6 +8,7 @@
     "test:immediate": "npx tsx src/test-immediate.ts",
     "test:delayed": "npx tsx src/test-delayed.ts",
     "test:cron": "npx tsx src/test-cron.ts",
+    "test:internal-guards": "npx tsx src/test-internal-guards.ts",
     "load-test": "npx tsx src/load-test.ts"
   },
   "dependencies": {

@@ -1,6 +1,6 @@
 use crate::{db::{tbl, DbContext}, models::job::Job};
 use chrono::{DateTime, Utc};
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 pub struct CreateJobResult {
     pub job: Job,
@@ -252,6 +252,61 @@ pub async fn get_versions(
     .await
 }
 
+/// Retire all CRON jobs whose `cron_ends_at` window has passed, returning the
+/// `job_id`s that were retired so callers can unschedule their pg_cron entries.
+///
+/// This is the lifecycle counterpart to the `cron_ends_at` guard baked into the
+/// pg_cron command (see [`build_cron_command`]): the guard stops *materializing*
+/// executions past `ends_at`, while this reaps the now-dormant job so it flips to
+/// RETIRED and its pg_cron entry can be removed instead of firing no-op inserts
+/// forever.
+pub async fn retire_expired_cron_jobs(
+    conn: &mut PgConnection,
+    prefix: &str,
+) -> Result<Vec<String>, sqlx::Error> {
+    let tj = tbl(prefix, "jobs");
+    let rows: Vec<(String,)> = sqlx::query_as(&format!(
+        "UPDATE {tj} SET status = 'RETIRED', retired_at = now()
+         WHERE trigger_type = 'CRON' AND status = 'ACTIVE'
+           AND cron_ends_at IS NOT NULL AND cron_ends_at <= now()
+         RETURNING job_id"
+    ))
+    .fetch_all(&mut *conn)
+    .await?;
+    Ok(rows.into_iter().map(|r| r.0).collect())
+}
+
+/// Build the SQL command pg_cron runs on each tick for a CRON job.
+///
+/// Materializes a QUEUED execution by joining `jobs` with `endpoints`. The
+/// `cron_ends_at` guard is critical: without it pg_cron keeps inserting
+/// executions every tick forever, ignoring the job's end window. Table names are
+/// resolved through `tbl(prefix, ..)` and schema-qualified because pg_cron runs
+/// this command outside any scoped connection (no search_path).
+fn build_cron_command(prefix: &str, schema_name: &str, job_id: &str) -> String {
+    let te = tbl(prefix, "executions");
+    let tj = tbl(prefix, "jobs");
+    let tend = tbl(prefix, "endpoints");
+    format!(
+        "INSERT INTO \"{schema}\".\"{te}\" \
+            (job_id, endpoint, endpoint_type, idempotency_key, status, input, run_at, max_attempts) \
+         SELECT j.job_id, j.endpoint, j.endpoint_type, \
+                'cron_' || j.job_id || '_' || (EXTRACT(EPOCH FROM now()) * 1000)::BIGINT, \
+                'QUEUED', j.input, now(), \
+                COALESCE((e.retry_policy->>'max_attempts')::BIGINT, 1) \
+         FROM \"{schema}\".\"{tj}\" j \
+         JOIN \"{schema}\".\"{tend}\" e ON e.name = j.endpoint \
+         WHERE j.job_id = '{job_id}' AND j.status = 'ACTIVE' \
+           AND (j.cron_ends_at IS NULL OR j.cron_ends_at > now()) \
+         ON CONFLICT (job_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING",
+        schema = schema_name,
+        te = te,
+        tj = tj,
+        tend = tend,
+        job_id = job_id,
+    )
+}
+
 
 /// Register a CRON job with pg_cron. Uses the pool directly (pg_cron schedules
 /// run outside a transaction) and takes prefix/schema_name explicitly.
@@ -263,33 +318,42 @@ pub async fn register_pg_cron(
     cron_expression: &str,
 ) -> Result<(), sqlx::Error> {
     let cron_job_name = format!("kronos_{}_{}", schema_name, job_id);
-    let te = tbl(prefix, "executions");
-    let tj = tbl(prefix, "jobs");
-    let tend = tbl(prefix, "endpoints");
-
-    let command = format!(
-        "INSERT INTO \"{schema}\".\"{te}\" \
-            (job_id, endpoint, endpoint_type, idempotency_key, status, input, run_at, max_attempts) \
-         SELECT j.job_id, j.endpoint, j.endpoint_type, \
-                'cron_' || j.job_id || '_' || (EXTRACT(EPOCH FROM now()) * 1000)::BIGINT, \
-                'QUEUED', j.input, now(), \
-                COALESCE((e.retry_policy->>'max_attempts')::BIGINT, 1) \
-         FROM \"{schema}\".\"{tj}\" j \
-         JOIN \"{schema}\".\"{tend}\" e ON e.name = j.endpoint \
-         WHERE j.job_id = '{job_id}' AND j.status = 'ACTIVE' \
-         ON CONFLICT (job_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING",
-        schema = schema_name,
-        te = te,
-        tj = tj,
-        tend = tend,
-        job_id = job_id,
-    );
+    let command = build_cron_command(prefix, schema_name, job_id);
 
     sqlx::query("SELECT cron.schedule($1, $2, $3)")
         .bind(&cron_job_name)
         .bind(cron_expression)
         .bind(&command)
         .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+/// Register a CRON job with pg_cron on an existing connection (e.g. inside a
+/// transaction), so the registration can commit atomically with the surrounding
+/// row inserts. Mirrors [`unschedule_pg_cron_conn`] on the inverse path.
+///
+/// `cron.schedule` upserts by job name, so a caller that re-runs this against
+/// the same `(schema_name, job_id)` simply replaces the previous command in
+/// place — no manual existence check needed. A genuine failure (bad cron
+/// expression, missing pg_cron extension) propagates, letting the caller roll
+/// back the surrounding transaction.
+pub async fn register_pg_cron_conn(
+    conn: &mut PgConnection,
+    prefix: &str,
+    schema_name: &str,
+    job_id: &str,
+    cron_expression: &str,
+) -> Result<(), sqlx::Error> {
+    let cron_job_name = format!("kronos_{}_{}", schema_name, job_id);
+    let command = build_cron_command(prefix, schema_name, job_id);
+
+    sqlx::query("SELECT cron.schedule($1, $2, $3)")
+        .bind(&cron_job_name)
+        .bind(cron_expression)
+        .bind(&command)
+        .execute(&mut *conn)
         .await?;
 
     Ok(())
@@ -309,4 +373,61 @@ pub async fn unregister_pg_cron(
         .await?;
 
     Ok(())
+}
+
+/// Unschedule a CRON job's pg_cron entry on an existing connection (e.g. inside a
+/// transaction), so it can be made atomic with another change such as retirement.
+///
+/// Existence-guarded via `WHERE jobname = $1`: a missing entry is a no-op rather
+/// than an error (plain `cron.unschedule(name)` raises when the entry is absent).
+/// A genuine failure still propagates, so a caller can roll back and retry.
+pub async fn unschedule_pg_cron_conn(
+    conn: &mut PgConnection,
+    schema_name: &str,
+    job_id: &str,
+) -> Result<(), sqlx::Error> {
+    let cron_job_name = format!("kronos_{}_{}", schema_name, job_id);
+
+    sqlx::query("SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname = $1")
+        .bind(&cron_job_name)
+        .execute(&mut *conn)
+        .await?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cron_command_enforces_ends_at_window() {
+        let cmd = build_cron_command("", "ws_acme", "job-123");
+        // The guard is the whole point of the fix: without it pg_cron keeps
+        // materializing executions forever, past the job's end window.
+        assert!(
+            cmd.contains("j.cron_ends_at IS NULL OR j.cron_ends_at > now()"),
+            "pg_cron command must guard on cron_ends_at, got: {cmd}"
+        );
+    }
+
+    #[test]
+    fn cron_command_targets_correct_schema_and_job() {
+        let cmd = build_cron_command("", "ws_acme", "job-123");
+        assert!(cmd.contains("\"ws_acme\".\"executions\""));
+        assert!(cmd.contains("\"ws_acme\".\"jobs\" j"));
+        assert!(cmd.contains("j.job_id = 'job-123'"));
+        // Only active jobs should materialize.
+        assert!(cmd.contains("j.status = 'ACTIVE'"));
+    }
+
+    #[test]
+    fn cron_command_applies_table_prefix() {
+        // Library mode: a non-empty prefix produces prefixed table names within
+        // the schema (tbl(prefix, ..)), matching the rest of the DB layer.
+        let cmd = build_cron_command("sched", "ws_acme", "job-123");
+        assert!(cmd.contains("\"ws_acme\".\"sched_executions\""));
+        assert!(cmd.contains("\"ws_acme\".\"sched_jobs\" j"));
+        assert!(cmd.contains("\"ws_acme\".\"sched_endpoints\" e"));
+    }
 }
