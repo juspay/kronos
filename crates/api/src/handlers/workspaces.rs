@@ -23,18 +23,21 @@ pub async fn create(
 
     let schema_name = build_schema_name(&org_id, &body.slug);
 
-    let workspace =
-        db::workspaces::create(&state.pool, &org_id, &body.name, &body.slug, &schema_name)
-            .await
-            .map_err(|e| match e {
-                sqlx::Error::Database(ref db_err) if db_err.constraint().is_some() => {
-                    AppError::Conflict(format!(
-                        "Workspace with slug '{}' already exists in this org",
-                        body.slug
-                    ))
-                }
-                _ => AppError::from(e),
-            })?;
+    let workspace = db::workspaces::create(
+        &state.pool,
+        &org_id,
+        &body.name,
+        &body.slug,
+        &schema_name,
+        &state.config.reaper.cron_expression,
+    )
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::Database(ref db_err) if db_err.constraint().is_some() => AppError::Conflict(
+            format!("Workspace with slug '{}' already exists in this org", body.slug),
+        ),
+        _ => AppError::from(e),
+    })?;
 
     Ok(HttpResponse::Created().json(serde_json::json!({ "data": {
         "workspace_id": workspace.workspace_id,

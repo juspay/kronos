@@ -6,6 +6,7 @@ use kronos_common::metrics as m;
 use kronos_common::{
     db,
     error::AppError,
+    models::endpoint::EndpointType,
     models::job::{CreateJob, TriggerType, UpdateJob},
     models::pg_cron_expr::PgCronExpr,
     pagination::{encode_cursor, PaginatedResponse, PaginationParams},
@@ -30,6 +31,18 @@ pub async fn create(
     let ep = db::endpoints::get(&mut *conn, &body.endpoint)
         .await?
         .ok_or_else(|| AppError::EndpointNotFound(body.endpoint.clone()))?;
+
+    // INTERNAL endpoints back kronos-driven jobs (today: the dogfooded reaper)
+    // and are not user-creatable — see `handlers::endpoints::create`. The same
+    // invariant has to hold on the job side, or a user could stack their own
+    // jobs against an internal endpoint (extra reaper sweeps, or one-off
+    // IMMEDIATE/DELAYED reaper invocations).
+    if EndpointType::from_str_val(&ep.endpoint_type) == Some(EndpointType::INTERNAL) {
+        return Err(AppError::InvalidRequest(format!(
+            "Endpoint '{}' is internal and cannot be used for user-created jobs",
+            body.endpoint
+        )));
+    }
 
     let retry_policy = ep.get_retry_policy();
 
@@ -308,6 +321,14 @@ pub async fn update(
     if old_job.status != "ACTIVE" {
         return Err(AppError::JobNotUpdatable("Job is not active".into()));
     }
+    // INTERNAL jobs are kronos-managed (today: the dogfooded reaper). Changing
+    // the schedule or pushing ends_at into the past would break monitoring for
+    // this workspace, with nothing left to re-provision the job afterwards.
+    if EndpointType::from_str_val(&old_job.endpoint_type) == Some(EndpointType::INTERNAL) {
+        return Err(AppError::JobNotUpdatable(
+            "Internal kronos jobs cannot be modified through the API".into(),
+        ));
+    }
 
     let cron_expr = match body.cron.clone() {
         Some(c) => c,
@@ -402,6 +423,14 @@ pub async fn cancel(
 
     if job.status == "RETIRED" {
         return Err(AppError::Conflict("Job is already retired".into()));
+    }
+    // INTERNAL jobs are kronos-managed (today: the dogfooded reaper). Cancelling
+    // one would stop the reaper from sweeping this workspace, with no surviving
+    // bootstrap path to bring it back.
+    if EndpointType::from_str_val(&job.endpoint_type) == Some(EndpointType::INTERNAL) {
+        return Err(AppError::Conflict(
+            "Internal kronos jobs cannot be cancelled through the API".into(),
+        ));
     }
 
     if job.trigger_type != "CRON" {

@@ -14,11 +14,18 @@ pub async fn create(
     ws: Workspace,
     body: web::Json<CreateEndpoint>,
 ) -> Result<HttpResponse, AppError> {
-    if EndpointType::from_str_val(&body.endpoint_type).is_none() {
-        return Err(AppError::InvalidRequest(format!(
-            "Invalid endpoint type: {}. Must be HTTP, KAFKA, or REDIS_STREAM",
-            body.endpoint_type
-        )));
+    // INTERNAL endpoints exist for kronos-driven internal tasks (e.g. the
+    // dogfooded reaper) and are provisioned at workspace-creation time —
+    // never through the public API. Reject them explicitly so the constraint
+    // doesn't have to do it with an opaque "violates check" error.
+    match EndpointType::from_str_val(&body.endpoint_type) {
+        None | Some(EndpointType::INTERNAL) => {
+            return Err(AppError::InvalidRequest(format!(
+                "Invalid endpoint type: {}. Must be HTTP, KAFKA, or REDIS_STREAM",
+                body.endpoint_type
+            )));
+        }
+        _ => {}
     }
 
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)

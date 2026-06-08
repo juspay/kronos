@@ -1,4 +1,5 @@
 use crate::env::{get_from_env_or_default, get_from_env_unsafe};
+use crate::models::pg_cron_expr::PgCronExpr;
 
 // ---------------------------------------------------------------------------
 // Sensitive-env reader: transparently KMS-decrypts when the feature is active
@@ -124,17 +125,10 @@ pub struct WorkerEnv {
     pub config_cache_ttl_sec: u64,
     pub secret_cache_ttl_sec: u64,
     pub shutdown_timeout_sec: u64,
-    /// How often the reaper sweeps for expired CRON jobs to retire + unschedule.
-    pub reaper_interval_sec: u64,
 }
 
 impl WorkerEnv {
     fn new() -> Self {
-        // Clamp to >= 1s: a 0 interval would make the reaper sleep(0) and spin in a
-        // tight loop, hammering the DB every iteration.
-        let reaper_interval_sec =
-            get_from_env_or_default("TE_WORKER_REAPER_INTERVAL_SEC", 30).max(1);
-
         Self {
             max_concurrent: get_from_env_or_default("TE_WORKER_MAX_CONCURRENT", 50),
             poll_interval_ms: get_from_env_or_default("TE_WORKER_POLL_INTERVAL_MS", 200),
@@ -144,7 +138,6 @@ impl WorkerEnv {
                 "TE_WORKER_SHUTDOWN_TIMEOUT_SEC",
                 30,
             ),
-            reaper_interval_sec,
         }
     }
 }
@@ -176,6 +169,30 @@ impl MetricsEnv {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ReaperEnv {
+    /// pg_cron expression controlling how often kronos's own dogfooded reaper
+    /// fires per workspace. Read at workspace creation, baked into the
+    /// workspace's pg_cron entry; changing it after the fact only affects
+    /// newly-created workspaces. Validated as a 5-field PgCronExpr at startup
+    /// so a typo fails fast instead of breaking the first `POST /workspaces`.
+    pub cron_expression: String,
+}
+
+impl ReaperEnv {
+    fn new() -> Result<Self, String> {
+        let cron_expression =
+            get_from_env_or_default("TE_REAPER_CRON_EXPRESSION", "*/15 * * * *".to_string());
+        PgCronExpr::try_from(cron_expression.clone()).map_err(|e| {
+            format!(
+                "Invalid TE_REAPER_CRON_EXPRESSION '{}': {}",
+                cron_expression, e
+            )
+        })?;
+        Ok(Self { cron_expression })
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Top-level config
 // ---------------------------------------------------------------------------
@@ -187,6 +204,7 @@ pub struct AppConfig {
     pub worker: WorkerEnv,
     pub crypto: CryptoEnv,
     pub metrics: MetricsEnv,
+    pub reaper: ReaperEnv,
 }
 
 impl AppConfig {
@@ -221,6 +239,7 @@ impl AppConfig {
             .await
             .map_err(|e| anyhow::anyhow!(e))?;
         let metrics = MetricsEnv::new();
+        let reaper = ReaperEnv::new().map_err(|e| anyhow::anyhow!(e))?;
 
         Ok(Self {
             db,
@@ -228,6 +247,7 @@ impl AppConfig {
             worker,
             crypto,
             metrics,
+            reaper,
         })
     }
 }

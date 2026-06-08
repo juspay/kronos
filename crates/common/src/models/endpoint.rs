@@ -9,6 +9,10 @@ pub enum EndpointType {
     HTTP,
     KAFKA,
     REDIS_STREAM,
+    /// In-process task run by the worker itself (e.g. the dogfooded CRON reaper).
+    /// Not user-creatable — provisioned at workspace-creation time for internal
+    /// jobs whose "dispatch" is a Rust function rather than a network call.
+    INTERNAL,
 }
 
 impl fmt::Display for EndpointType {
@@ -17,6 +21,7 @@ impl fmt::Display for EndpointType {
             Self::HTTP => write!(f, "HTTP"),
             Self::KAFKA => write!(f, "KAFKA"),
             Self::REDIS_STREAM => write!(f, "REDIS_STREAM"),
+            Self::INTERNAL => write!(f, "INTERNAL"),
         }
     }
 }
@@ -27,6 +32,7 @@ impl EndpointType {
             "HTTP" => Some(Self::HTTP),
             "KAFKA" => Some(Self::KAFKA),
             "REDIS_STREAM" => Some(Self::REDIS_STREAM),
+            "INTERNAL" => Some(Self::INTERNAL),
             _ => None,
         }
     }
