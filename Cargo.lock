@@ -2589,7 +2589,6 @@ dependencies = [
  "actix-web",
  "aes-gcm",
  "anyhow",
- "async-trait",
  "aws-config",
  "aws-sdk-kms",
  "base64 0.22.1",

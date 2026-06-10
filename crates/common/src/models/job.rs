@@ -151,6 +151,8 @@ pub struct CreateJob {
     pub trigger: String,
     pub idempotency_key: Option<String>,
     pub input: Option<serde_json::Value>,
+    #[serde(default)]
+    pub max_attempts: Option<i64>,
     #[serde(default, deserialize_with = "flexible_datetime::deserialize_opt")]
     pub run_at: Option<DateTime<Utc>>,
     pub cron: Option<PgCronExpr>,

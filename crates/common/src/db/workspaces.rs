@@ -147,13 +147,11 @@ pub async fn provision_schema(
 
     let mut conn = crate::db::scoped::scoped_connection(pool, schema_name).await?;
 
-    let p = if table_prefix.is_empty() {
-        String::new()
-    } else {
-        format!("{}_", table_prefix)
-    };
-
-    let ddl = WORKSPACE_SCHEMA_V1.replace("{p}", &p);
+    // `table_prefix` is used as-is: callers pass the full prefix including any trailing
+    // separator (e.g. "kronos_"), matching the read side (`tbl(prefix, name)` =
+    // `{prefix}{name}`). Do NOT append an underscore here, or provisioned tables
+    // (`kronos__endpoints`) won't match the names queried at runtime (`kronos_endpoints`).
+    let ddl = WORKSPACE_SCHEMA_V1.replace("{p}", table_prefix);
     for stmt in ddl.split(';') {
         let stmt = stmt.trim();
         if !stmt.is_empty() {

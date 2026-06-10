@@ -339,26 +339,49 @@ impl KronosLibraryClient {
         Ok(db::executions::get(&mut db, execution_id).await?)
     }
 
-    /// Start the background worker. Returns a JoinHandle — the caller should
-    /// await it (or drop it) on shutdown.
+    /// Start the background worker. Returns a [`WorkerHandle`] — call
+    /// [`WorkerHandle::shutdown`] on shutdown, then await [`WorkerHandle::join`].
     ///
     /// Pass a `WorkerConfig` to control concurrency, poll interval, etc.
-    /// Pass a `CancellationToken` that the caller cancels on shutdown.
     pub fn start_worker<S: SchemaProvider>(
         &self,
         schema_provider: S,
-        cancel: CancellationToken,
         worker_config: WorkerConfig,
-    ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    ) -> WorkerHandle {
         let pool = self.pool.clone();
         let ctx = self.ctx.clone();
 
         // Build an AppConfig-compatible struct from the context + worker_config
         let config = build_app_config(&ctx, &worker_config);
 
-        tokio::spawn(async move {
-            poller::run(pool, config, schema_provider, cancel).await
-        })
+        let cancel = CancellationToken::new();
+        let join = {
+            let cancel = cancel.clone();
+            tokio::spawn(async move {
+                poller::run(pool, config, schema_provider, cancel).await
+            })
+        };
+        WorkerHandle { cancel, join }
+    }
+}
+
+/// Handle to a running background worker. Owns the cancellation token and the
+/// task handle so embedders don't need their own tokio-util dependency.
+pub struct WorkerHandle {
+    cancel: CancellationToken,
+    join: tokio::task::JoinHandle<anyhow::Result<()>>,
+}
+
+impl WorkerHandle {
+    /// Signal the worker to stop. Returns immediately; the worker finishes
+    /// in-flight jobs (bounded by `WorkerConfig::shutdown_timeout_sec`).
+    pub fn shutdown(&self) {
+        self.cancel.cancel();
+    }
+
+    /// Wait for the worker task to finish.
+    pub async fn join(self) -> anyhow::Result<()> {
+        self.join.await?
     }
 }
 
@@ -620,7 +643,7 @@ impl KronosClient for KronosHttpClient {
         schema_name: &str,
         endpoint: &str,
         input: serde_json::Value,
-        _max_attempts: i64,
+        max_attempts: i64,
         trigger: JobTrigger,
         idempotency_key: Option<&str>,
     ) -> anyhow::Result<String> {
@@ -646,6 +669,9 @@ impl KronosClient for KronosHttpClient {
             "input": input,
             "trigger": trigger_str,
         });
+        if max_attempts > 0 {
+            body["max_attempts"] = serde_json::json!(max_attempts);
+        }
         if let Some(key) = idempotency_key {
             body["idempotency_key"] = serde_json::json!(key);
         }

@@ -47,6 +47,11 @@ pub async fn create(
     }
 
     let retry_policy = ep.get_retry_policy();
+    // Per-job override wins when provided and positive; otherwise the endpoint's policy.
+    let max_attempts = body
+        .max_attempts
+        .filter(|&n| n > 0)
+        .unwrap_or(retry_policy.max_attempts);
 
     if let Some(ref ps_name) = ep.payload_spec_ref {
         if let Some(ref input) = body.input {
@@ -94,7 +99,7 @@ pub async fn create(
                 &ep.endpoint_type,
                 key,
                 body.input.as_ref(),
-                retry_policy.max_attempts,
+                max_attempts,
             )
             .await
             .map_err(|e| match e {
@@ -152,7 +157,7 @@ pub async fn create(
                 key,
                 body.input.as_ref(),
                 run_at,
-                retry_policy.max_attempts,
+                max_attempts,
             )
             .await?;
 
