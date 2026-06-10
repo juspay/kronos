@@ -141,6 +141,30 @@ impl KronosLibraryClient {
         Ok(Self { pool, ctx })
     }
 
+    /// Convenience constructor for callers that don't manage their own `PgPool`:
+    /// builds an internal pool from `database_url` and `max_connections`.
+    /// Use [`Self::pool`] to share the pool (e.g. with a `SchemaProvider`).
+    /// Callers that need finer pool control should build a `PgPool` themselves
+    /// and use [`Self::new`].
+    pub async fn from_database_url(
+        database_url: &str,
+        max_connections: u32,
+        table_prefix: &str,
+        encryption_key: &str,
+        http_client: Option<Client>,
+    ) -> anyhow::Result<Self> {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(max_connections)
+            .connect(database_url)
+            .await?;
+        Self::new(pool, table_prefix, encryption_key, http_client)
+    }
+
+    /// The connection pool this client runs on.
+    pub fn pool(&self) -> &PgPool {
+        &self.pool
+    }
+
     /// Create a job in the given workspace schema and return the execution_id.
     pub async fn create_job(
         &self,
