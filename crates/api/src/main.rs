@@ -1,7 +1,26 @@
 use actix_cors::Cors;
-use actix_web::{web, App, HttpServer};
+use actix_web::{error::InternalError, web, App, HttpResponse, HttpServer};
 use kronos_common::config::{AppConfig, ServerMode};
 use tracing_subscriber::EnvFilter;
+
+/// Turn actix's default plaintext body-deserialization errors (e.g.
+/// `Json deserialize error: premature end of input at line 1 column 75`)
+/// into the structured `{ "error": { code, message } }` shape the rest of
+/// the API uses, with a 400 status.
+fn json_error_handler(
+    err: actix_web::error::JsonPayloadError,
+    _req: &actix_web::HttpRequest,
+) -> actix_web::Error {
+    let message = format!("Malformed JSON request body: {err}");
+    let response = HttpResponse::BadRequest().json(serde_json::json!({
+        "error": {
+            "code": "INVALID_REQUEST",
+            "message": message,
+            "request_id": serde_json::Value::Null,
+        }
+    }));
+    InternalError::from_response(err, response).into()
+}
 
 mod dashboard;
 mod extractors;
@@ -67,6 +86,7 @@ async fn main() -> anyhow::Result<()> {
 
         let mut app = App::new()
             .app_data(web::Data::new(app_state.clone()))
+            .app_data(web::JsonConfig::default().error_handler(json_error_handler))
             .wrap(cors)
             .wrap(actix_web::middleware::Logger::default())
             .wrap(crate::middleware::RequestId);
