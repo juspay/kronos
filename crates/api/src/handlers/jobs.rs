@@ -261,11 +261,67 @@ pub async fn create(
     }
 }
 
+/// Optional server-side filters for [`list`], parsed from the query string
+/// alongside [`PaginationParams`]. Blank values (e.g. `?status=`) are treated as
+/// absent so the dashboard can send empty params for an "All" selection.
+#[derive(Debug, serde::Deserialize)]
+pub struct JobListFilters {
+    pub status: Option<String>,
+    pub trigger_type: Option<String>,
+    pub endpoint: Option<String>,
+    pub endpoint_type: Option<String>,
+}
+
+fn blank_to_none(value: Option<String>) -> Option<String> {
+    value.and_then(|v| {
+        let trimmed = v.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+impl JobListFilters {
+    /// Validates the enum-like filters and converts to the DB-layer struct.
+    /// Invalid values are rejected up front so a typo surfaces as a 400 rather
+    /// than silently returning zero rows.
+    fn into_db_filters(self) -> Result<db::jobs::JobFilters, AppError> {
+        let status = blank_to_none(self.status);
+        if let Some(s) = &status {
+            if s != "ACTIVE" && s != "RETIRED" {
+                return Err(AppError::InvalidRequest(format!("Invalid status: {s}")));
+            }
+        }
+
+        let trigger = blank_to_none(self.trigger_type);
+        if let Some(t) = &trigger {
+            TriggerType::from_str_val(t)
+                .ok_or_else(|| AppError::InvalidRequest(format!("Invalid trigger: {t}")))?;
+        }
+
+        let endpoint_type = blank_to_none(self.endpoint_type);
+        if let Some(et) = &endpoint_type {
+            EndpointType::from_str_val(et)
+                .ok_or_else(|| AppError::InvalidRequest(format!("Invalid endpoint_type: {et}")))?;
+        }
+
+        Ok(db::jobs::JobFilters {
+            status,
+            trigger,
+            endpoint: blank_to_none(self.endpoint),
+            endpoint_type,
+        })
+    }
+}
+
 pub async fn list(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
     ws: Workspace,
     params: web::Query<PaginationParams>,
+    filters: web::Query<JobListFilters>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
@@ -274,7 +330,8 @@ pub async fn list(
     let mut db = DbContext::new(&mut *conn, prefix);
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
-    let items = db::jobs::list(&mut db, cursor.as_deref(), limit + 1).await?;
+    let filters = filters.into_inner().into_db_filters()?;
+    let items = db::jobs::list(&mut db, cursor.as_deref(), limit + 1, &filters).await?;
 
     let has_more = items.len() as i64 > limit;
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();

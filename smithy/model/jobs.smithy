@@ -158,6 +158,9 @@ structure ListJobsInput with [WorkspaceHeaders, PaginationQuery] {
 
     @httpQuery("status")
     status: JobStatusEnum
+
+    @httpQuery("endpoint_type")
+    endpoint_type: EndpointTypeEnum
 }
 
 structure ListJobsOutput {

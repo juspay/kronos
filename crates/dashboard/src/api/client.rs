@@ -168,10 +168,57 @@ mod inner {
 
     // -- Jobs API (workspace-scoped) --
 
-    pub async fn list_jobs(org_id: String, workspace_id: String) -> Result<Vec<Job>, String> {
+    /// Percent-encodes a query-string value (RFC 3986 unreserved set passes
+    /// through, everything else is `%XX`). Keeps the endpoint search box safe
+    /// for spaces and other special characters without pulling in a URL crate.
+    fn encode_query_value(value: &str) -> String {
+        let mut out = String::with_capacity(value.len());
+        for byte in value.bytes() {
+            match byte {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                    out.push(byte as char)
+                }
+                _ => out.push_str(&format!("%{byte:02X}")),
+            }
+        }
+        out
+    }
+
+    fn push_query_param(qs: &mut String, key: &str, value: &str) {
+        if value.is_empty() {
+            return;
+        }
+        qs.push(if qs.is_empty() { '?' } else { '&' });
+        qs.push_str(key);
+        qs.push('=');
+        qs.push_str(&encode_query_value(value));
+    }
+
+    pub async fn list_jobs(
+        org_id: String,
+        workspace_id: String,
+        params: JobListQueryParams,
+    ) -> Result<PaginatedResponse<Job>, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::get(&format!("{base}/v1/jobs"))
+        let mut qs = String::new();
+        if let Some(cursor) = &params.cursor {
+            push_query_param(&mut qs, "cursor", cursor);
+        }
+        push_query_param(&mut qs, "limit", &params.limit.to_string());
+        if let Some(status) = &params.status {
+            push_query_param(&mut qs, "status", status);
+        }
+        if let Some(trigger) = &params.trigger {
+            push_query_param(&mut qs, "trigger_type", trigger);
+        }
+        if let Some(endpoint_type) = &params.endpoint_type {
+            push_query_param(&mut qs, "endpoint_type", endpoint_type);
+        }
+        if let Some(endpoint) = &params.endpoint {
+            push_query_param(&mut qs, "endpoint", endpoint);
+        }
+        let resp = Request::get(&format!("{base}/v1/jobs{qs}"))
             .header("Authorization", &format!("Bearer {}", config.api_key))
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
@@ -186,7 +233,7 @@ mod inner {
             ));
         }
         let data: PaginatedResponse<Job> = resp.json().await.map_err(|e| e.to_string())?;
-        Ok(data.data)
+        Ok(data)
     }
 
     pub async fn get_job(
@@ -899,7 +946,11 @@ mod inner {
     ) -> Result<Workspace, String> {
         Err("SSR: not available".to_string())
     }
-    pub async fn list_jobs(_org_id: String, _workspace_id: String) -> Result<Vec<Job>, String> {
+    pub async fn list_jobs(
+        _org_id: String,
+        _workspace_id: String,
+        _params: JobListQueryParams,
+    ) -> Result<PaginatedResponse<Job>, String> {
         Err("SSR: not available".to_string())
     }
     pub async fn get_job(

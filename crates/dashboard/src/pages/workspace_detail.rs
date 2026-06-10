@@ -5,7 +5,7 @@ use leptos_router::hooks::use_params_map;
 use crate::app::prefixed;
 use crate::api::{
     self, Config, CreateConfig, CreateEndpoint, CreatePayloadSpec, CreateSecret, Endpoint,
-    Execution, Job, PayloadSpec, UpdateConfig, UpdatePayloadSpec,
+    Execution, Job, JobListQueryParams, PayloadSpec, UpdateConfig, UpdatePayloadSpec,
     UpdateSecret,
 };
 use crate::components::confirm::ConfirmDialog;
@@ -985,10 +985,41 @@ fn UpdateSecretForm(
 // Jobs Tab (Enhanced)
 // ════════════════════════════════════════════════════════════
 
+/// Normalizes a raw filter string (from a select/input) into an optional value:
+/// blank means "no filter".
+fn filter_opt(value: String) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
 #[component]
 fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
     let (refresh, set_refresh) = signal(0u32);
     let (modal_open, set_modal_open) = signal(false);
+
+    // Filters ("" == "All"/unset). Changing any filter resets pagination.
+    let (status_filter, set_status_filter) = signal(String::new());
+    let (trigger_filter, set_trigger_filter) = signal(String::new());
+    let (endpoint_type_filter, set_endpoint_type_filter) = signal(String::new());
+    let (endpoint_filter, set_endpoint_filter) = signal(String::new());
+    let (page_size, set_page_size) = signal(50i64);
+
+    // Cursor pagination. The backend cursor is forward-only, so we keep the
+    // cursor used for each visited page (`page_cursors[i]`) and an index into
+    // it to support a Previous button. Page 1 uses cursor `None`.
+    let (page_cursors, set_page_cursors) = signal(vec![Option::<String>::None]);
+    let (page_index, set_page_index) = signal(0usize);
+
+    // Resetting pagination whenever filters or page size change keeps the cursor
+    // stack consistent with the active query.
+    let reset_pagination = move || {
+        set_page_cursors.set(vec![None]);
+        set_page_index.set(0);
+    };
 
     let oid = org_id.clone();
     let wid = workspace_id.clone();
@@ -996,7 +1027,20 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
         let _ = refresh.get();
         let oid = oid.clone();
         let wid = wid.clone();
-        api::list_jobs(oid, wid)
+        let cursor = page_cursors
+            .get()
+            .get(page_index.get())
+            .cloned()
+            .flatten();
+        let params = JobListQueryParams {
+            cursor,
+            limit: page_size.get(),
+            status: filter_opt(status_filter.get()),
+            trigger: filter_opt(trigger_filter.get()),
+            endpoint: filter_opt(endpoint_filter.get()),
+            endpoint_type: filter_opt(endpoint_type_filter.get()),
+        };
+        api::list_jobs(oid, wid, params)
     });
 
     let oid_render = org_id.clone();
@@ -1004,16 +1048,79 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
     let oid_form = org_id.clone();
     let wid_form = workspace_id.clone();
 
+    let any_filter = move || {
+        !status_filter.get().is_empty()
+            || !trigger_filter.get().is_empty()
+            || !endpoint_type_filter.get().is_empty()
+            || !endpoint_filter.get().is_empty()
+    };
+
     view! {
         <div class="space-y-4">
-            <div class="flex justify-end">
-                <button
-                    on:click=move |_| set_modal_open.set(true)
-                    class="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                >
-                    <PlusIcon />
-                    "New Job"
-                </button>
+            // Filter bar + actions
+            <div class="flex flex-wrap items-end gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">"Status"</label>
+                    <select prop:value=move || status_filter.get()
+                        on:change=move |ev| { set_status_filter.set(event_target_value(&ev)); reset_pagination(); }
+                        class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                        <option value="">"All statuses"</option>
+                        <option value="ACTIVE">"Active"</option>
+                        <option value="RETIRED">"Retired"</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">"Trigger"</label>
+                    <select prop:value=move || trigger_filter.get()
+                        on:change=move |ev| { set_trigger_filter.set(event_target_value(&ev)); reset_pagination(); }
+                        class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                        <option value="">"All triggers"</option>
+                        <option value="IMMEDIATE">"Immediate"</option>
+                        <option value="DELAYED">"Delayed"</option>
+                        <option value="CRON">"CRON"</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">"Endpoint Type"</label>
+                    <select prop:value=move || endpoint_type_filter.get()
+                        on:change=move |ev| { set_endpoint_type_filter.set(event_target_value(&ev)); reset_pagination(); }
+                        class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                        <option value="">"All types"</option>
+                        <option value="HTTP">"HTTP"</option>
+                        <option value="KAFKA">"Kafka"</option>
+                        <option value="REDIS_STREAM">"Redis Stream"</option>
+                        <option value="INTERNAL">"Internal"</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">"Endpoint"</label>
+                    <input type="search" prop:value=move || endpoint_filter.get()
+                        on:change=move |ev| { set_endpoint_filter.set(event_target_value(&ev)); reset_pagination(); }
+                        class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                        placeholder="Search by name..." />
+                </div>
+                <Show when=any_filter>
+                    <button
+                        on:click=move |_| {
+                            set_status_filter.set(String::new());
+                            set_trigger_filter.set(String::new());
+                            set_endpoint_type_filter.set(String::new());
+                            set_endpoint_filter.set(String::new());
+                            reset_pagination();
+                        }
+                        class="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 font-medium"
+                    >"Clear filters"</button>
+                </Show>
+
+                <div class="ml-auto">
+                    <button
+                        on:click=move |_| set_modal_open.set(true)
+                        class="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                    >
+                        <PlusIcon />
+                        "New Job"
+                    </button>
+                </div>
             </div>
 
             <Suspense fallback=move || view! { <LoadingSpinner /> }>
@@ -1022,12 +1129,42 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
                     let wid = wid_render.clone();
                     jobs.get().map(|r| (*r).clone()).map(move |result| {
                         match result {
-                            Ok(jobs) => {
-                                if jobs.is_empty() {
-                                    view! { <EmptyState message="No jobs in this workspace. Create an endpoint first, then add a job." /> }.into_any()
+                            Ok(page) => {
+                                let next_cursor = page.cursor.clone();
+                                if page.data.is_empty() {
+                                    let msg = if any_filter() {
+                                        "No jobs match the current filters."
+                                    } else {
+                                        "No jobs in this workspace. Create an endpoint first, then add a job."
+                                    };
+                                    view! {
+                                        <div class="space-y-3">
+                                            <EmptyState message=msg />
+                                            <JobsPagination
+                                                next_cursor=next_cursor
+                                                page_size=page_size
+                                                set_page_size=set_page_size
+                                                set_page_cursors=set_page_cursors
+                                                page_index=page_index
+                                                set_page_index=set_page_index
+                                            />
+                                        </div>
+                                    }.into_any()
                                 } else {
-                                    let jobs = jobs.clone();
-                                    view! { <JobsTable jobs=jobs org_id=oid.clone() workspace_id=wid.clone() set_refresh=set_refresh /> }.into_any()
+                                    let jobs = page.data.clone();
+                                    view! {
+                                        <div class="space-y-3">
+                                            <JobsTable jobs=jobs org_id=oid.clone() workspace_id=wid.clone() set_refresh=set_refresh />
+                                            <JobsPagination
+                                                next_cursor=next_cursor
+                                                page_size=page_size
+                                                set_page_size=set_page_size
+                                                set_page_cursors=set_page_cursors
+                                                page_index=page_index
+                                                set_page_index=set_page_index
+                                            />
+                                        </div>
+                                    }.into_any()
                                 }
                             }
                             Err(e) => view! { <ErrorAlert message=e.to_string() /> }.into_any(),
@@ -1039,6 +1176,72 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
             <Modal title="Create Job" open=modal_open set_open=set_modal_open>
                 <CreateJobForm org_id=oid_form workspace_id=wid_form set_modal_open=set_modal_open set_refresh=set_refresh />
             </Modal>
+        </div>
+    }
+}
+
+#[component]
+fn JobsPagination(
+    next_cursor: Option<String>,
+    page_size: ReadSignal<i64>,
+    set_page_size: WriteSignal<i64>,
+    set_page_cursors: WriteSignal<Vec<Option<String>>>,
+    page_index: ReadSignal<usize>,
+    set_page_index: WriteSignal<usize>,
+) -> impl IntoView {
+    let has_next = next_cursor.is_some();
+    let has_prev = move || page_index.get() > 0;
+
+    let on_next = move |_| {
+        if let Some(nc) = next_cursor.clone() {
+            let idx = page_index.get_untracked();
+            set_page_cursors.update(|cursors| {
+                // Drop any forward history, then record the next page's cursor.
+                cursors.truncate(idx + 1);
+                cursors.push(Some(nc));
+            });
+            set_page_index.set(idx + 1);
+        }
+    };
+
+    let on_prev = move |_| {
+        let idx = page_index.get_untracked();
+        if idx > 0 {
+            set_page_index.set(idx - 1);
+        }
+    };
+
+    view! {
+        <div class="flex items-center justify-between text-sm text-gray-600">
+            <div class="flex items-center gap-2">
+                <span>"Per page:"</span>
+                <select prop:value=move || page_size.get().to_string()
+                    on:change=move |ev| {
+                        if let Ok(size) = event_target_value(&ev).parse::<i64>() {
+                            set_page_size.set(size);
+                            set_page_cursors.set(vec![None]);
+                            set_page_index.set(0);
+                        }
+                    }
+                    class="px-2 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                    <option value="25">"25"</option>
+                    <option value="50">"50"</option>
+                    <option value="100">"100"</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-3">
+                <span>"Page " {move || page_index.get() + 1}</span>
+                <button
+                    on:click=on_prev
+                    disabled=move || !has_prev()
+                    class="px-3 py-1.5 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >"Previous"</button>
+                <button
+                    on:click=on_next
+                    disabled=move || !has_next
+                    class="px-3 py-1.5 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >"Next"</button>
+            </div>
         </div>
     }
 }

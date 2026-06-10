@@ -157,30 +157,77 @@ pub async fn get_by_idempotency(
     .await
 }
 
+/// Optional, server-side filters applied to [`list`]. All fields are ANDed
+/// together; `None` fields are simply not constrained. `endpoint` is matched as
+/// a case-insensitive substring so the dashboard can offer a search box, while
+/// the enum-like fields (`status`, `trigger`, `endpoint_type`) match exactly.
+#[derive(Debug, Default, Clone)]
+pub struct JobFilters {
+    pub status: Option<String>,
+    pub trigger: Option<String>,
+    pub endpoint: Option<String>,
+    pub endpoint_type: Option<String>,
+}
+
+/// Builds the `list` query and the ordered list of string binds. Kept pure (no
+/// DB access) so the placeholder/bind bookkeeping can be unit tested. The final
+/// `LIMIT` placeholder is left for the caller to bind as an `i64`.
+fn build_list_query(t: &str, cursor: Option<&str>, filters: &JobFilters) -> (String, Vec<String>) {
+    let mut conditions: Vec<String> = Vec::new();
+    let mut binds: Vec<String> = Vec::new();
+    let mut n = 1;
+
+    if let Some(c) = cursor {
+        conditions.push(format!(
+            "created_at < (SELECT created_at FROM {t} WHERE job_id = ${n})"
+        ));
+        binds.push(c.to_string());
+        n += 1;
+    }
+    if let Some(status) = &filters.status {
+        conditions.push(format!("status = ${n}"));
+        binds.push(status.clone());
+        n += 1;
+    }
+    if let Some(trigger) = &filters.trigger {
+        conditions.push(format!("trigger_type = ${n}"));
+        binds.push(trigger.clone());
+        n += 1;
+    }
+    if let Some(endpoint_type) = &filters.endpoint_type {
+        conditions.push(format!("endpoint_type = ${n}"));
+        binds.push(endpoint_type.clone());
+        n += 1;
+    }
+    if let Some(endpoint) = &filters.endpoint {
+        conditions.push(format!("endpoint ILIKE '%' || ${n} || '%'"));
+        binds.push(endpoint.clone());
+        n += 1;
+    }
+
+    let where_clause = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!(" WHERE {}", conditions.join(" AND "))
+    };
+
+    let sql = format!("SELECT * FROM {t}{where_clause} ORDER BY created_at DESC LIMIT ${n}");
+    (sql, binds)
+}
+
 pub async fn list(
     db: &mut DbContext<'_>,
     cursor: Option<&str>,
     limit: i64,
+    filters: &JobFilters,
 ) -> Result<Vec<Job>, sqlx::Error> {
     let t = tbl(db.prefix, "jobs");
-    match cursor {
-        Some(c) => sqlx::query_as::<_, Job>(&format!(
-            "SELECT * FROM {t} WHERE created_at < (SELECT created_at FROM {t} WHERE job_id = $1)
-                 ORDER BY created_at DESC LIMIT $2"
-        ))
-        .bind(c)
-        .bind(limit)
-        .fetch_all(&mut *db.conn)
-        .await,
-        None => {
-            sqlx::query_as::<_, Job>(&format!(
-                "SELECT * FROM {t} ORDER BY created_at DESC LIMIT $1"
-            ))
-            .bind(limit)
-            .fetch_all(&mut *db.conn)
-            .await
-        }
+    let (sql, binds) = build_list_query(&t, cursor, filters);
+    let mut query = sqlx::query_as::<_, Job>(&sql);
+    for bind in &binds {
+        query = query.bind(bind);
     }
+    query.bind(limit).fetch_all(&mut *db.conn).await
 }
 
 pub async fn cancel(
@@ -429,5 +476,67 @@ mod tests {
         assert!(cmd.contains("\"ws_acme\".\"sched_executions\""));
         assert!(cmd.contains("\"ws_acme\".\"sched_jobs\" j"));
         assert!(cmd.contains("\"ws_acme\".\"sched_endpoints\" e"));
+    }
+
+    #[test]
+    fn list_query_without_cursor_or_filters() {
+        let (sql, binds) = build_list_query("jobs", None, &JobFilters::default());
+        assert_eq!(sql, "SELECT * FROM jobs ORDER BY created_at DESC LIMIT $1");
+        assert!(binds.is_empty());
+    }
+
+    #[test]
+    fn list_query_with_cursor_only() {
+        let (sql, binds) = build_list_query("jobs", Some("job-9"), &JobFilters::default());
+        assert_eq!(
+            sql,
+            "SELECT * FROM jobs WHERE created_at < (SELECT created_at FROM jobs WHERE job_id = $1) \
+             ORDER BY created_at DESC LIMIT $2"
+        );
+        assert_eq!(binds, vec!["job-9".to_string()]);
+    }
+
+    #[test]
+    fn list_query_binds_filters_in_order_after_cursor() {
+        let filters = JobFilters {
+            status: Some("ACTIVE".into()),
+            trigger: Some("CRON".into()),
+            endpoint_type: Some("HTTP".into()),
+            endpoint: Some("notify".into()),
+        };
+        let (sql, binds) = build_list_query("jobs", Some("job-9"), &filters);
+        // Cursor is $1, filters follow in declaration order, LIMIT is last ($6).
+        assert_eq!(
+            sql,
+            "SELECT * FROM jobs WHERE \
+             created_at < (SELECT created_at FROM jobs WHERE job_id = $1) AND \
+             status = $2 AND trigger_type = $3 AND endpoint_type = $4 AND \
+             endpoint ILIKE '%' || $5 || '%' \
+             ORDER BY created_at DESC LIMIT $6"
+        );
+        assert_eq!(
+            binds,
+            vec![
+                "job-9".to_string(),
+                "ACTIVE".to_string(),
+                "CRON".to_string(),
+                "HTTP".to_string(),
+                "notify".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn list_query_filters_without_cursor_start_at_one() {
+        let filters = JobFilters {
+            status: Some("RETIRED".into()),
+            ..Default::default()
+        };
+        let (sql, binds) = build_list_query("jobs", None, &filters);
+        assert_eq!(
+            sql,
+            "SELECT * FROM jobs WHERE status = $1 ORDER BY created_at DESC LIMIT $2"
+        );
+        assert_eq!(binds, vec!["RETIRED".to_string()]);
     }
 }

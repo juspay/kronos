@@ -88,6 +88,31 @@ pub struct Job {
     pub created_at: String,
 }
 
+/// Query parameters for paginating and filtering the jobs list. Empty `Option`
+/// fields are omitted from the request, which the API treats as "no filter".
+#[derive(Debug, Clone)]
+pub struct JobListQueryParams {
+    pub cursor: Option<String>,
+    pub limit: i64,
+    pub status: Option<String>,
+    pub trigger: Option<String>,
+    pub endpoint: Option<String>,
+    pub endpoint_type: Option<String>,
+}
+
+impl Default for JobListQueryParams {
+    fn default() -> Self {
+        Self {
+            cursor: None,
+            limit: 50,
+            status: None,
+            trigger: None,
+            endpoint: None,
+            endpoint_type: None,
+        }
+    }
+}
+
 // -- Endpoint --
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
