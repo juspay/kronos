@@ -101,7 +101,7 @@ Tenant-scoped API requests require `X-Org-Id` and `X-Workspace-Id` headers. The 
 - [Nix](https://nixos.org/download) with flakes enabled
 - [Docker](https://docs.docker.com/get-docker/) (for PostgreSQL)
 
-### Setup
+### Setup (just)
 
 ```bash
 # Enter the dev shell (installs Rust, Node.js, smithy-cli, just, trunk, etc.)
@@ -116,10 +116,73 @@ just dev
 
 The API is now running at `http://localhost:8080`.
 
+### Setup (manual)
+
+If you'd rather drive each step yourself (e.g. to run with a path prefix and the
+dashboard), the flow below mirrors what `just setup`/`just dev` automate. It assumes
+the Postgres container from `docker compose` is up and named `kronos-postgres-1`, with
+host port **5434** mapped to the container's `5432` (see `docker-compose.yml`).
+
+```bash
+# Start PostgreSQL
+docker compose up -d postgres
+```
+
+**1. (Re)create the database.** Connect to the default `postgres` database and drop/recreate
+`taskexecutor` for a clean slate:
+
+```bash
+docker exec -i kronos-postgres-1 psql -U kronos -d postgres -c \
+  "DROP DATABASE IF EXISTS taskexecutor WITH (FORCE);"
+docker exec -i kronos-postgres-1 psql -U kronos -d postgres -c \
+  "CREATE DATABASE taskexecutor;"
+```
+
+**2. Apply migrations** in order:
+
+```bash
+for f in migrations/20260317000000_initial.sql \
+         migrations/20260318000000_multi_tenancy.sql \
+         migrations/20260322000000_txn_based_pickup.sql \
+         migrations/20260322000001_pg_cron.sql; do
+  echo ">> applying $f"
+  docker exec -i kronos-postgres-1 psql -U kronos -d taskexecutor -v ON_ERROR_STOP=1 < "$f"
+done
+```
+
+**3. Run the API server** (here in `both` mode, serving the dashboard under `/dashboard`
+and the API under `/api`, on port 8090):
+
+```bash
+TE_DATABASE_URL="postgres://kronos:kronos@localhost:5434/taskexecutor" \
+TE_LISTEN_ADDR="0.0.0.0:8090" \
+TE_MODE="both" \
+TE_PATH_PREFIX="/api" \
+TE_DASHBOARD_PATH_PREFIX="/dashboard" \
+TE_DASHBOARD_DIST_DIR="crates/dashboard/pkg" \
+cargo run -p kronos-api
+```
+
+> Building the dashboard bundle first (`just dashboard-build`) is required for `TE_MODE=both`
+> to serve `crates/dashboard/pkg`.
+
+**4. Run the worker** in a separate shell:
+
+```bash
+TE_DATABASE_URL="postgres://kronos:kronos@localhost:5434/taskexecutor" \
+TE_METRICS_PORT="9090" \
+cargo run -p kronos-worker
+```
+
 ### Verify
 
 ```bash
+# `just dev` (root path):
 curl http://localhost:8080/health
+# OK
+
+# manual setup above (path prefix /api on port 8090):
+curl http://localhost:8090/api/health
 # OK
 ```
 
