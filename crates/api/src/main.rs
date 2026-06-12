@@ -9,14 +9,22 @@ use tracing_subscriber::EnvFilter;
 /// the API uses, with a 400 status.
 fn json_error_handler(
     err: actix_web::error::JsonPayloadError,
-    _req: &actix_web::HttpRequest,
+    req: &actix_web::HttpRequest,
 ) -> actix_web::Error {
+    // The `RequestId` middleware stamps every request with an `x-request-id`
+    // header; surface it so malformed-body errors are traceable like any other.
+    let request_id = req
+        .headers()
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| serde_json::Value::String(s.to_owned()))
+        .unwrap_or(serde_json::Value::Null);
     let message = format!("Malformed JSON request body: {err}");
     let response = HttpResponse::BadRequest().json(serde_json::json!({
         "error": {
             "code": "INVALID_REQUEST",
             "message": message,
-            "request_id": serde_json::Value::Null,
+            "request_id": request_id,
         }
     }));
     InternalError::from_response(err, response).into()
