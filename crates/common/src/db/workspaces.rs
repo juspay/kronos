@@ -75,44 +75,62 @@ pub async fn get(pool: &PgPool, workspace_id: &str) -> Result<Option<Workspace>,
     .await
 }
 
+/// Resolve a workspace by its org reference and workspace reference, where each
+/// reference may be the UUID id (`org_id` / `workspace_id`) or the human-readable
+/// `slug`. Exact id matches are preferred over slug matches.
 pub async fn get_by_org_and_id(
     pool: &PgPool,
-    org_id: &str,
-    workspace_id: &str,
+    org_ref: &str,
+    workspace_ref: &str,
 ) -> Result<Option<Workspace>, sqlx::Error> {
     sqlx::query_as::<_, Workspace>(
-        "SELECT * FROM public.workspaces WHERE org_id = $1 AND workspace_id = $2",
+        "SELECT w.* FROM public.workspaces w
+         JOIN public.organizations o ON o.org_id = w.org_id
+         WHERE (o.org_id = $1 OR o.slug = $1)
+           AND (w.workspace_id = $2 OR w.slug = $2)
+         ORDER BY (o.org_id = $1) DESC, (w.workspace_id = $2) DESC
+         LIMIT 1",
     )
-    .bind(org_id)
-    .bind(workspace_id)
+    .bind(org_ref)
+    .bind(workspace_ref)
     .fetch_optional(pool)
     .await
 }
 
+/// List active workspaces for an org addressed by its `org_id` or its `slug`.
 pub async fn list_for_org(
     pool: &PgPool,
-    org_id: &str,
+    org_ref: &str,
 ) -> Result<Vec<Workspace>, sqlx::Error> {
     sqlx::query_as::<_, Workspace>(
-        "SELECT * FROM public.workspaces WHERE org_id = $1 AND status = 'ACTIVE'
-         ORDER BY created_at DESC",
+        "SELECT w.* FROM public.workspaces w
+         JOIN public.organizations o ON o.org_id = w.org_id
+         WHERE (o.org_id = $1 OR o.slug = $1) AND w.status = 'ACTIVE'
+         ORDER BY w.created_at DESC",
     )
-    .bind(org_id)
+    .bind(org_ref)
     .fetch_all(pool)
     .await
 }
 
+/// Resolve the tenant schema name for an org/workspace pair, where each side may
+/// be addressed by id or slug. Exact id matches are preferred.
 pub async fn resolve_schema(
     pool: &PgPool,
-    org_id: &str,
-    workspace_id: &str,
+    org_ref: &str,
+    workspace_ref: &str,
 ) -> Result<Option<String>, sqlx::Error> {
     let row: Option<(String,)> = sqlx::query_as(
-        "SELECT schema_name FROM public.workspaces
-         WHERE org_id = $1 AND (workspace_id = $2 OR slug = $2) AND status = 'ACTIVE'",
+        "SELECT w.schema_name FROM public.workspaces w
+         JOIN public.organizations o ON o.org_id = w.org_id
+         WHERE (o.org_id = $1 OR o.slug = $1)
+           AND (w.workspace_id = $2 OR w.slug = $2)
+           AND w.status = 'ACTIVE'
+         ORDER BY (o.org_id = $1) DESC, (w.workspace_id = $2) DESC
+         LIMIT 1",
     )
-    .bind(org_id)
-    .bind(workspace_id)
+    .bind(org_ref)
+    .bind(workspace_ref)
     .fetch_optional(pool)
     .await?;
     Ok(row.map(|r| r.0))

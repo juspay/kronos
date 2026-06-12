@@ -5,6 +5,7 @@ use kronos_common::{
     db,
     error::AppError,
     models::organization::{CreateOrganization, UpdateOrganization},
+    tenant::validate_slug,
 };
 
 pub async fn create(
@@ -12,6 +13,14 @@ pub async fn create(
     _auth: AuthenticatedRequest,
     body: web::Json<CreateOrganization>,
 ) -> Result<HttpResponse, AppError> {
+    if !validate_slug(&body.slug) {
+        return Err(AppError::InvalidRequest(format!(
+            "Invalid slug '{}': must be 1-25 chars of lowercase letters, digits, and \
+             interior hyphens (no leading or trailing hyphen)",
+            body.slug
+        )));
+    }
+
     let org = db::organizations::create(&state.pool, &body.name, &body.slug)
         .await
         .map_err(|e| match e {

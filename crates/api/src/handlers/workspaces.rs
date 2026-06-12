@@ -5,7 +5,7 @@ use kronos_common::{
     db,
     error::AppError,
     models::workspace::CreateWorkspace,
-    tenant::build_schema_name,
+    tenant::{build_schema_name, validate_slug},
 };
 
 pub async fn create(
@@ -14,18 +14,28 @@ pub async fn create(
     path: web::Path<String>,
     body: web::Json<CreateWorkspace>,
 ) -> Result<HttpResponse, AppError> {
-    let org_id = path.into_inner();
+    let org_ref = path.into_inner();
 
-    // Verify the org exists
-    let _ = db::organizations::get(&state.pool, &org_id)
+    if !validate_slug(&body.slug) {
+        return Err(AppError::InvalidRequest(format!(
+            "Invalid slug '{}': must be 1-25 chars of lowercase letters, digits, and \
+             interior hyphens (no leading or trailing hyphen)",
+            body.slug
+        )));
+    }
+
+    // Resolve the org (by id or slug). Use its canonical org_id for the stored
+    // row and schema name so the workspace is keyed consistently no matter how
+    // the caller addressed the org.
+    let org = db::organizations::get(&state.pool, &org_ref)
         .await?
-        .ok_or_else(|| AppError::OrgNotFound(format!("Organization {} not found", org_id)))?;
+        .ok_or_else(|| AppError::OrgNotFound(format!("Organization {} not found", org_ref)))?;
 
-    let schema_name = build_schema_name(&org_id, &body.slug);
+    let schema_name = build_schema_name(&org.org_id, &body.slug);
 
     let workspace = db::workspaces::create(
         &state.pool,
-        &org_id,
+        &org.org_id,
         &body.name,
         &body.slug,
         &schema_name,
