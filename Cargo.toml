@@ -102,8 +102,8 @@ async-trait = "0.1"
 dotenvy = "0.15"
 
 # OIDC
-openidconnect = "3"
-jsonwebtoken = "9"
+openidconnect = "4"
+jsonwebtoken = "10"
 getrandom = "0.2"
 sha2 = "0.10"
 
