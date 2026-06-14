@@ -99,7 +99,6 @@ fn normalize_prefix(raw: String) -> String {
 #[derive(Debug, Clone)]
 pub struct ServerEnv {
     pub listen_addr: String,
-    pub api_key: String,
     pub path_prefix: String,
     pub mode: ServerMode,
     pub dashboard_prefix: String,
@@ -107,12 +106,15 @@ pub struct ServerEnv {
 }
 
 impl ServerEnv {
-    async fn new(reader: &SensitiveEnvReader) -> Result<Self, String> {
+    async fn new(_reader: &SensitiveEnvReader) -> Result<Self, String> {
         let listen_addr =
             get_from_env_or_default("TE_LISTEN_ADDR", "0.0.0.0:8080".to_string());
-        let api_key = reader
-            .read_or_default("TE_API_KEY", "dev-api-key".to_string())
-            .await;
+        if std::env::var("TE_API_KEY").is_ok() {
+            tracing::warn!(
+                "TE_API_KEY is set but is no longer used. \
+                 Configure TE_AUTH_MODE / TE_OIDC_* instead; see docs."
+            );
+        }
         let path_prefix = normalize_prefix(
             get_from_env_or_default("TE_PATH_PREFIX", String::new()),
         );
@@ -126,7 +128,6 @@ impl ServerEnv {
         );
         Ok(Self {
             listen_addr,
-            api_key,
             path_prefix,
             mode,
             dashboard_prefix,
@@ -222,6 +223,7 @@ pub struct AppConfig {
     pub crypto: CryptoEnv,
     pub metrics: MetricsEnv,
     pub reaper: ReaperEnv,
+    pub auth: oidc_rs::AuthConfig,
 }
 
 impl AppConfig {
@@ -257,6 +259,8 @@ impl AppConfig {
             .map_err(|e| anyhow::anyhow!(e))?;
         let metrics = MetricsEnv::new();
         let reaper = ReaperEnv::new().map_err(|e| anyhow::anyhow!(e))?;
+        let auth = crate::auth::read_auth_config_from_env()
+            .map_err(|e| anyhow::anyhow!(e))?;
 
         Ok(Self {
             db,
@@ -265,6 +269,7 @@ impl AppConfig {
             crypto,
             metrics,
             reaper,
+            auth,
         })
     }
 }

@@ -358,7 +358,6 @@ fn build_app_config(ctx: &PipelineContext, wc: &WorkerConfig) -> kronos_common::
         },
         server: ServerEnv {
             listen_addr: String::new(),
-            api_key: String::new(),
             path_prefix: String::new(),
             mode: ServerMode::Api,
             dashboard_prefix: String::new(),
@@ -380,6 +379,7 @@ fn build_app_config(ctx: &PipelineContext, wc: &WorkerConfig) -> kronos_common::
         reaper: ReaperEnv {
             cron_expression: "*/15 * * * *".to_string(),
         },
+        auth: oidc_rs::AuthConfig::disabled(),
     }
 }
 
