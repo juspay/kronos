@@ -43,8 +43,11 @@ follow-up.
 - Dashboard performs authorization-code + PKCE as a public client in WASM. Tokens
   live in a Leptos signal in memory; no `localStorage` / `sessionStorage`
   persistence beyond the brief PKCE-verifier-across-redirect window.
-- Identity (issuer + subject + email/name for humans; issuer + subject for M2M)
-  is captured per request and surfaced into request extensions and structured logs.
+- A `Claims` payload (issuer, subject, optional email/name, optional scopes)
+  is extracted from the validated JWT on every authenticated request, wrapped
+  in an `Identity` variant named after the credential format that produced it
+  (`Bearer` or `Basic`), and surfaced into request extensions and structured
+  logs.
 - New endpoints:
   - `GET /v1/auth/whoami` — returns the current identity.
   - `POST /v1/auth/cache/flush` — evicts entries from the Basic-credentials cache
@@ -71,7 +74,12 @@ follow-up.
 
 ## Authentication flows
 
-### M2M (`Authorization: Basic`)
+### Basic credential flow
+
+The credential format `Authorization: Basic <base64(client_id:client_secret)>`.
+Designed for service-to-service (M2M) callers, but Kronos doesn't structurally
+require that — anything with a valid IdP-registered client_credentials grant
+works.
 
 Per request:
 
@@ -83,13 +91,14 @@ Per request:
    - **Miss or near-expiry:** acquire the per-`client_id` single-flight lock,
      re-check the cache (another waiter may have just populated it), then:
 3. POST to the IdP's token endpoint with `grant_type=client_credentials`,
-   `client_id`, `client_secret`, `audience=TE_OIDC_M2M_AUDIENCE` (if set),
-   `scope=TE_OIDC_M2M_SCOPE` (if set). The `openidconnect` crate handles
+   `client_id`, `client_secret`, `audience=TE_OIDC_BASIC_AUDIENCE` (if set),
+   `scope=TE_OIDC_BASIC_SCOPE` (if set). The `openidconnect` crate handles
    discovery of the token endpoint from `<issuer>/.well-known/openid-configuration`
    and chooses HTTP-Basic vs form-encoded credential transport per IdP metadata.
 4. On success: cache `(client_id, sha256(secret)) → (jwt, expires_at)` where
    `expires_at = min(jwt.exp, now + TE_OIDC_BASIC_CACHE_TTL_SEC) - 60s`. Validate
-   the JWT through the same code path as Bearer, attach `Identity::M2M`, forward.
+   the JWT through the same code path as Bearer, wrap the resulting `Claims`
+   in `Identity::Basic`, forward.
 5. On IdP `401`/`403`: insert a **negative cache** entry for 30 s; return
    `401 Unauthorized` to the caller. Subsequent requests with the same
    `(client_id, sha256(secret))` short-circuit to `401` for the negative-cache
@@ -108,7 +117,11 @@ across requests, reducing exposure in crash dumps and stray debug output. This
 is hygiene, not storage-at-rest defence (the JWT and the hash both live in
 process memory).
 
-### Human (`Authorization: Bearer`)
+### Bearer credential flow
+
+The credential format `Authorization: Bearer <jwt>`. Used by the dashboard
+after the PKCE flow below, and by any service that has obtained its own JWT
+from the configured IdP through means Kronos doesn't see.
 
 Per request:
 
@@ -122,8 +135,8 @@ Per request:
    - `aud` intersects `TE_OIDC_AUDIENCES` (configured as a comma-separated list)
    - `exp > now - 60 s` (60 s clock-skew tolerance)
    - `nbf <= now + 60 s` (if present)
-5. Extract `sub`, `email`, `name` (whichever are present). Attach
-   `Identity::Human { iss, sub, email, name }`, forward.
+5. Extract `iss`, `sub`, `email`, `name`, `scopes` (whichever are present) into
+   a `Claims`. Attach `Identity::Bearer(claims)`, forward.
 
 JWKS is fetched at startup. **Startup failure mode:** if the JWKS fetch fails
 at startup, the API still binds and starts serving — auth requests return
@@ -180,16 +193,35 @@ unauthenticated API calls.
 
 ```rust
 // crates/common/src/auth.rs
+pub struct Claims {
+    pub iss: String,
+    pub sub: String,
+    pub email: Option<String>,   // present on interactive (authorization_code) tokens
+    pub name:  Option<String>,
+    pub scopes: Vec<String>,     // typically populated for client_credentials
+}
+
 pub enum Identity {
     Disabled,
-    Human { iss: String, sub: String, email: Option<String>, name: Option<String> },
-    M2M    { iss: String, sub: String, scopes: Vec<String> },
+    Bearer(Claims),   // arrived as `Authorization: Bearer <jwt>`
+    Basic(Claims),    // arrived as `Authorization: Basic ...`; JWT obtained via IdP exchange
 }
 ```
 
-The `Human` vs `M2M` variant is chosen by **which header path produced the
-JWT**, not by inspecting JWT claims. This is reliable across IdPs (claim
-conventions for distinguishing M2M from interactive tokens vary).
+The variant is named after **the credential format that arrived at the API
+edge**, not after a guess at who the caller is. Nothing else about the request
+is structurally guaranteed across IdPs: a backend service that does its own
+`client_credentials` exchange and sends the resulting JWT directly arrives on
+the Bearer path, and we don't try to relabel it as "M2M" — claim conventions
+for distinguishing service tokens from interactive ones vary. The variant
+captures only what we prove.
+
+Handlers that don't care match `Bearer(c) | Basic(c)`. The rare handler that
+wants to enforce "this route is Basic-only" matches the specific variant.
+
+If a future credential format is added (mTLS, signed request, etc.), this is a
+purely additive change to the enum (`Mtls(Claims)`, etc.) — existing match
+arms keep compiling unchanged where they only care about authenticated-vs-not.
 
 `Identity` is placed into the Actix request extensions by `AuthMiddleware` and
 read by the `AuthenticatedRequest` extractor — handler signatures stay the same.
@@ -208,15 +240,20 @@ All listed endpoints require an authenticated identity unless noted.
 Response shape for `/v1/auth/whoami`:
 
 ```jsonc
-// human
-{ "type": "human", "iss": "...", "sub": "...",
-  "email": "alice@example.com", "name": "Alice" }
-// m2m
-{ "type": "m2m", "iss": "...", "sub": "...",
-  "scopes": ["jobs.read", "jobs.write"] }
-// disabled
+// bearer credential
+{ "type": "bearer", "iss": "...", "sub": "...",
+  "email": "alice@example.com", "name": "Alice", "scopes": [] }
+// basic credential
+{ "type": "basic", "iss": "...", "sub": "...",
+  "email": null, "name": null, "scopes": ["jobs.read", "jobs.write"] }
+// auth disabled
 { "type": "disabled" }
 ```
+
+The JSON keeps a uniform shape across `bearer` and `basic` (both expose the
+full `Claims`), with `email` / `name` typically null on `basic` and `scopes`
+typically empty on `bearer`. The `type` field discriminates on the credential
+format that produced the identity.
 
 **No `m2m_clients` management endpoints exist.** All M2M credentials are created,
 rotated, and revoked in the IdP admin console.
@@ -232,8 +269,8 @@ rotated, and revoked in the IdP admin console.
 | `TE_AUTH_MODE` | `enabled` | `enabled` \| `disabled`. `disabled` bypasses all auth and synthesizes `Identity::Disabled`. |
 | `TE_OIDC_ISSUER` | *(required if enabled)* | OIDC issuer URL. Discovery → `/.well-known/openid-configuration` provides token endpoint and JWKS URI. |
 | `TE_OIDC_AUDIENCES` | *(required if enabled)* | Comma-separated list of accepted `aud` values on inbound JWTs (typically the dashboard `client_id` plus any M2M audiences). |
-| `TE_OIDC_M2M_AUDIENCE` | *(empty)* | The `audience` value Kronos requests when exchanging Basic credentials. Required for Auth0-style IdPs; ignored if the IdP does not use the parameter. |
-| `TE_OIDC_M2M_SCOPE` | *(empty)* | Space-separated scopes Kronos requests during Basic exchange. |
+| `TE_OIDC_BASIC_AUDIENCE` | *(empty)* | The `audience` value Kronos requests when exchanging Basic credentials. Required for Auth0-style IdPs; ignored if the IdP does not use the parameter. |
+| `TE_OIDC_BASIC_SCOPE` | *(empty)* | Space-separated scopes Kronos requests during Basic exchange. |
 | `TE_OIDC_BASIC_CACHE_TTL_SEC` | `3600` | Hard cap on Basic→JWT cache lifetime, regardless of the JWT's own `exp`. |
 | `TE_OIDC_JWKS_REFRESH_SEC` | `300` | Background JWKS refresh interval. |
 | `TE_API_KEY` | — | **Removed.** If set with `TE_AUTH_MODE=enabled`, a one-line WARN is emitted at startup pointing at the migration docs. |
@@ -271,7 +308,7 @@ codebase. No `mod.rs` files.
 - `src/auth.rs` — declares submodules, re-exports `Identity`, `AuthError`,
   `AuthConfig`, `Validator`, `BasicExchanger`.
 - `src/auth/config.rs` — `AuthConfig` parsed from env, with `Enabled { issuer,
-  audiences, m2m_audience, m2m_scope, basic_cache_ttl, jwks_refresh }` and
+  audiences, basic_audience, basic_scope, basic_cache_ttl, jwks_refresh }` and
   `Disabled` variants.
 - `src/auth/oidc.rs` — JWKS client + JWT validator. Wraps the `openidconnect`
   crate; provides `Validator::validate(jwt: &str) -> Result<Claims, AuthError>`.
@@ -415,12 +452,12 @@ ergonomics).
 
 - `TE_AUTH_MODE=disabled` → unauthenticated requests succeed;
   `/v1/auth/whoami` returns `{"type":"disabled"}`.
-- Basic with valid creds → `200`; identity is `m2m`.
+- Basic with valid creds → `200`; identity is `Identity::Basic`.
 - Basic with invalid creds → `401`; second request within 30 s does not hit
   the mock IdP.
 - Basic followed by `POST /v1/auth/cache/flush` → next request re-exchanges
   against the mock IdP.
-- Bearer with valid JWT → `200`; identity is `human`.
+- Bearer with valid JWT → `200`; identity is `Identity::Bearer`.
 - Bearer with expired JWT → `401`.
 - Missing `Authorization` header → `401`.
 - Startup with `TE_AUTH_MODE=enabled` and missing `TE_OIDC_ISSUER` → process
