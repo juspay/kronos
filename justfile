@@ -9,7 +9,10 @@ default:
 # ─── Environment ──────────────────────────────────────────────
 
 export TE_DATABASE_URL := env("TE_DATABASE_URL", "postgresql://kronos:kronos@localhost:5432/taskexecutor")
-export TE_API_KEY := env("TE_API_KEY", "dev-api-key")
+# Default to auth-disabled for `just dev` / `just api` so contributors get a
+# working server without configuring an OIDC provider. Production deployments
+# set TE_AUTH_MODE=enabled and supply TE_OIDC_* in their compose / k8s.
+export TE_AUTH_MODE := env("TE_AUTH_MODE", "disabled")
 export TE_ENCRYPTION_KEY := env("TE_ENCRYPTION_KEY", "0000000000000000000000000000000000000000000000000000000000000000")
 
 # ─── Setup ────────────────────────────────────────────────────
