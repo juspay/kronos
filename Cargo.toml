@@ -6,6 +6,7 @@ members = [
     "crates/mock-server",
     "crates/dashboard",
     "crates/oidc-rs",
+    "crates/oidc-rs-actix",
 ]
 exclude = [
     # Generated client SDK — committed for downstream consumers (e.g. aarokya)
