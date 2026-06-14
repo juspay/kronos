@@ -4,7 +4,13 @@ use super::models::*;
 use gloo_net::http::Request;
 
 #[cfg(feature = "hydrate")]
+use crate::auth::LoginState;
+
+#[cfg(feature = "hydrate")]
 use crate::config::DashboardConfig;
+
+#[cfg(feature = "hydrate")]
+use leptos::prelude::*;
 
 #[cfg(feature = "hydrate")]
 fn get_config() -> DashboardConfig {
@@ -32,12 +38,44 @@ fn get_config() -> DashboardConfig {
         api_base_url: get("apiBaseUrl"),
         api_prefix: get("apiPrefix"),
         dashboard_prefix: get("dashboardPrefix"),
-        // TODO(T15): bearer token comes from LoginState, not config.
         auth_disabled: get_bool("authDisabled"),
         oidc_issuer: get_opt("oidcIssuer"),
         oidc_client_id: get_opt("oidcClientId"),
         oidc_redirect_url: get_opt("oidcRedirectUrl"),
         oidc_audience: get_opt("oidcAudience"),
+    }
+}
+
+// ============================================================================
+// Auth helpers
+// ============================================================================
+
+/// Build the `Authorization` header value for an outbound API call. Returns
+/// `None` (i.e. don't send the header) when auth is disabled at the
+/// build-time config OR when the user isn't logged in yet (no access token
+/// in `LoginState`).
+#[cfg(feature = "hydrate")]
+fn auth_header(config: &DashboardConfig) -> Option<String> {
+    if config.auth_disabled {
+        return None;
+    }
+    let login_state = use_context::<RwSignal<LoginState>>()?;
+    login_state
+        .with(|s| s.access_token.clone())
+        .map(|t| format!("Bearer {t}"))
+}
+
+/// Wrap a `gloo_net::http::RequestBuilder` with the `Authorization` header
+/// when appropriate. Replaces the prior `.header("Authorization", "Bearer ...")`
+/// chain that previously used the static `api_key` config field.
+#[cfg(feature = "hydrate")]
+fn with_auth(
+    req: gloo_net::http::RequestBuilder,
+    config: &DashboardConfig,
+) -> gloo_net::http::RequestBuilder {
+    match auth_header(config) {
+        Some(h) => req.header("Authorization", &h),
+        None => req,
     }
 }
 
@@ -52,8 +90,7 @@ mod inner {
     pub async fn list_organizations() -> Result<Vec<Organization>, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::get(&format!("{base}/v1/orgs"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::get(&format!("{base}/v1/orgs")), &config)
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -72,8 +109,7 @@ mod inner {
     pub async fn get_organization(org_id: String) -> Result<Organization, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::get(&format!("{base}/v1/orgs/{org_id}"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::get(&format!("{base}/v1/orgs/{org_id}")), &config)
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -91,8 +127,7 @@ mod inner {
     pub async fn create_organization(body: CreateOrganization) -> Result<Organization, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::post(&format!("{base}/v1/orgs"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::post(&format!("{base}/v1/orgs")), &config)
             .json(&body)
             .map_err(|e| e.to_string())?
             .send()
@@ -115,8 +150,7 @@ mod inner {
     ) -> Result<Organization, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::put(&format!("{base}/v1/orgs/{org_id}"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::put(&format!("{base}/v1/orgs/{org_id}")), &config)
             .json(&body)
             .map_err(|e| e.to_string())?
             .send()
@@ -138,8 +172,7 @@ mod inner {
     pub async fn list_workspaces(org_id: String) -> Result<Vec<Workspace>, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::get(&format!("{base}/v1/orgs/{org_id}/workspaces"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::get(&format!("{base}/v1/orgs/{org_id}/workspaces")), &config)
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -160,8 +193,7 @@ mod inner {
     ) -> Result<Workspace, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::post(&format!("{base}/v1/orgs/{org_id}/workspaces"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::post(&format!("{base}/v1/orgs/{org_id}/workspaces")), &config)
             .json(&body)
             .map_err(|e| e.to_string())?
             .send()
@@ -183,8 +215,7 @@ mod inner {
     pub async fn list_jobs(org_id: String, workspace_id: String) -> Result<Vec<Job>, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::get(&format!("{base}/v1/jobs"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::get(&format!("{base}/v1/jobs")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .send()
@@ -208,8 +239,7 @@ mod inner {
     ) -> Result<Job, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::get(&format!("{base}/v1/jobs/{job_id}"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::get(&format!("{base}/v1/jobs/{job_id}")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .send()
@@ -233,8 +263,7 @@ mod inner {
     ) -> Result<serde_json::Value, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::post(&format!("{base}/v1/jobs"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::post(&format!("{base}/v1/jobs")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .json(&body)
@@ -261,8 +290,7 @@ mod inner {
     ) -> Result<serde_json::Value, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::post(&format!("{base}/v1/jobs/{job_id}/cancel"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::post(&format!("{base}/v1/jobs/{job_id}/cancel")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .header("Content-Type", "application/json")
@@ -287,8 +315,7 @@ mod inner {
     ) -> Result<JobStatus, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::get(&format!("{base}/v1/jobs/{job_id}/status"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::get(&format!("{base}/v1/jobs/{job_id}/status")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .send()
@@ -312,8 +339,7 @@ mod inner {
     ) -> Result<Vec<Job>, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::get(&format!("{base}/v1/jobs/{job_id}/versions"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::get(&format!("{base}/v1/jobs/{job_id}/versions")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .send()
@@ -338,8 +364,7 @@ mod inner {
     ) -> Result<Vec<Endpoint>, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::get(&format!("{base}/v1/endpoints"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::get(&format!("{base}/v1/endpoints")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .send()
@@ -363,8 +388,7 @@ mod inner {
     ) -> Result<Endpoint, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::post(&format!("{base}/v1/endpoints"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::post(&format!("{base}/v1/endpoints")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .json(&body)
@@ -391,8 +415,7 @@ mod inner {
     ) -> Result<Endpoint, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::put(&format!("{base}/v1/endpoints/{name}"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::put(&format!("{base}/v1/endpoints/{name}")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .json(&body)
@@ -418,8 +441,7 @@ mod inner {
     ) -> Result<(), String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::delete(&format!("{base}/v1/endpoints/{name}"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::delete(&format!("{base}/v1/endpoints/{name}")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .send()
@@ -444,8 +466,7 @@ mod inner {
     ) -> Result<Vec<Execution>, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::get(&format!("{base}/v1/jobs/{job_id}/executions"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::get(&format!("{base}/v1/jobs/{job_id}/executions")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .send()
@@ -469,8 +490,7 @@ mod inner {
     ) -> Result<Execution, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::get(&format!("{base}/v1/executions/{execution_id}"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::get(&format!("{base}/v1/executions/{execution_id}")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .send()
@@ -494,8 +514,7 @@ mod inner {
     ) -> Result<serde_json::Value, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::post(&format!("{base}/v1/executions/{execution_id}/cancel"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::post(&format!("{base}/v1/executions/{execution_id}/cancel")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .header("Content-Type", "application/json")
@@ -520,8 +539,7 @@ mod inner {
     ) -> Result<Vec<Attempt>, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::get(&format!("{base}/v1/executions/{execution_id}/attempts"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::get(&format!("{base}/v1/executions/{execution_id}/attempts")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .send()
@@ -545,8 +563,7 @@ mod inner {
     ) -> Result<Vec<ExecutionLog>, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::get(&format!("{base}/v1/executions/{execution_id}/logs"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::get(&format!("{base}/v1/executions/{execution_id}/logs")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .send()
@@ -569,8 +586,7 @@ mod inner {
     pub async fn list_configs(org_id: String, workspace_id: String) -> Result<Vec<Config>, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::get(&format!("{base}/v1/configs"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::get(&format!("{base}/v1/configs")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .send()
@@ -594,8 +610,7 @@ mod inner {
     ) -> Result<Config, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::post(&format!("{base}/v1/configs"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::post(&format!("{base}/v1/configs")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .json(&body)
@@ -622,8 +637,7 @@ mod inner {
     ) -> Result<Config, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::put(&format!("{base}/v1/configs/{name}"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::put(&format!("{base}/v1/configs/{name}")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .json(&body)
@@ -649,8 +663,7 @@ mod inner {
     ) -> Result<(), String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::delete(&format!("{base}/v1/configs/{name}"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::delete(&format!("{base}/v1/configs/{name}")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .send()
@@ -674,8 +687,7 @@ mod inner {
     ) -> Result<Vec<PayloadSpec>, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::get(&format!("{base}/v1/payload-specs"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::get(&format!("{base}/v1/payload-specs")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .send()
@@ -700,8 +712,7 @@ mod inner {
     ) -> Result<PayloadSpec, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::post(&format!("{base}/v1/payload-specs"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::post(&format!("{base}/v1/payload-specs")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .json(&body)
@@ -728,8 +739,7 @@ mod inner {
     ) -> Result<PayloadSpec, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::put(&format!("{base}/v1/payload-specs/{name}"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::put(&format!("{base}/v1/payload-specs/{name}")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .json(&body)
@@ -755,8 +765,7 @@ mod inner {
     ) -> Result<(), String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::delete(&format!("{base}/v1/payload-specs/{name}"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::delete(&format!("{base}/v1/payload-specs/{name}")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .send()
@@ -780,8 +789,7 @@ mod inner {
     ) -> Result<Vec<Secret>, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::get(&format!("{base}/v1/secrets"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::get(&format!("{base}/v1/secrets")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .send()
@@ -805,8 +813,7 @@ mod inner {
     ) -> Result<Secret, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::post(&format!("{base}/v1/secrets"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::post(&format!("{base}/v1/secrets")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .json(&body)
@@ -833,8 +840,7 @@ mod inner {
     ) -> Result<Secret, String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::put(&format!("{base}/v1/secrets/{name}"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::put(&format!("{base}/v1/secrets/{name}")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .json(&body)
@@ -860,8 +866,7 @@ mod inner {
     ) -> Result<(), String> {
         let config = get_config();
         let base = config.api_base();
-        let resp = Request::delete(&format!("{base}/v1/secrets/{name}"))
-            .header("Authorization", &format!("Bearer {}", String::new())) /* TODO(T15): replaced by LoginState */
+        let resp = with_auth(Request::delete(&format!("{base}/v1/secrets/{name}")), &config)
             .header("X-Org-Id", &org_id)
             .header("X-Workspace-Id", &workspace_id)
             .send()
