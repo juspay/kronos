@@ -1,49 +1,23 @@
 use actix_web::{dev::Payload, web, Error, FromRequest, HttpMessage, HttpRequest, HttpResponse};
 use kronos_common::tenant::WorkspaceContext;
+use oidc_rs::Identity;
+use oidc_rs_actix::Authenticated;
 use std::future::{self, Future};
 use std::pin::Pin;
 
 use crate::router::AppState;
 
-pub struct AuthenticatedRequest;
+/// Kronos newtype over [`oidc_rs_actix::Authenticated`]. Handlers continue to
+/// take `AuthenticatedRequest` as before — the field type is now [`Identity`].
+pub struct AuthenticatedRequest(pub Identity);
 
 impl FromRequest for AuthenticatedRequest {
     type Error = Error;
-    type Future = future::Ready<Result<Self, Self::Error>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self, Self::Error>>>>;
 
-    fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
-        let state = req.app_data::<web::Data<AppState>>();
-
-        let auth_header = req
-            .headers()
-            .get("authorization")
-            .and_then(|v| v.to_str().ok());
-
-        let result = match (state, auth_header) {
-            (Some(state), Some(header)) if header.starts_with("Bearer ") => {
-                let token = &header[7..];
-                if token == state.config.server.api_key {
-                    Ok(AuthenticatedRequest)
-                } else {
-                    Err(actix_web::error::InternalError::from_response(
-                        "Invalid API key",
-                        HttpResponse::Unauthorized().json(serde_json::json!({
-                            "error": { "code": "UNAUTHORIZED", "message": "Invalid API key" }
-                        })),
-                    )
-                    .into())
-                }
-            }
-            _ => Err(actix_web::error::InternalError::from_response(
-                "Missing Authorization header",
-                HttpResponse::Unauthorized().json(serde_json::json!({
-                    "error": { "code": "UNAUTHORIZED", "message": "Missing Authorization header" }
-                })),
-            )
-            .into()),
-        };
-
-        future::ready(result)
+    fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
+        let fut = Authenticated::from_request(req, payload);
+        Box::pin(async move { fut.await.map(|a| AuthenticatedRequest(a.0)) })
     }
 }
 

@@ -1,6 +1,10 @@
 use actix_cors::Cors;
 use actix_web::{error::InternalError, web, App, HttpResponse, HttpServer};
+use kronos_api::middleware::{AuthMiddleware, AuthMode, AuthState};
+use kronos_api::{dashboard, middleware, router};
 use kronos_common::config::{AppConfig, ServerMode};
+use oidc_rs::{AuthConfig, BasicExchanger, Validator};
+use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
 
 /// Turn actix's default plaintext body-deserialization errors (e.g.
@@ -30,11 +34,35 @@ fn json_error_handler(
     InternalError::from_response(err, response).into()
 }
 
-mod dashboard;
-mod extractors;
-mod handlers;
-mod middleware;
-mod router;
+async fn build_auth_state(cfg: &AuthConfig) -> anyhow::Result<Arc<AuthState>> {
+    let mode = match cfg {
+        AuthConfig::Disabled => {
+            tracing::warn!(
+                "Auth disabled (TE_AUTH_MODE=disabled). Do not use in production."
+            );
+            AuthMode::Disabled
+        }
+        AuthConfig::Enabled(c) => {
+            let validator =
+                Validator::new(c.issuer.clone(), c.audiences.clone(), c.jwks_refresh)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("validator init: {e}"))?;
+            let exchanger = BasicExchanger::new(
+                c.issuer.clone(),
+                c.basic_audience.clone(),
+                c.basic_scope.clone(),
+                c.basic_cache_ttl,
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("exchanger init: {e}"))?;
+            AuthMode::Enabled {
+                validator,
+                exchanger,
+            }
+        }
+    };
+    Ok(Arc::new(AuthState { mode }))
+}
 
 #[actix_web::main]
 async fn main() -> anyhow::Result<()> {
@@ -55,6 +83,8 @@ async fn main() -> anyhow::Result<()> {
     let mode = config.server.mode.clone();
     let dashboard_prefix = config.server.dashboard_prefix.clone();
     let dashboard_dist_dir = config.server.dashboard_dist_dir.clone();
+
+    let auth_state = build_auth_state(&config.auth).await?;
 
     let app_state = router::AppState {
         pool: pool.clone(),
@@ -79,7 +109,10 @@ async fn main() -> anyhow::Result<()> {
             api_base_url: String::new(), // same-origin; server functions handle routing
             api_prefix: path_prefix.clone(),
             dashboard_prefix: dashboard_prefix.clone(),
-            api_key: config.server.api_key.clone(),
+            // TODO(T13-T16): dashboard credential is supplied via LoginState
+            // once the dashboard auth tasks land; empty for now (auth is wired
+            // on the API side via AuthMiddleware).
+            api_key: String::new(),
         })
     } else {
         None
@@ -92,16 +125,26 @@ async fn main() -> anyhow::Result<()> {
             .allow_any_header()
             .max_age(3600);
 
+        let auth_mw = AuthMiddleware {
+            state: auth_state.clone(),
+        };
+
         let mut app = App::new()
             .app_data(web::Data::new(app_state.clone()))
+            .app_data(web::Data::from(auth_state.clone()))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
             .wrap(cors)
             .wrap(actix_web::middleware::Logger::default())
-            .wrap(crate::middleware::RequestId);
+            .wrap(middleware::RequestId);
 
         // Register API routes (specific paths first)
         if mode == ServerMode::Api || mode == ServerMode::Both {
-            app = app.configure(router::configure(&path_prefix, &mode, &dashboard_prefix));
+            app = app.configure(router::configure(
+                &path_prefix,
+                &mode,
+                &dashboard_prefix,
+                auth_mw,
+            ));
         }
 
         // Register dashboard routes (catch-all last)

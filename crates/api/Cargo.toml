@@ -7,6 +7,10 @@ edition.workspace = true
 name = "kronos-api"
 path = "src/main.rs"
 
+[lib]
+name = "kronos_api"
+path = "src/lib.rs"
+
 [features]
 default = []
 kms = ["kronos-common/kms"]
@@ -37,3 +41,6 @@ leptos_router = { workspace = true, features = ["ssr"] }
 leptos_actix.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
+oidc-rs = { path = "../oidc-rs" }
+oidc-rs-actix = { path = "../oidc-rs-actix" }
+base64 = { workspace = true }
