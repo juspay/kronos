@@ -1,9 +1,10 @@
-//! Auth-related endpoints. Currently just `whoami`; `/v1/auth/cache/flush`
-//! lands in the next task.
+//! Auth-related endpoints: `whoami` and `flush_cache`.
 
-use actix_web::{HttpResponse, Responder};
+use actix_web::{web, HttpResponse, Responder};
+use serde::Deserialize;
 
 use crate::extractors::AuthenticatedRequest;
+use crate::middleware::AuthState;
 
 /// `GET /v1/auth/whoami` — returns the current request's `Identity` as JSON.
 ///
@@ -12,4 +13,41 @@ use crate::extractors::AuthenticatedRequest;
 /// or `{"type":"basic", ...}` or `{"type":"disabled"}`.
 pub async fn whoami(req: AuthenticatedRequest) -> impl Responder {
     HttpResponse::Ok().json(&req.0)
+}
+
+/// Body for `POST /v1/auth/cache/flush`. Empty body (or `{}`) flushes all
+/// entries; `{"client_id": "..."}` flushes only that client's positive and
+/// negative cache entries.
+#[derive(Deserialize, Default)]
+pub struct FlushRequest {
+    #[serde(default)]
+    client_id: Option<String>,
+}
+
+/// `POST /v1/auth/cache/flush` — evicts entries from the Basic→JWT exchange
+/// cache. Use after rotating a client secret in the IdP so Kronos picks up
+/// the new credential immediately instead of waiting for the cache TTL.
+///
+/// Response: `{"positive_evicted": N, "negative_evicted": M}`.
+///
+/// In auth-disabled mode there's no exchanger; the endpoint returns
+/// `{"positive_evicted": 0, "negative_evicted": 0, "note": "..."}`.
+pub async fn flush_cache(
+    _req: AuthenticatedRequest,
+    body: Option<web::Json<FlushRequest>>,
+    state: web::Data<AuthState>,
+) -> impl Responder {
+    let req = body.map(|b| b.into_inner()).unwrap_or_default();
+    let Some(exchanger) = state.exchanger() else {
+        return HttpResponse::Ok().json(serde_json::json!({
+            "positive_evicted": 0,
+            "negative_evicted": 0,
+            "note": "auth mode is disabled; nothing to flush"
+        }));
+    };
+    let (pos, neg) = exchanger.flush(req.client_id.as_deref());
+    HttpResponse::Ok().json(serde_json::json!({
+        "positive_evicted": pos,
+        "negative_evicted": neg,
+    }))
 }

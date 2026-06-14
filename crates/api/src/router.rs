@@ -25,6 +25,7 @@ pub fn v1_routes(cfg: &mut web::ServiceConfig) {
     cfg
         // Auth routes
         .route("/auth/whoami", web::get().to(handlers::auth::whoami))
+        .route("/auth/cache/flush", web::post().to(handlers::auth::flush_cache))
         // Management routes (no workspace context needed)
         .route("/orgs", web::post().to(handlers::organizations::create))
         .route("/orgs", web::get().to(handlers::organizations::list))
