@@ -34,6 +34,10 @@ fn json_error_handler(
     InternalError::from_response(err, response).into()
 }
 
+/// Build the runtime auth state from the parsed `AuthConfig`. Fails fast on
+/// initial IdP unreachability — preferring a crash-loop to silently serving
+/// unauthenticated traffic. Operators running a rolling deploy during an
+/// IdP outage will see new pods refuse to start; the old pods keep serving.
 async fn build_auth_state(cfg: &AuthConfig) -> anyhow::Result<Arc<AuthState>> {
     let mode = match cfg {
         AuthConfig::Disabled => {
