@@ -1,0 +1,25 @@
+[package]
+name = "oidc-rs"
+description = "Lightweight OIDC Resource Server: JWT validation + Basic→JWT exchange for Rust services."
+version.workspace = true
+edition.workspace = true
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/anthropics/kronos"
+readme = "README.md"
+keywords = ["oidc", "oauth2", "jwt", "auth", "openid"]
+categories = ["authentication", "web-programming"]
+
+[dependencies]
+openidconnect = { workspace = true }
+jsonwebtoken = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+dashmap = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+wiremock = { workspace = true }

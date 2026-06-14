@@ -5,6 +5,7 @@ members = [
     "crates/worker",
     "crates/mock-server",
     "crates/dashboard",
+    "crates/oidc-rs",
 ]
 exclude = [
     # Generated client SDK — committed for downstream consumers (e.g. aarokya)
@@ -99,3 +100,12 @@ async-trait = "0.1"
 
 # Misc
 dotenvy = "0.15"
+
+# OIDC
+openidconnect = "3"
+jsonwebtoken = "9"
+getrandom = "0.2"
+sha2 = "0.10"
+
+# Mock HTTP server for integration tests
+wiremock = "0.6"
