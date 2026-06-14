@@ -109,19 +109,31 @@ async fn main() -> anyhow::Result<()> {
             dashboard_dist_dir,
             dashboard_prefix
         );
+        let (auth_disabled, oidc_issuer, oidc_client_id, oidc_redirect_url, oidc_audience) =
+            match &config.auth {
+                oidc_rs::AuthConfig::Disabled => (true, None, None, None, None),
+                oidc_rs::AuthConfig::Enabled(c) => {
+                    let issuer = Some(c.issuer.clone());
+                    // Two extra envs let the operator configure the dashboard's
+                    // public OIDC client without baking it into AuthConfig.
+                    let client_id = std::env::var("TE_OIDC_DASHBOARD_CLIENT_ID").ok();
+                    let redirect_url = std::env::var("TE_OIDC_DASHBOARD_REDIRECT_URL").ok();
+                    // Audience for inbound dashboard JWTs is whichever value the
+                    // dashboard client_id matches in TE_OIDC_AUDIENCES.
+                    let audience = client_id.clone();
+                    (false, issuer, client_id, redirect_url, audience)
+                }
+            };
+
         Some(kronos_dashboard::config::DashboardConfig {
             api_base_url: String::new(), // same-origin; server functions handle routing
             api_prefix: path_prefix.clone(),
             dashboard_prefix: dashboard_prefix.clone(),
-            // TODO(T16): wire these from AppConfig::auth so the SSR shell
-            // injects the IdP discovery info into window.__KRONOS_CONFIG__.
-            // Defaults below mean: auth disabled, no OIDC config — fine until
-            // Task 16 plumbs AppConfig::auth through to the dashboard shell.
-            auth_disabled: true,
-            oidc_issuer: None,
-            oidc_client_id: None,
-            oidc_redirect_url: None,
-            oidc_audience: None,
+            auth_disabled,
+            oidc_issuer,
+            oidc_client_id,
+            oidc_redirect_url,
+            oidc_audience,
         })
     } else {
         None

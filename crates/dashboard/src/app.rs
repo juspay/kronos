@@ -120,6 +120,31 @@ pub fn App() -> impl IntoView {
         }
     }
 
+    // When auth is enabled and the user has no access token in `LoginState`,
+    // bounce to the IdP. Skip when we're already on the callback page (where
+    // the token exchange runs). Hydrate-only — SSR has no concept of an
+    // interactive login redirect.
+    #[cfg(feature = "hydrate")]
+    {
+        let config =
+            use_context::<DashboardConfig>().expect("DashboardConfig context not provided");
+        if !config.auth_disabled {
+            let login_state = use_context::<RwSignal<crate::auth::LoginState>>()
+                .expect("LoginState context not provided");
+            let cfg_for_effect = config.clone();
+            Effect::new(move |_| {
+                if login_state.with(|s| s.access_token.is_none()) {
+                    let path = web_sys::window()
+                        .and_then(|w| w.location().pathname().ok())
+                        .unwrap_or_default();
+                    if !path.contains("/auth/callback") {
+                        crate::auth::redirect_to_idp(&cfg_for_effect, &path);
+                    }
+                }
+            });
+        }
+    }
+
     let base = dashboard_prefix();
     let css_href = format!("{}/tailwind-output.css", pkg_base());
 
@@ -134,9 +159,25 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/") view=OrganizationsPage />
                         <Route path=path!("/orgs/:org_id") view=OrgDetailPage />
                         <Route path=path!("/orgs/:org_id/workspaces/:workspace_id") view=WorkspaceDetailPage />
+                        <Route path=path!("/auth/callback") view=AuthCallbackRoute />
                     </Routes>
                 </main>
             </div>
         </Router>
+    }
+}
+
+/// Thin wrapper component for the `/auth/callback` route. Under SSR the
+/// real `CallbackPage` is unavailable (it depends on web-sys + gloo), so we
+/// render a placeholder; hydration replaces it with the real component.
+#[component]
+fn AuthCallbackRoute() -> impl IntoView {
+    #[cfg(feature = "hydrate")]
+    {
+        view! { <crate::auth::CallbackPage /> }.into_any()
+    }
+    #[cfg(not(feature = "hydrate"))]
+    {
+        view! { <div class="p-8">"Completing sign in..."</div> }.into_any()
     }
 }
