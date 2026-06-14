@@ -299,40 +299,83 @@ is missing.
 
 ## Code structure
 
-Uses the Rust 2018+ flat module style (`module.rs` next to `module/` directory),
-matching the existing convention in `crates/common/src` and the rest of the
-codebase. No `mod.rs` files.
+The framework-agnostic auth machinery lives in two new workspace crates so
+the same code can be reused from other Rust services (Axum, raw Tower, etc.):
 
-### `crates/common/`
+- **`oidc-rs`** — framework-agnostic core: types, JWT validator, Basic→JWT
+  exchanger, configuration builder. No HTTP framework dependency. Built
+  on top of the `openidconnect` and `jsonwebtoken` crates.
+- **`oidc-rs-actix`** — Actix-web adapter: `AuthMiddleware` (`Transform`),
+  `Identity` extractor, `AuthError → HttpResponse` mapping.
 
-- `src/auth.rs` — declares submodules, re-exports `Identity`, `AuthError`,
-  `AuthConfig`, `Validator`, `BasicExchanger`.
-- `src/auth/config.rs` — `AuthConfig` parsed from env, with `Enabled { issuer,
-  audiences, basic_audience, basic_scope, basic_cache_ttl, jwks_refresh }` and
-  `Disabled` variants.
-- `src/auth/oidc.rs` — JWKS client + JWT validator. Wraps the `openidconnect`
-  crate; provides `Validator::validate(jwt: &str) -> Result<Claims, AuthError>`.
-- `src/auth/token_exchange.rs` — `BasicExchanger` struct holding:
+`kronos-common` retains a tiny shim that reads `TE_*` envs and constructs an
+`oidc_rs::AuthConfig` via the builder; `kronos-api` consumes the Actix
+adapter.
+
+Names are working titles — they map to standard OAuth/OIDC vocabulary
+(Resource Server). If extracted to a separate repo / published later,
+renaming is mechanical.
+
+All Rust files use the 2018+ flat module style (`module.rs` next to
+`module/` directory), matching the existing convention in `crates/common/src`
+and the rest of the codebase. No `mod.rs` files.
+
+### `crates/oidc-rs/`  (new — framework-agnostic core)
+
+- `src/lib.rs` — module declarations + re-exports.
+- `src/identity.rs` — `Identity`, `Claims`, `AuthError`.
+- `src/config.rs` — `AuthConfig` builder API with `Enabled { issuer,
+  audiences, basic_audience, basic_scope, basic_cache_ttl, jwks_refresh }`
+  and `Disabled` variants. **No env reading** — the public crate stays
+  framework- and deployment-agnostic; callers build the config however they
+  prefer (env, config file, command-line flag, etc.).
+- `src/validator.rs` — JWKS client + JWT validator. Provides
+  `Validator::validate(jwt: &str) -> Result<Claims, AuthError>`. Wraps
+  `openidconnect` for discovery and JWKS fetch; uses `jsonwebtoken` for
+  the actual signature/claim verification.
+- `src/exchanger.rs` — `BasicExchanger` struct holding:
   - the positive cache (`DashMap<(String, [u8; 32]), CachedJwt>`),
-  - the negative cache (`DashMap<(String, [u8; 32]), Instant>`),
-  - per-`client_id` single-flight `DashMap<String, Arc<Mutex<()>>>`,
+  - the negative cache (`DashMap<(String, [u8; 32]), NegativeEntry>`),
+  - per-`client_id` single-flight (`DashMap<String, Arc<Mutex<()>>>`),
   - and the OIDC token-endpoint client.
 
-### `crates/api/`
+### `crates/oidc-rs-actix/`  (new — Actix adapter)
 
-- `src/middleware.rs` — add `AuthMiddleware` Actix `Transform` alongside the
-  existing `RequestId`.
-- `src/extractors.rs` — `AuthenticatedRequest` becomes a thin extractor that
-  reads `Identity` from request extensions. Callers don't change their
-  signatures; the field type behind the extractor narrows from "bool-ish" to
-  `Identity` access.
+- `src/lib.rs` — module declarations + re-exports.
+- `src/middleware.rs` — `AuthMiddleware` Actix `Transform` that runs an
+  `AuthConfig` against each request and injects `Identity` into the request
+  extensions, returning `401` / `503` with a structured JSON error on
+  failure.
+- `src/extractor.rs` — `Authenticated(Identity)` extractor that reads from
+  extensions; helpers for "give me the underlying Claims".
+- `src/error.rs` — `AuthError → HttpResponse` mapping.
+
+### `crates/common/`  (modified)
+
+- `src/auth.rs` — thin shim. One function: `read_auth_config_from_env()
+  -> anyhow::Result<oidc_rs::AuthConfig>` that translates `TE_AUTH_MODE`,
+  `TE_OIDC_ISSUER`, `TE_OIDC_AUDIENCES`, `TE_OIDC_BASIC_AUDIENCE`,
+  `TE_OIDC_BASIC_SCOPE`, `TE_OIDC_BASIC_CACHE_TTL_SEC`,
+  `TE_OIDC_JWKS_REFRESH_SEC` into builder calls. The `TE_*` schema stays a
+  Kronos-private detail.
+- `src/config.rs` — drops `ServerEnv::api_key`; gains
+  `AppConfig::auth: oidc_rs::AuthConfig`.
+
+### `crates/api/`  (modified)
+
+- Depends on `oidc-rs-actix`.
+- `src/middleware.rs` — uses `oidc_rs_actix::AuthMiddleware`; the Kronos
+  request-id middleware stays as-is.
+- `src/extractors.rs` — `AuthenticatedRequest` becomes a thin re-export /
+  newtype around `oidc_rs_actix::Authenticated`. Existing handler call
+  sites stay the same.
 - `src/handlers/auth.rs` — `GET /v1/auth/whoami`, `POST /v1/auth/cache/flush`.
-- `src/router.rs` — wires `AuthMiddleware` over `/v1/*` and registers the new
-  routes.
+- `src/router.rs` — wires `AuthMiddleware` over `/v1/*` and mounts the
+  new routes.
 
 The existing `crates/api/src/handlers.rs` already declares a `handlers/`
-submodule (the same flat pattern), so `handlers/auth.rs` fits without touching
-the parent's style.
+submodule (the same flat pattern), so `handlers/auth.rs` fits without
+touching the parent's style.
 
 ### `crates/dashboard/` (Leptos/WASM)
 
@@ -347,11 +390,19 @@ the parent's style.
 
 ### Dependencies
 
-- Added: `openidconnect ≈ 3.x` in `kronos-common` and `kronos-dashboard`.
-  The `dashboard` build needs the crate's `wasm-bindgen`-compatible features
-  (verified at integration time; fallback is a ~150-line hand-rolled PKCE flow
-  if bundle-size or compile complaints emerge).
-- Added: `dashmap` (already a transitive dep of several crates in the workspace).
+- Added in new `oidc-rs` crate: `openidconnect ≈ 3.x`, `jsonwebtoken ≈ 9.x`,
+  `reqwest`, `dashmap`, `sha2`, `serde`, `thiserror`, `tokio` (sync + time
+  features), `tracing`.
+- Added in new `oidc-rs-actix` crate: `oidc-rs` (path dep), `actix-web`,
+  `base64`, `serde_json`, `futures`.
+- Added in `kronos-common`: `oidc-rs` (path dep). The Kronos crate keeps the
+  `TE_*` env conventions and translates them into the public crate's builder
+  API.
+- Added in `kronos-dashboard`: `jsonwebtoken` (WASM-compatible), `getrandom`
+  (`js` feature for WASM), `gloo-storage`, `gloo-utils`, `sha2`,
+  `form_urlencoded`. The dashboard does NOT depend on `oidc-rs` — the WASM
+  side is a separate, hand-rolled PKCE client because the public crate is a
+  server-side resource-server library, not an OIDC RP client.
 - Removed: nothing (no `argon2` was ever introduced since the M2M-storage path
   was discarded during design).
 
