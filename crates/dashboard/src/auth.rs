@@ -1,4 +1,15 @@
-//! Dashboard auth state. Submodules `pkce` and `callback` land in Task 14.
+//! Dashboard auth state. PKCE generation and the `/auth/callback` route
+//! handler live in submodules and are hydrate-only (WASM-side APIs).
+
+#[cfg(feature = "hydrate")]
+mod callback;
+#[cfg(feature = "hydrate")]
+mod pkce;
+
+#[cfg(feature = "hydrate")]
+pub use callback::CallbackPage;
+#[cfg(feature = "hydrate")]
+pub use pkce::{generate_pkce, PkceArtifacts};
 
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
