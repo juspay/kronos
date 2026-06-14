@@ -20,7 +20,9 @@ pub struct Claims {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// `scope` (RFC 6749, space-separated) or `scp` (Azure AD, array) — both
-    /// normalised to a Vec.
+    /// normalised to a Vec. An empty Vec means "no scopes were asserted by
+    /// the token" (a typical case for human-interactive ID tokens), not an
+    /// error condition.
     #[serde(default)]
     pub scopes: Vec<String>,
 }
@@ -34,6 +36,12 @@ pub struct Claims {
 /// the [`Identity::Bearer`] path, and the library does not try to relabel
 /// it as "M2M" — claim conventions for distinguishing service tokens from
 /// interactive ones vary across IdPs.
+///
+/// Note: `Serialize` only — not `Deserialize`. `Identity` is produced by
+/// the validator after verifying a JWT against the IdP's JWKS, and never
+/// reconstructed from untrusted JSON. Adding `Deserialize` would let
+/// downstream code accidentally trust a forwarded JSON blob as if it had
+/// been validated.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Identity {
@@ -55,9 +63,6 @@ pub enum AuthError {
     /// `Authorization` header could not be parsed.
     #[error("malformed Authorization header")]
     MalformedHeader,
-    /// IdP rejected the credentials (HTTP 4xx during token exchange).
-    #[error("invalid credentials")]
-    InvalidCredentials,
     /// JWT `exp` is in the past (beyond skew tolerance).
     #[error("token expired")]
     Expired,
@@ -123,5 +128,21 @@ mod tests {
         assert!(json.get("email").is_none());
         assert!(json.get("name").is_none());
         assert_eq!(json["scopes"], serde_json::json!(["jobs.read"]));
+    }
+
+    #[test]
+    fn auth_error_display_messages_include_inner_strings() {
+        assert_eq!(
+            AuthError::MissingHeader.to_string(),
+            "missing Authorization header"
+        );
+        assert_eq!(
+            AuthError::BadIssuer("https://wrong.example.com".into()).to_string(),
+            "token issuer not accepted: https://wrong.example.com"
+        );
+        assert_eq!(
+            AuthError::IdpUnreachable("dns lookup failed".into()).to_string(),
+            "identity provider unreachable: dns lookup failed"
+        );
     }
 }
