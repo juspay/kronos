@@ -1141,6 +1141,21 @@ pub mod timeout;
 
 /// An interceptor that injects a pre-computed `Authorization` header value on
 /// every outbound request. Used internally by [`Config::with_basic`].
+///
+/// # Why `modify_before_transmit` instead of `modify_before_signing`
+///
+/// Every operation registers `HTTP_BEARER_AUTH_SCHEME_ID` in its auth options.
+/// The smithy orchestrator resolves the configured identity BEFORE
+/// `modify_before_signing` runs, then `BearerAuthSigner::sign_http_request`
+/// runs AFTER `modify_before_signing` and would overwrite any `Authorization`
+/// header set there with a `Bearer` value. Using `modify_before_transmit` —
+/// which fires AFTER signing and immediately before the request is sent —
+/// guarantees our Basic header is the one that goes over the wire.
+///
+/// To make identity resolution succeed when only `with_basic` is configured
+/// (and no real bearer token is set), `with_basic` also installs a placeholder
+/// bearer token. Its `Bearer ` value is written during signing and then
+/// overwritten by this interceptor before transmit.
 #[derive(Debug, Clone)]
 struct StaticAuthHeaderInterceptor {
     header_value: ::std::string::String,
@@ -1151,7 +1166,7 @@ impl ::aws_smithy_runtime_api::client::interceptors::Intercept for StaticAuthHea
         "StaticAuthHeaderInterceptor"
     }
 
-    fn modify_before_signing(
+    fn modify_before_transmit(
         &self,
         context: &mut ::aws_smithy_runtime_api::client::interceptors::context::BeforeTransmitInterceptorContextMut<'_>,
         _runtime_components: &::aws_smithy_runtime_api::client::runtime_components::RuntimeComponents,
@@ -1196,7 +1211,18 @@ impl Config {
         let raw = ::std::format!("{}:{}", client_id.into(), client_secret.into());
         let b64 = base64::engine::general_purpose::STANDARD.encode(raw);
         let header_value = ::std::format!("Basic {b64}");
+        // Install a placeholder bearer token so the smithy orchestrator's
+        // identity resolution succeeds. Without this, every operation's
+        // auth-options list (which advertises only HTTP_BEARER_AUTH_SCHEME_ID)
+        // cannot find a matching identity and the orchestrator fails with
+        // `NoMatchingAuthSchemeError` BEFORE our interceptor ever runs.
+        // The placeholder's `Bearer ` header is written during signing and
+        // then overwritten by `StaticAuthHeaderInterceptor::modify_before_transmit`.
         self.to_builder()
+            .bearer_token(::aws_smithy_runtime_api::client::identity::http::Token::new(
+                "x",
+                None,
+            ))
             .interceptor(StaticAuthHeaderInterceptor { header_value })
             .build()
     }

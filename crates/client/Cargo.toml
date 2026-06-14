@@ -33,6 +33,10 @@ version = "2.0.0"
 version = "0.2.9"
 [dependencies.tracing]
 version = "0.1"
+[dev-dependencies.tokio]
+version = "1"
+features = ["macros", "rt-multi-thread", "net", "io-util", "time"]
+
 [features]
 rt-tokio = ["aws-smithy-async/rt-tokio", "aws-smithy-types/rt-tokio"]
 test-util = ["aws-smithy-runtime/test-util"]
