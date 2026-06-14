@@ -50,6 +50,9 @@ impl Validator {
             // openidconnect-rs recommends disabling redirects to avoid SSRF
             // when discovering arbitrary issuer URLs.
             .redirect(reqwest::redirect::Policy::none())
+            // Cap discovery / JWKS-fetch latency so a stalled IdP can't hang
+            // `Validator::new` or a background refresh tick indefinitely.
+            .timeout(Duration::from_secs(10))
             .build()
             .map_err(|e| AuthError::IdpUnreachable(format!("http client: {e}")))?;
 
@@ -59,7 +62,18 @@ impl Validator {
             .await
             .map_err(|e| AuthError::IdpUnreachable(format!("discovery: {e}")))?;
         let jwks_url = metadata.jwks_uri().clone();
-        let jwks = CoreJsonWebKeySet::fetch_async(&jwks_url, &http).await.ok();
+        // Best-effort initial JWKS fetch. On failure we log and proceed —
+        // the background refresh loop will retry, and `validate()` will return
+        // `IdpUnreachable("jwks not loaded yet")` until keys land. We log
+        // here so an operator can see *why* keys are missing on startup
+        // instead of seeing only the downstream symptom.
+        let jwks = match CoreJsonWebKeySet::fetch_async(&jwks_url, &http).await {
+            Ok(set) => Some(set),
+            Err(e) => {
+                tracing::warn!("initial JWKS fetch failed; will retry on refresh tick: {e}");
+                None
+            }
+        };
         let inner = Arc::new(ValidatorInner {
             issuer,
             audiences,
