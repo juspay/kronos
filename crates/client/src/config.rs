@@ -1137,3 +1137,101 @@ pub mod retry;
 /// Timeout configuration.
 pub mod timeout;
 
+// ── Hand-written convenience auth builders ──────────────────────────────────
+
+/// An interceptor that injects a pre-computed `Authorization` header value on
+/// every outbound request. Used internally by [`Config::with_basic`].
+#[derive(Debug, Clone)]
+struct StaticAuthHeaderInterceptor {
+    header_value: ::std::string::String,
+}
+
+impl ::aws_smithy_runtime_api::client::interceptors::Intercept for StaticAuthHeaderInterceptor {
+    fn name(&self) -> &'static str {
+        "StaticAuthHeaderInterceptor"
+    }
+
+    fn modify_before_signing(
+        &self,
+        context: &mut ::aws_smithy_runtime_api::client::interceptors::context::BeforeTransmitInterceptorContextMut<'_>,
+        _runtime_components: &::aws_smithy_runtime_api::client::runtime_components::RuntimeComponents,
+        _cfg: &mut ::aws_smithy_types::config_bag::ConfigBag,
+    ) -> ::std::result::Result<(), ::aws_smithy_runtime_api::box_error::BoxError> {
+        context
+            .request_mut()
+            .headers_mut()
+            .insert(
+                "Authorization",
+                self.header_value.clone(),
+            );
+        Ok(())
+    }
+}
+
+impl Config {
+    /// Configure HTTP Basic authentication.
+    ///
+    /// The Kronos API accepts Basic credentials and exchanges them with the
+    /// configured IdP's `client_credentials` grant on the server side; the
+    /// resulting JWT is cached for the token's lifetime.  The caller only
+    /// needs to supply the `client_id` and `client_secret` — no token
+    /// management is required.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// let config = kronos_sdk::Config::builder()
+    ///     .endpoint_url("https://api.example.com")
+    ///     .behavior_version(kronos_sdk::config::BehaviorVersion::latest())
+    ///     .build()
+    ///     .with_basic("my-client-id", "my-client-secret");
+    /// let client = kronos_sdk::Client::from_conf(config);
+    /// ```
+    pub fn with_basic(
+        self,
+        client_id: impl ::std::convert::Into<::std::string::String>,
+        client_secret: impl ::std::convert::Into<::std::string::String>,
+    ) -> Self {
+        use base64::Engine as _;
+        let raw = ::std::format!("{}:{}", client_id.into(), client_secret.into());
+        let b64 = base64::engine::general_purpose::STANDARD.encode(raw);
+        let header_value = ::std::format!("Basic {b64}");
+        self.to_builder()
+            .interceptor(StaticAuthHeaderInterceptor { header_value })
+            .build()
+    }
+
+    /// Configure HTTP Bearer authentication with an externally-obtained JWT.
+    ///
+    /// Pass a token obtained from your IdP's `client_credentials` or
+    /// `authorization_code` flow.  The token is sent as
+    /// `Authorization: Bearer <token>` on every request.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// let config = kronos_sdk::Config::builder()
+    ///     .endpoint_url("https://api.example.com")
+    ///     .behavior_version(kronos_sdk::config::BehaviorVersion::latest())
+    ///     .build()
+    ///     .with_bearer("eyJhbGci...");
+    /// let client = kronos_sdk::Client::from_conf(config);
+    /// ```
+    pub fn with_bearer(self, token: impl ::std::convert::Into<::std::string::String>) -> Self {
+        self.to_builder()
+            .bearer_token(::aws_smithy_runtime_api::client::identity::http::Token::new(
+                token.into(),
+                None,
+            ))
+            .build()
+    }
+
+    /// Deprecated alias of [`Self::with_bearer`].
+    ///
+    /// Use [`with_bearer`](Self::with_bearer) instead.
+    #[deprecated(note = "use with_bearer")]
+    pub fn with_token(self, token: impl ::std::convert::Into<::std::string::String>) -> Self {
+        self.with_bearer(token)
+    }
+}
+
