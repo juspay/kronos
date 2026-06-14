@@ -10,14 +10,21 @@ use oidc_rs::{AuthError, BasicExchanger, Identity, Validator};
 use std::future::{self, Future, Ready};
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::error::to_response;
 
 /// Auth middleware "factory". Configure once at startup and wrap any scope.
+///
+/// The held [`AuthState`] is `Arc`-shared so a single instance can be cloned
+/// across `HttpServer` workers — the underlying [`oidc_rs::Validator`] and
+/// [`oidc_rs::BasicExchanger`] are themselves `Arc`-backed, so per-worker
+/// clones share the same JWKS cache, refresh task, and credential-exchange
+/// cache.
 #[derive(Clone)]
 pub struct AuthMiddleware {
     /// Shared auth state.
-    pub state: Rc<AuthState>,
+    pub state: Arc<AuthState>,
 }
 
 /// Shared, runtime-built state. Holds the configured mode.
@@ -76,7 +83,7 @@ where
 #[doc(hidden)]
 pub struct AuthMiddlewareService<S> {
     service: Rc<S>,
-    state: Rc<AuthState>,
+    state: Arc<AuthState>,
 }
 
 impl<S, B> Service<ServiceRequest> for AuthMiddlewareService<S>

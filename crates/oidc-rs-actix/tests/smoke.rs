@@ -2,7 +2,7 @@
 
 use actix_web::{test, web, App, HttpResponse};
 use oidc_rs_actix::{AuthMiddleware, AuthMode, AuthState, Authenticated};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[actix_web::test]
 async fn disabled_mode_injects_disabled_identity() {
@@ -10,7 +10,7 @@ async fn disabled_mode_injects_disabled_identity() {
         HttpResponse::Ok().json(&a.0)
     }
 
-    let state = Rc::new(AuthState { mode: AuthMode::Disabled });
+    let state = Arc::new(AuthState { mode: AuthMode::Disabled });
     let app = test::init_service(
         App::new().service(
             web::scope("")
