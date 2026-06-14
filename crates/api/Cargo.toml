@@ -44,3 +44,8 @@ metrics-exporter-prometheus.workspace = true
 oidc-rs = { path = "../oidc-rs" }
 oidc-rs-actix = { path = "../oidc-rs-actix" }
 base64 = { workspace = true }
+
+[dev-dependencies]
+wiremock = { workspace = true }
+jsonwebtoken = { workspace = true }
+actix-http = "3"
