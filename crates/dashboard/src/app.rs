@@ -42,8 +42,15 @@ pub fn shell(app: impl IntoView) -> impl IntoView {
     let config_script = use_context::<DashboardConfig>()
         .map(|c| {
             format!(
-                r#"window.__KRONOS_CONFIG__={{apiBaseUrl:"{}",apiPrefix:"{}",dashboardPrefix:"{}",apiKey:"{}"}};"#,
-                c.api_base_url, c.api_prefix, c.dashboard_prefix, c.api_key
+                r#"window.__KRONOS_CONFIG__={{apiBaseUrl:"{}",apiPrefix:"{}",dashboardPrefix:"{}",authDisabled:"{}",oidcIssuer:"{}",oidcClientId:"{}",oidcRedirectUrl:"{}",oidcAudience:"{}"}};"#,
+                c.api_base_url,
+                c.api_prefix,
+                c.dashboard_prefix,
+                if c.auth_disabled { "true" } else { "false" },
+                c.oidc_issuer.as_deref().unwrap_or(""),
+                c.oidc_client_id.as_deref().unwrap_or(""),
+                c.oidc_redirect_url.as_deref().unwrap_or(""),
+                c.oidc_audience.as_deref().unwrap_or(""),
             )
         })
         .unwrap_or_default();
@@ -74,6 +81,7 @@ pub fn shell(app: impl IntoView) -> impl IntoView {
 #[component]
 pub fn App() -> impl IntoView {
     provide_meta_context();
+    crate::auth::provide_login_state();
 
     // During hydration, read config from the injected window.__KRONOS_CONFIG__
     #[cfg(feature = "hydrate")]
@@ -92,11 +100,22 @@ pub fn App() -> impl IntoView {
                     .and_then(|v| v.as_string())
                     .unwrap_or_default()
             };
+            let get_opt = |key: &str| -> Option<String> {
+                let v = get(key);
+                if v.is_empty() { None } else { Some(v) }
+            };
+            let get_bool = |key: &str| -> bool {
+                matches!(get(key).as_str(), "1" | "true" | "yes")
+            };
             provide_context(DashboardConfig {
                 api_base_url: get("apiBaseUrl"),
                 api_prefix: get("apiPrefix"),
                 dashboard_prefix: get("dashboardPrefix"),
-                api_key: get("apiKey"),
+                auth_disabled: get_bool("authDisabled"),
+                oidc_issuer: get_opt("oidcIssuer"),
+                oidc_client_id: get_opt("oidcClientId"),
+                oidc_redirect_url: get_opt("oidcRedirectUrl"),
+                oidc_audience: get_opt("oidcAudience"),
             });
         }
     }

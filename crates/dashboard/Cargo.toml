@@ -9,7 +9,13 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = []
 ssr = ["leptos/ssr", "leptos_router/ssr", "leptos_meta/ssr"]
-hydrate = ["leptos/hydrate", "dep:gloo-net", "dep:wasm-bindgen-futures"]
+hydrate = [
+    "leptos/hydrate",
+    "dep:gloo-net",
+    "dep:wasm-bindgen-futures",
+    "dep:gloo-storage",
+    "dep:gloo-utils",
+]
 
 [dependencies]
 leptos = { workspace = true }
@@ -23,3 +29,10 @@ wasm-bindgen-futures = { version = "0.4", optional = true }
 web-sys = { version = "0.3", features = ["Window", "Location"] }
 js-sys = "0.3"
 gloo-net = { version = "0.6", optional = true }
+jsonwebtoken = { workspace = true, features = ["use_pem"] }
+getrandom = { workspace = true, features = ["js"] }
+gloo-storage = { version = "0.3", optional = true }
+gloo-utils = { version = "0.2", optional = true }
+base64 = { workspace = true }
+sha2 = { workspace = true }
+form_urlencoded = "1"

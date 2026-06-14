@@ -113,10 +113,15 @@ async fn main() -> anyhow::Result<()> {
             api_base_url: String::new(), // same-origin; server functions handle routing
             api_prefix: path_prefix.clone(),
             dashboard_prefix: dashboard_prefix.clone(),
-            // TODO(T13-T16): dashboard credential is supplied via LoginState
-            // once the dashboard auth tasks land; empty for now (auth is wired
-            // on the API side via AuthMiddleware).
-            api_key: String::new(),
+            // TODO(T16): wire these from AppConfig::auth so the SSR shell
+            // injects the IdP discovery info into window.__KRONOS_CONFIG__.
+            // Defaults below mean: auth disabled, no OIDC config — fine until
+            // Task 16 plumbs AppConfig::auth through to the dashboard shell.
+            auth_disabled: true,
+            oidc_issuer: None,
+            oidc_client_id: None,
+            oidc_redirect_url: None,
+            oidc_audience: None,
         })
     } else {
         None

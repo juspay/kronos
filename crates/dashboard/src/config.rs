@@ -5,7 +5,11 @@ pub struct DashboardConfig {
     pub api_base_url: String,
     pub api_prefix: String,
     pub dashboard_prefix: String,
-    pub api_key: String,
+    pub auth_disabled: bool,
+    pub oidc_issuer: Option<String>,
+    pub oidc_client_id: Option<String>,
+    pub oidc_redirect_url: Option<String>,
+    pub oidc_audience: Option<String>,
 }
 
 impl DashboardConfig {

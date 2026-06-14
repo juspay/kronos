@@ -2094,6 +2094,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "gloo-storage"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fbc8031e8c92758af912f9bc08fbbadd3c6f3cfcbf6b64cdf3d6a81f0139277a"
+dependencies = [
+ "gloo-utils",
+ "js-sys",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "gloo-utils"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2897,14 +2912,21 @@ dependencies = [
 name = "kronos-dashboard"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
+ "form_urlencoded",
+ "getrandom 0.2.17",
  "gloo-net",
+ "gloo-storage",
+ "gloo-utils",
  "js-sys",
+ "jsonwebtoken",
  "leptos",
  "leptos_meta",
  "leptos_router",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
