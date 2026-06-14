@@ -62,12 +62,15 @@ struct TokenResponse {
     expires_in: Option<u64>,
 }
 
-/// Build a `reqwest::Client` with a 10 s timeout — matches the precedent
-/// established by `Validator` so a stalled IdP can never hang discovery or a
-/// token exchange indefinitely.
+/// Build a `reqwest::Client` with a 10 s timeout and redirects disabled —
+/// matches the precedent established by `Validator` so a stalled IdP can
+/// never hang discovery or a token exchange indefinitely, and so an
+/// attacker-controlled redirect from a malicious issuer URL can't steer us
+/// to an arbitrary host.
 fn build_http_client() -> Result<reqwest::Client, AuthError> {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| AuthError::IdpUnreachable(format!("http client: {e}")))
 }
