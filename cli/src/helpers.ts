@@ -51,12 +51,29 @@ const makeBasicScheme = (username: string, password: string): any => ({
 });
 
 /** Minimal Bearer signer that mirrors HttpBearerAuthSigner from @smithy/core. */
-const bearerScheme = (ipc: any): any => ({
+const bearerScheme = (): any => ({
   schemeId: "smithy.api#httpBearerAuth",
   identityProvider: (cfg: any) => cfg.getIdentityProvider("smithy.api#httpBearerAuth"),
   signer: {
     async sign(httpRequest: any, identity: any): Promise<any> {
       httpRequest.headers["authorization"] = `Bearer ${identity.token}`;
+      return httpRequest;
+    },
+  },
+});
+
+/**
+ * No-op Bearer scheme: satisfies smithy's identity-resolution step (every
+ * operation advertises Bearer in its auth options) without actually adding
+ * an `Authorization` header. Used when the operator hasn't set any auth env
+ * — typically `TE_AUTH_MODE=disabled` local-dev runs. Without this, the
+ * SDK throws `NoMatchingAuthSchemeError` before sending the request.
+ */
+const noAuthBearerScheme = (): any => ({
+  schemeId: "smithy.api#httpBearerAuth",
+  identityProvider: () => async () => ({}),
+  signer: {
+    async sign(httpRequest: any): Promise<any> {
       return httpRequest;
     },
   },
@@ -88,7 +105,7 @@ function authFromEnv(): Record<string, unknown> {
       httpAuthSchemes: [
         makeBasicScheme(clientId, clientSecret),
         // Keep Bearer registered so the scheme list stays complete.
-        bearerScheme(null),
+        bearerScheme(),
       ],
     };
   }
@@ -97,8 +114,11 @@ function authFromEnv(): Record<string, unknown> {
     return { token: { token: bearer } };
   }
 
-  // No credentials → works against TE_AUTH_MODE=disabled (no header sent).
-  return {};
+  // No credentials → use a no-op Bearer scheme that satisfies smithy's
+  // identity-resolution step without setting an Authorization header.
+  // Lets the CLI work against `TE_AUTH_MODE=disabled` without throwing
+  // `NoMatchingAuthSchemeError` before the request even leaves the client.
+  return { httpAuthSchemes: [noAuthBearerScheme()] };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────
