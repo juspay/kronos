@@ -28,6 +28,10 @@ jobs:
           - binary: kronos-worker
             features: ""
             include_dashboard: "false"
+          - binary: kronos-worker
+            features: "kms"
+            image_name: "kronos-worker-kms"
+            include_dashboard: "false"
     steps:
       - uses: actions/checkout@v4
 
