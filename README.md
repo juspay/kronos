@@ -190,24 +190,24 @@ curl http://localhost:8090/api/health
 
 ## Usage
 
-All endpoints require `Authorization: Bearer <api_key>` (default: `dev-api-key`).
-
 Tenant-scoped endpoints (everything except orgs/workspaces) also require:
 - `X-Org-Id: <org_id>`
 - `X-Workspace-Id: <workspace_id>`
+
+> The examples below assume `TE_AUTH_MODE=disabled` for local dev.
+> For production, prepend `-u $KRONOS_CLIENT_ID:$KRONOS_CLIENT_SECRET`
+> (Basic) or `-H "Authorization: Bearer $KRONOS_TOKEN"` to each request.
 
 ### 1. Setup — create an org and workspace first
 
 ```bash
 # Create an organization
 curl -X POST http://localhost:8080/v1/orgs \
-  -H "Authorization: Bearer dev-api-key" \
   -H "Content-Type: application/json" \
   -d '{ "name": "My Company", "slug": "my-company" }'
 
 # Create a workspace within the org
 curl -X POST http://localhost:8080/v1/orgs/{org_id}/workspaces \
-  -H "Authorization: Bearer dev-api-key" \
   -H "Content-Type: application/json" \
   -d '{ "name": "Production", "slug": "production" }'
 ```
@@ -216,7 +216,7 @@ curl -X POST http://localhost:8080/v1/orgs/{org_id}/workspaces \
 
 ```bash
 # All subsequent requests include tenant headers
-HEADERS='-H "Authorization: Bearer dev-api-key" -H "X-Org-Id: <org_id>" -H "X-Workspace-Id: <workspace_id>" -H "Content-Type: application/json"'
+HEADERS='-H "X-Org-Id: <org_id>" -H "X-Workspace-Id: <workspace_id>" -H "Content-Type: application/json"'
 
 # Create a JSON Schema for input validation
 curl -X POST http://localhost:8080/v1/payload-specs $HEADERS \
@@ -354,9 +354,10 @@ just cli-install  # Install CLI deps (links to built SDK)
 ```typescript
 import { KronosServiceClient, CreateJobCommand } from "kronos-sdk";
 
+// Auth mode disabled (local dev): omit credentials.
+// Auth mode enabled: pass KRONOS_CLIENT_ID/KRONOS_CLIENT_SECRET or KRONOS_BEARER_TOKEN via env.
 const client = new KronosServiceClient({
   endpoint: "http://localhost:8080",
-  token: { token: "dev-api-key" },
 });
 
 const response = await client.send(
@@ -534,7 +535,15 @@ All configuration is via environment variables prefixed with `TE_`:
 |----------|---------|-------------|
 | `TE_DATABASE_URL` | *required* | PostgreSQL connection string |
 | `TE_LISTEN_ADDR` | `0.0.0.0:8080` | API server bind address |
-| `TE_API_KEY` | `dev-api-key` | Bearer token for authentication |
+| `TE_AUTH_MODE` | `enabled` | `enabled` or `disabled`. `disabled` bypasses all auth (local dev only). |
+| `TE_OIDC_ISSUER` | *(required when enabled)* | OIDC issuer URL. |
+| `TE_OIDC_AUDIENCES` | *(required when enabled)* | Comma-separated list of accepted `aud` values. |
+| `TE_OIDC_BASIC_AUDIENCE` | *(empty)* | `audience` parameter Kronos requests during Basic→JWT exchange. |
+| `TE_OIDC_BASIC_SCOPE` | *(empty)* | `scope` parameter Kronos requests during Basic→JWT exchange. |
+| `TE_OIDC_BASIC_CACHE_TTL_SEC` | `3600` | Hard cap on Basic→JWT cache lifetime. |
+| `TE_OIDC_JWKS_REFRESH_SEC` | `300` | JWKS background refresh interval. |
+| `TE_OIDC_DASHBOARD_CLIENT_ID` | *(required for dashboard)* | Dashboard's public OIDC client_id. |
+| `TE_OIDC_DASHBOARD_REDIRECT_URL` | *(required for dashboard)* | Dashboard callback URL registered with the IdP. |
 | `TE_ENCRYPTION_KEY` | 64 zeros | AES key for secret encryption (hex, 32+ bytes) |
 | `TE_DB_POOL_SIZE` | `50` | Database connection pool size |
 | `TE_WORKER_MAX_CONCURRENT` | `50` | Max concurrent job executions per worker |
@@ -544,6 +553,106 @@ All configuration is via environment variables prefixed with `TE_`:
 | `TE_SECRET_CACHE_TTL_SEC` | `300` | Secret cache TTL in worker |
 | `TE_METRICS_PORT` | `9090` | Prometheus metrics HTTP listener port (worker) |
 | `TE_PATH_PREFIX` | *(empty)* | URL path prefix for the API server (e.g. `/kronos`) |
+
+### Authentication
+
+Kronos uses external OIDC for production authentication — there is no
+built-in credentials store. The API accepts two `Authorization` header
+formats:
+
+- `Bearer <jwt>` — a JWT issued by your OIDC provider, validated against
+  the issuer's JWKS.
+- `Basic <base64(client_id:client_secret)>` — Kronos exchanges these
+  credentials against the IdP's `client_credentials` grant and caches the
+  resulting JWT.
+
+Local dev: `TE_AUTH_MODE=disabled` bypasses all auth (the justfile sets this
+by default for `just dev` / `just api`).
+
+#### Local development with Keycloak
+
+```bash
+docker run -d --name keycloak -p 8081:8080 \
+  -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin \
+  quay.io/keycloak/keycloak:24.0 start-dev
+```
+
+1. Sign in at `http://localhost:8081` (`admin` / `admin`).
+2. Create realm `kronos`.
+3. Create client `kronos-api`: **Client authentication: ON**, **Service
+   accounts roles: ON**. Note the client secret.
+4. Create client `kronos-dashboard`: **Client authentication: OFF** (public),
+   **Standard flow: ON**, **Web origins: `+`**, **Valid redirect URIs:
+   `http://localhost:8080/dashboard/auth/callback`**.
+
+Run Kronos against Keycloak:
+
+```bash
+TE_AUTH_MODE=enabled \
+TE_OIDC_ISSUER=http://localhost:8081/realms/kronos \
+TE_OIDC_AUDIENCES=kronos-api,kronos-dashboard \
+TE_OIDC_BASIC_AUDIENCE=kronos-api \
+TE_OIDC_DASHBOARD_CLIENT_ID=kronos-dashboard \
+TE_OIDC_DASHBOARD_REDIRECT_URL=http://localhost:8080/dashboard/auth/callback \
+TE_DATABASE_URL=postgres://kronos:kronos@localhost:5434/taskexecutor \
+cargo run -p kronos-api
+```
+
+Test the Basic flow:
+
+```bash
+curl -s http://localhost:8080/v1/auth/whoami \
+  -u kronos-api:<the-client-secret>
+# { "type": "basic", "iss": "...", "sub": "kronos-api", ... }
+```
+
+#### Auth0
+
+Configure an API (audience `kronos`) and an M2M application. Set:
+
+```
+TE_OIDC_ISSUER=https://YOUR_TENANT.auth0.com/
+TE_OIDC_AUDIENCES=kronos
+TE_OIDC_BASIC_AUDIENCE=kronos     # Auth0 requires the audience parameter
+```
+
+#### Okta
+
+Configure an "API Services" application (client_credentials). Set:
+
+```
+TE_OIDC_ISSUER=https://YOUR_DOMAIN.okta.com/oauth2/default
+TE_OIDC_AUDIENCES=api://default
+```
+
+#### Rotating an M2M secret
+
+After rotating a secret in your IdP, Kronos may still accept the old secret
+for up to `TE_OIDC_BASIC_CACHE_TTL_SEC` (default 1 hour) because the
+Basic→JWT exchange is cached. To force-invalidate:
+
+```bash
+curl -X POST http://localhost:8080/v1/auth/cache/flush \
+  -u <any-valid-client-id>:<secret> \
+  -H 'Content-Type: application/json' \
+  -d '{"client_id": "<id-to-evict>"}'
+```
+
+`{}` flushes the entire cache.
+
+#### CLI credentials
+
+The TypeScript CLI reads credentials from env vars (mutually exclusive):
+
+- `KRONOS_CLIENT_ID` + `KRONOS_CLIENT_SECRET` → Basic auth.
+- `KRONOS_BEARER_TOKEN` → Bearer auth.
+- Neither → no `Authorization` header (works against `TE_AUTH_MODE=disabled`).
+
+The Rust client at `crates/client/` exposes `Config::with_basic(id, secret)`
+and `Config::with_bearer(jwt)`. The deprecated `Config::with_token(jwt)`
+still works as an alias of `with_bearer`.
+
+---
 
 ### Path prefix
 
