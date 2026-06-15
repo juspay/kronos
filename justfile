@@ -84,8 +84,9 @@ smithy-build: smithy-validate
     cd smithy && smithy build
     rm -rf crates/client
     cp -R smithy/build/smithy/source/rust-client-codegen crates/client
-    # Restore the tracked README.md (DO NOT EDIT warning) that the wipe removed
+    # Restore hand-authored files that the codegen wipe removed.
     git checkout -- crates/client/README.md
+    git checkout -- crates/client/tests/basic_auth_smoke.rs 2>/dev/null || true
     @echo "Regenerated crates/client. Review with: git diff -- crates/client"
 
 # Build the generated TypeScript SDK (npm install + compile)

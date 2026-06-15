@@ -218,6 +218,19 @@ impl Builder {
                                     );
                                     self
                                 }
+    /// Sets the login that will be used for HTTP basic auth.
+                                pub fn basic_auth_login(self, basic_auth_login: crate::config::Login) -> Self {
+                                    self.basic_auth_login_resolver(basic_auth_login)
+                                }
+    
+                                /// Sets a login resolver that will be used for HTTP basic auth.
+                                pub fn basic_auth_login_resolver(mut self, basic_auth_resolver: impl crate::config::ResolveIdentity + 'static) -> Self {
+                                    self.runtime_components.set_identity_resolver(
+                                        ::aws_smithy_runtime_api::client::auth::http::HTTP_BASIC_AUTH_SCHEME_ID,
+                                        ::aws_smithy_runtime_api::shared::IntoShared::<::aws_smithy_runtime_api::client::identity::SharedIdentityResolver>::into_shared(basic_auth_resolver)
+                                    );
+                                    self
+                                }
     /// Set the endpoint URL to use when making requests.
                                 ///
                                 /// Note: setting an endpoint URL will replace any endpoint resolver that has been set.
@@ -965,7 +978,8 @@ impl Builder {
                 pub fn new(_service_config: crate::config::Config) -> Self {
                     let config = { None };
                     let mut runtime_components = ::aws_smithy_runtime_api::client::runtime_components::RuntimeComponentsBuilder::new("ServiceRuntimePlugin");
-                    runtime_components.push_auth_scheme(::aws_smithy_runtime_api::client::auth::SharedAuthScheme::new(::aws_smithy_runtime::client::auth::http::BearerAuthScheme::new()));
+                    runtime_components.push_auth_scheme(::aws_smithy_runtime_api::client::auth::SharedAuthScheme::new(::aws_smithy_runtime::client::auth::http::BasicAuthScheme::new()));
+runtime_components.push_auth_scheme(::aws_smithy_runtime_api::client::auth::SharedAuthScheme::new(::aws_smithy_runtime::client::auth::http::BearerAuthScheme::new()));
 runtime_components.push_interceptor(::aws_smithy_runtime::client::http::connection_poisoning::ConnectionPoisoningInterceptor::new());
 runtime_components.push_retry_classifier(::aws_smithy_runtime::client::retries::classifiers::HttpStatusCodeClassifier::default());
 runtime_components.push_interceptor(crate::sdk_feature_tracker::retry_mode::RetryModeFeatureTrackerInterceptor::new());
@@ -1112,6 +1126,8 @@ pub use ::aws_smithy_runtime_api::client::identity::http::Token;
 
 pub use ::aws_smithy_runtime_api::client::identity::ResolveIdentity;
 
+pub use ::aws_smithy_runtime_api::client::identity::http::Login;
+
 pub use ::aws_smithy_async::rt::sleep::AsyncSleep;
 
 pub use ::aws_smithy_runtime_api::client::identity::ResolveCachedIdentity;
@@ -1136,128 +1152,4 @@ pub mod retry;
 
 /// Timeout configuration.
 pub mod timeout;
-
-// ── Hand-written convenience auth builders ──────────────────────────────────
-
-/// An interceptor that injects a pre-computed `Authorization` header value on
-/// every outbound request. Used internally by [`Config::with_basic`].
-///
-/// # Why `modify_before_transmit` instead of `modify_before_signing`
-///
-/// Every operation registers `HTTP_BEARER_AUTH_SCHEME_ID` in its auth options.
-/// The smithy orchestrator resolves the configured identity BEFORE
-/// `modify_before_signing` runs, then `BearerAuthSigner::sign_http_request`
-/// runs AFTER `modify_before_signing` and would overwrite any `Authorization`
-/// header set there with a `Bearer` value. Using `modify_before_transmit` —
-/// which fires AFTER signing and immediately before the request is sent —
-/// guarantees our Basic header is the one that goes over the wire.
-///
-/// To make identity resolution succeed when only `with_basic` is configured
-/// (and no real bearer token is set), `with_basic` also installs a placeholder
-/// bearer token. Its `Bearer ` value is written during signing and then
-/// overwritten by this interceptor before transmit.
-#[derive(Debug, Clone)]
-struct StaticAuthHeaderInterceptor {
-    header_value: ::std::string::String,
-}
-
-impl ::aws_smithy_runtime_api::client::interceptors::Intercept for StaticAuthHeaderInterceptor {
-    fn name(&self) -> &'static str {
-        "StaticAuthHeaderInterceptor"
-    }
-
-    fn modify_before_transmit(
-        &self,
-        context: &mut ::aws_smithy_runtime_api::client::interceptors::context::BeforeTransmitInterceptorContextMut<'_>,
-        _runtime_components: &::aws_smithy_runtime_api::client::runtime_components::RuntimeComponents,
-        _cfg: &mut ::aws_smithy_types::config_bag::ConfigBag,
-    ) -> ::std::result::Result<(), ::aws_smithy_runtime_api::box_error::BoxError> {
-        context
-            .request_mut()
-            .headers_mut()
-            .insert(
-                "Authorization",
-                self.header_value.clone(),
-            );
-        Ok(())
-    }
-}
-
-impl Config {
-    /// Configure HTTP Basic authentication.
-    ///
-    /// The Kronos API accepts Basic credentials and exchanges them with the
-    /// configured IdP's `client_credentials` grant on the server side; the
-    /// resulting JWT is cached for the token's lifetime.  The caller only
-    /// needs to supply the `client_id` and `client_secret` — no token
-    /// management is required.
-    ///
-    /// # Example
-    ///
-    /// ```rust,no_run
-    /// let config = kronos_sdk::Config::builder()
-    ///     .endpoint_url("https://api.example.com")
-    ///     .behavior_version(kronos_sdk::config::BehaviorVersion::latest())
-    ///     .build()
-    ///     .with_basic("my-client-id", "my-client-secret");
-    /// let client = kronos_sdk::Client::from_conf(config);
-    /// ```
-    pub fn with_basic(
-        self,
-        client_id: impl ::std::convert::Into<::std::string::String>,
-        client_secret: impl ::std::convert::Into<::std::string::String>,
-    ) -> Self {
-        use base64::Engine as _;
-        let raw = ::std::format!("{}:{}", client_id.into(), client_secret.into());
-        let b64 = base64::engine::general_purpose::STANDARD.encode(raw);
-        let header_value = ::std::format!("Basic {b64}");
-        // Install a placeholder bearer token so the smithy orchestrator's
-        // identity resolution succeeds. Without this, every operation's
-        // auth-options list (which advertises only HTTP_BEARER_AUTH_SCHEME_ID)
-        // cannot find a matching identity and the orchestrator fails with
-        // `NoMatchingAuthSchemeError` BEFORE our interceptor ever runs.
-        // The placeholder's `Bearer ` header is written during signing and
-        // then overwritten by `StaticAuthHeaderInterceptor::modify_before_transmit`.
-        self.to_builder()
-            .bearer_token(::aws_smithy_runtime_api::client::identity::http::Token::new(
-                "x",
-                None,
-            ))
-            .interceptor(StaticAuthHeaderInterceptor { header_value })
-            .build()
-    }
-
-    /// Configure HTTP Bearer authentication with an externally-obtained JWT.
-    ///
-    /// Pass a token obtained from your IdP's `client_credentials` or
-    /// `authorization_code` flow.  The token is sent as
-    /// `Authorization: Bearer <token>` on every request.
-    ///
-    /// # Example
-    ///
-    /// ```rust,no_run
-    /// let config = kronos_sdk::Config::builder()
-    ///     .endpoint_url("https://api.example.com")
-    ///     .behavior_version(kronos_sdk::config::BehaviorVersion::latest())
-    ///     .build()
-    ///     .with_bearer("eyJhbGci...");
-    /// let client = kronos_sdk::Client::from_conf(config);
-    /// ```
-    pub fn with_bearer(self, token: impl ::std::convert::Into<::std::string::String>) -> Self {
-        self.to_builder()
-            .bearer_token(::aws_smithy_runtime_api::client::identity::http::Token::new(
-                token.into(),
-                None,
-            ))
-            .build()
-    }
-
-    /// Deprecated alias of [`Self::with_bearer`].
-    ///
-    /// Use [`with_bearer`](Self::with_bearer) instead.
-    #[deprecated(note = "use with_bearer")]
-    pub fn with_token(self, token: impl ::std::convert::Into<::std::string::String>) -> Self {
-        self.with_bearer(token)
-    }
-}
 

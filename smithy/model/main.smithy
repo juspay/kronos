@@ -10,6 +10,8 @@ use aws.protocols#restJson1
 @restJson1
 @title("Kronos Task Executor API")
 @httpBearerAuth
+@httpBasicAuth
+@auth([httpBearerAuth, httpBasicAuth])
 service KronosService {
     version: "2026-03-17"
     operations: [
