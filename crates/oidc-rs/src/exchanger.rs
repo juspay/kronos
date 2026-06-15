@@ -160,7 +160,12 @@ impl BasicExchanger {
 
         if let Some(cached) = self.inner.positive.get(&key) {
             if cached.expires_at > Instant::now() {
-                return Ok(cached.jwt.clone());
+                let jwt = cached.jwt.clone();
+                drop(cached);
+                drop(_guard);
+                drop(lock);
+                self.cleanup_inflight(client_id);
+                return Ok(jwt);
             }
         }
 
@@ -201,20 +206,51 @@ impl BasicExchanger {
             }
             _ => {}
         }
+        drop(_guard);
+        drop(lock);
+        self.cleanup_inflight(client_id);
         result.map(|(jwt, _)| jwt)
+    }
+
+    /// Remove the per-`client_id` entry from `inflight` IFF we hold the last
+    /// reference. Race-free: `DashMap::remove_if` runs the predicate while
+    /// holding the bucket lock, so a concurrent `entry().or_insert_with()`
+    /// for the same `client_id` either (a) sees our entry and bumps the
+    /// `Arc` count above 1 before our predicate runs (keeping the entry),
+    /// or (b) inserts after we removed and gets a fresh `Arc`.
+    ///
+    /// IMPORTANT: callers MUST `drop` their local clone of the `Arc<Mutex<()>>`
+    /// before calling this — otherwise the strong count is at least 2 (the
+    /// map's entry + the caller's clone) and the predicate never fires.
+    ///
+    /// Without this, every distinct `client_id` ever seen by `exchange()`
+    /// leaks a `(String, Arc<Mutex<()>>)` entry — slow but unbounded growth
+    /// in long-running services with credential rotation.
+    fn cleanup_inflight(&self, client_id: &str) {
+        self.inner
+            .inflight
+            .remove_if(client_id, |_, mutex| Arc::strong_count(mutex) <= 1);
     }
 
     /// Flush cache entries. `client_id = None` flushes all.
     /// Returns `(positive_evicted, negative_evicted)`.
+    ///
+    /// Also clears matching `inflight` entries so operator-driven cache
+    /// flushes (e.g. after credential rotation) cap the in-flight map's
+    /// long-tail too. Concurrent in-flight exchanges still hold a clone of
+    /// the `Arc<Mutex<()>>`, so removing the map entry only releases the
+    /// map's reference; in-flight callers complete normally.
     pub fn flush(&self, client_id: Option<&str>) -> (usize, usize) {
         let pos_before = self.inner.positive.len();
         let neg_before = self.inner.negative.len();
         if let Some(cid) = client_id {
             self.inner.positive.retain(|k, _| k.client_id != cid);
             self.inner.negative.retain(|k, _| k.client_id != cid);
+            self.inner.inflight.retain(|k, _| k != cid);
         } else {
             self.inner.positive.clear();
             self.inner.negative.clear();
+            self.inner.inflight.clear();
         }
         (
             pos_before - self.inner.positive.len(),
@@ -396,5 +432,52 @@ mod tests {
         assert_eq!(neg, 0);
         exchanger.exchange("cid", "sec").await.unwrap();
         assert_eq!(count.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn inflight_is_empty_after_exchange() {
+        // Regression test for the unbounded `inflight` map leak. Before the
+        // fix, each distinct `client_id` left a `(String, Arc<Mutex<()>>)`
+        // entry that was never removed. After the fix, the entry is removed
+        // when the last caller drops the lock.
+        let (server, _) = make_idp(
+            serde_json::json!({"access_token": "jwt-1", "expires_in": 3600}),
+            200,
+        )
+        .await;
+        let exchanger = BasicExchanger::new(server.uri(), None, None, Duration::from_secs(3600))
+            .await
+            .unwrap();
+
+        // Successful exchange — `inflight` should drain to 0 once exchange returns.
+        exchanger.exchange("cid-a", "sec").await.unwrap();
+        assert_eq!(
+            exchanger.inner.inflight.len(),
+            0,
+            "inflight must be empty after a successful exchange returns"
+        );
+
+        // A second `client_id` should not leave residue either.
+        exchanger.exchange("cid-b", "sec").await.unwrap();
+        assert_eq!(
+            exchanger.inner.inflight.len(),
+            0,
+            "inflight must be empty after exchanging multiple distinct client_ids"
+        );
+
+        // A negative-cached call also goes through the exchange path on first
+        // miss and must clean up its inflight entry.
+        let (bad_server, _) =
+            make_idp(serde_json::json!({"error": "invalid_client"}), 401).await;
+        let bad_exchanger =
+            BasicExchanger::new(bad_server.uri(), None, None, Duration::from_secs(3600))
+                .await
+                .unwrap();
+        let _ = bad_exchanger.exchange("cid-bad", "x").await.unwrap_err();
+        assert_eq!(
+            bad_exchanger.inner.inflight.len(),
+            0,
+            "inflight must be empty even after an IdP rejection"
+        );
     }
 }

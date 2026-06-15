@@ -544,6 +544,7 @@ All configuration is via environment variables prefixed with `TE_`:
 | `TE_OIDC_JWKS_REFRESH_SEC` | `300` | JWKS background refresh interval. |
 | `TE_OIDC_DASHBOARD_CLIENT_ID` | *(required for dashboard)* | Dashboard's public OIDC client_id. |
 | `TE_OIDC_DASHBOARD_REDIRECT_URL` | *(required for dashboard)* | Dashboard callback URL registered with the IdP. |
+| `TE_OIDC_DASHBOARD_AUDIENCE` | *(empty; required for Auth0)* | `audience` parameter appended to the dashboard's `/authorize` URL. Auth0 needs this to issue API-scoped access tokens; Keycloak / Okta typically don't. |
 | `TE_ENCRYPTION_KEY` | 64 zeros | AES key for secret encryption (hex, 32+ bytes) |
 | `TE_DB_POOL_SIZE` | `50` | Database connection pool size |
 | `TE_WORKER_MAX_CONCURRENT` | `50` | Max concurrent job executions per worker |
@@ -613,8 +614,15 @@ Configure an API (audience `kronos`) and an M2M application. Set:
 ```
 TE_OIDC_ISSUER=https://YOUR_TENANT.auth0.com/
 TE_OIDC_AUDIENCES=kronos
-TE_OIDC_BASIC_AUDIENCE=kronos     # Auth0 requires the audience parameter
+TE_OIDC_BASIC_AUDIENCE=kronos        # Auth0 requires audience on /token (Basic flow)
+TE_OIDC_DASHBOARD_AUDIENCE=kronos    # Auth0 requires audience on /authorize (dashboard)
 ```
+
+`TE_OIDC_DASHBOARD_AUDIENCE` is mandatory for Auth0: without it the
+`/authorize` flow returns an opaque `/userinfo`-scoped access token whose
+`aud` is `https://<tenant>.auth0.com/userinfo` — Kronos then rejects every
+dashboard request. Setting it to the same value as your API's identifier
+(typically `TE_OIDC_BASIC_AUDIENCE`) makes Auth0 issue API-scoped JWTs.
 
 #### Okta
 

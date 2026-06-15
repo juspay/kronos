@@ -114,13 +114,17 @@ async fn main() -> anyhow::Result<()> {
                 oidc_rs::AuthConfig::Disabled => (true, None, None, None, None),
                 oidc_rs::AuthConfig::Enabled(c) => {
                     let issuer = Some(c.issuer.clone());
-                    // Two extra envs let the operator configure the dashboard's
+                    // Three extra envs let the operator configure the dashboard's
                     // public OIDC client without baking it into AuthConfig.
                     let client_id = std::env::var("TE_OIDC_DASHBOARD_CLIENT_ID").ok();
                     let redirect_url = std::env::var("TE_OIDC_DASHBOARD_REDIRECT_URL").ok();
-                    // Audience for inbound dashboard JWTs is whichever value the
-                    // dashboard client_id matches in TE_OIDC_AUDIENCES.
-                    let audience = client_id.clone();
+                    // Audience for the `/authorize` request. For Auth0 this is
+                    // REQUIRED to get an API-scoped access_token (otherwise the
+                    // token's `aud` is `https://<tenant>.auth0.com/userinfo` and
+                    // the API rejects it). For Keycloak / Okta it's typically
+                    // unused / harmless. NEVER fall back to `client_id` here —
+                    // they are independent concepts in every IdP we support.
+                    let audience = std::env::var("TE_OIDC_DASHBOARD_AUDIENCE").ok();
                     (false, issuer, client_id, redirect_url, audience)
                 }
             };

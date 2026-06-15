@@ -60,7 +60,7 @@ mod redirect_helpers {
         pkce::persist(&artifacts);
 
         let authorize = format!("{}/authorize", issuer.trim_end_matches('/'));
-        let url = format!(
+        let mut url = format!(
             "{authorize}?response_type=code\
              &client_id={cid}\
              &redirect_uri={ru}\
@@ -76,6 +76,15 @@ mod redirect_helpers {
             nonce = url_encode(&artifacts.nonce),
             ch = url_encode(&challenge),
         );
+        // Auth0 (and any IdP that issues API-scoped access tokens) requires
+        // the `audience` parameter at /authorize time. Without it Auth0 issues
+        // an opaque `/userinfo`-scoped access_token whose `aud` claim does NOT
+        // match TE_OIDC_AUDIENCES; the API then rejects every request.
+        if let Some(audience) = config.oidc_audience.as_deref() {
+            if !audience.is_empty() {
+                url.push_str(&format!("&audience={}", url_encode(audience)));
+            }
+        }
         if let Some(w) = web_sys::window() {
             let _ = w.location().set_href(&url);
         }
