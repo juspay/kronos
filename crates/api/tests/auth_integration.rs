@@ -25,6 +25,25 @@ async fn flush_cache_in_disabled_mode_is_a_noop() {
 }
 
 #[actix_web::test]
+async fn flush_cache_returns_400_on_malformed_json() {
+    // Regression for the silent-flush footgun: a typo'd body must NOT cause
+    // a full cache flush. Use disabled mode because we just want the body
+    // parsing to be exercised — the JSON parse failure fires before the
+    // exchanger lookup.
+    let app = common::start_api_disabled().await;
+    let req = test::TestRequest::post()
+        .uri("/v1/auth/cache/flush")
+        .insert_header(("content-type", "application/json"))
+        .set_payload("{not valid json}")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 400);
+    let body = test::read_body(resp).await;
+    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(v["error"]["code"], "MALFORMED_BODY");
+}
+
+#[actix_web::test]
 async fn bearer_with_valid_jwt_returns_identity_bearer() {
     let idp = common::MockIdp::start().await;
     let app = common::start_api_enabled(&idp, "kronos-api").await;
@@ -68,6 +87,31 @@ async fn basic_with_valid_creds_exchanges_and_returns_identity_basic() {
     assert_eq!(resp["type"], "basic");
     assert_eq!(resp["sub"], "test-m2m-client");
     assert_eq!(idp.token_calls.load(Ordering::SeqCst), 1);
+}
+
+#[actix_web::test]
+async fn bearer_scheme_is_case_insensitive() {
+    // RFC 7235 § 2.1: auth-scheme tokens are case-insensitive. Make sure
+    // `bearer <jwt>` (lowercase) authenticates just like `Bearer <jwt>`.
+    let idp = common::MockIdp::start().await;
+    let app = common::start_api_enabled(&idp, "kronos-api").await;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let jwt = idp.mint(serde_json::json!({
+        "iss": idp.issuer(),
+        "sub": "alice",
+        "aud": "kronos-api",
+        "exp": now + 300,
+        "iat": now,
+    }));
+    let req = test::TestRequest::get()
+        .uri("/v1/auth/whoami")
+        .insert_header(("Authorization", format!("bearer {jwt}")))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
 }
 
 #[actix_web::test]

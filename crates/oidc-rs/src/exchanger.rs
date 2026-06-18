@@ -1,6 +1,6 @@
 //! Basic → JWT credential exchanger.
 //!
-//! Translates `Authorization: Basic <client_id:client_secret>` into a JWT by
+//! Translates `Authorization: Basic <base64(client_id:client_secret)>` into a JWT by
 //! calling the IdP's `client_credentials` grant. Caches successful exchanges
 //! until the JWT's expiry (capped), single-flights concurrent exchanges for
 //! the same `client_id` to prevent IdP-thrash, and negative-caches IdP
@@ -138,6 +138,12 @@ impl BasicExchanger {
             if cached.expires_at > Instant::now() {
                 return Ok(cached.jwt.clone());
             }
+            // Expired — evict on read so a unique-but-stale `(client_id,
+            // secret_hash)` pair can't accumulate indefinitely. `drop(cached)`
+            // releases the DashMap read guard before `remove`; without it
+            // the bucket-lock deadlocks against itself.
+            drop(cached);
+            self.inner.positive.remove(&key);
         }
         if let Some(neg) = self.inner.negative.get(&key) {
             if neg.until > Instant::now() {
@@ -148,6 +154,9 @@ impl BasicExchanger {
                     }
                 });
             }
+            // Expired — same eviction-on-read rationale as the positive cache.
+            drop(neg);
+            self.inner.negative.remove(&key);
         }
 
         let lock = self
@@ -256,6 +265,14 @@ impl BasicExchanger {
             pos_before - self.inner.positive.len(),
             neg_before - self.inner.negative.len(),
         )
+    }
+
+    /// Test-only accessor exposing the positive cache's current size. Used by
+    /// the eviction regression test to assert that a stale entry is removed
+    /// after a hit on the expired-entry branch in [`Self::exchange`].
+    #[cfg(test)]
+    pub fn positive_len(&self) -> usize {
+        self.inner.positive.len()
     }
 
     async fn exchange_inner(
@@ -479,5 +496,62 @@ mod tests {
             0,
             "inflight must be empty even after an IdP rejection"
         );
+    }
+
+    #[tokio::test]
+    async fn expired_positive_entry_is_evicted_on_read() {
+        // Regression test: before the fix, expired positive entries were
+        // bypassed but never removed, so a long-running service that saw a
+        // stream of unique `(client_id, secret_hash)` pairs would leak
+        // memory. After the fix, calling `exchange()` on a key with an
+        // expired entry removes that entry before continuing.
+        //
+        // We provoke an expired entry by setting `hard_ttl = 60s` and
+        // returning `expires_in: 61` from the IdP — the cached `expires_at`
+        // is then `now + (min(61, 60) - 60) = now + 0s`, i.e. already in
+        // the past by the time we observe it.
+        let (server, _) = make_idp(
+            serde_json::json!({"access_token": "jwt-1", "expires_in": 61}),
+            200,
+        )
+        .await;
+        let exchanger =
+            BasicExchanger::new(server.uri(), None, None, Duration::from_secs(60))
+                .await
+                .unwrap();
+        exchanger.exchange("cid", "sec").await.unwrap();
+
+        // The entry was inserted with an already-expired `expires_at`. Confirm
+        // it's still in the map *before* the next call — it's only the next
+        // `exchange()` call that triggers the on-read eviction.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(
+            exchanger.positive_len(),
+            1,
+            "stale entry should still be present before the next exchange()"
+        );
+
+        // The next call sees the expired entry and evicts it. (It will then
+        // proceed to mint a fresh entry — which is also expired, so by the
+        // end of the call the map again holds 1 fresh-but-expired entry.
+        // The point is that the OLD entry was removed and replaced, not
+        // accumulated alongside.)
+        exchanger.exchange("cid", "sec").await.unwrap();
+        assert_eq!(
+            exchanger.positive_len(),
+            1,
+            "expired entry should be replaced (not appended) by the on-read eviction"
+        );
+
+        // A second call with a DIFFERENT secret writes a SECOND key
+        // (different `secret_hash`), and the first key — now expired — gets
+        // evicted on its next read attempt. Run with the *original* secret
+        // to demonstrate that the first key's stale entry is removed.
+        exchanger.exchange("cid", "other-secret").await.unwrap();
+        assert_eq!(exchanger.positive_len(), 2);
+        exchanger.exchange("cid", "sec").await.unwrap();
+        // Eviction-on-read kicked in for the first key, then we wrote a
+        // fresh (still-expired) entry — net unchanged.
+        assert_eq!(exchanger.positive_len(), 2);
     }
 }

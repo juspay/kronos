@@ -2920,7 +2920,6 @@ dependencies = [
  "gloo-storage",
  "gloo-utils",
  "js-sys",
- "jsonwebtoken",
  "leptos",
  "leptos_meta",
  "leptos_router",

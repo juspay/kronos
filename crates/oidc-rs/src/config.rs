@@ -95,6 +95,16 @@ impl AuthConfigBuilder {
         if self.audiences.is_empty() {
             return Err(BuildError::EmptyAudiences);
         }
+        // Reject zero-duration timing values: a zero `jwks_refresh` would
+        // later panic `tokio::time::interval`, and a zero `basic_cache_ttl`
+        // means every cached entry expires the instant it's written —
+        // certainly a configuration error.
+        if matches!(self.basic_cache_ttl, Some(t) if t.is_zero()) {
+            return Err(BuildError::NonPositiveBasicCacheTtl);
+        }
+        if matches!(self.jwks_refresh, Some(t) if t.is_zero()) {
+            return Err(BuildError::NonPositiveJwksRefresh);
+        }
         Ok(AuthConfig::Enabled(EnabledConfig {
             issuer,
             audiences: self.audiences,
@@ -115,6 +125,12 @@ pub enum BuildError {
     /// `audiences` was empty or unset.
     #[error("at least one audience is required")]
     EmptyAudiences,
+    /// `basic_cache_ttl` was explicitly set to zero.
+    #[error("basic cache TTL must be greater than zero")]
+    NonPositiveBasicCacheTtl,
+    /// `jwks_refresh` was explicitly set to zero (would panic `tokio::time::interval`).
+    #[error("JWKS refresh interval must be greater than zero")]
+    NonPositiveJwksRefresh,
 }
 
 #[cfg(test)]
@@ -136,6 +152,25 @@ mod tests {
             .build()
             .unwrap_err();
         assert!(matches!(err, BuildError::EmptyAudiences));
+    }
+
+    #[test]
+    fn builder_rejects_zero_durations() {
+        let err = AuthConfig::builder()
+            .issuer("https://idp.example.com")
+            .audiences(["api"])
+            .basic_cache_ttl(Duration::ZERO)
+            .build()
+            .unwrap_err();
+        assert!(matches!(err, BuildError::NonPositiveBasicCacheTtl));
+
+        let err = AuthConfig::builder()
+            .issuer("https://idp.example.com")
+            .audiences(["api"])
+            .jwks_refresh(Duration::ZERO)
+            .build()
+            .unwrap_err();
+        assert!(matches!(err, BuildError::NonPositiveJwksRefresh));
     }
 
     #[test]

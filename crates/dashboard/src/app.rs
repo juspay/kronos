@@ -39,19 +39,27 @@ fn pkg_base() -> String {
 /// Only used during server-side rendering, NOT during hydration.
 #[cfg(feature = "ssr")]
 pub fn shell(app: impl IntoView) -> impl IntoView {
+    // SECURITY: build the inline `window.__KRONOS_CONFIG__` literal via
+    // `serde_json::to_string`. JSON's escape rules are a strict subset of
+    // JavaScript's, so a JSON-encoded string is always a valid JS literal —
+    // and `"`, `\`, control chars, and the `</script>` sequence are all
+    // correctly escaped, which raw `format!()` interpolation does NOT do.
+    // Without this, an attacker-controlled `oidc_issuer` (etc.) string
+    // containing `</script><script>…</script>` would execute as JS.
     let config_script = use_context::<DashboardConfig>()
         .map(|c| {
-            format!(
-                r#"window.__KRONOS_CONFIG__={{apiBaseUrl:"{}",apiPrefix:"{}",dashboardPrefix:"{}",authDisabled:"{}",oidcIssuer:"{}",oidcClientId:"{}",oidcRedirectUrl:"{}",oidcAudience:"{}"}};"#,
-                c.api_base_url,
-                c.api_prefix,
-                c.dashboard_prefix,
-                if c.auth_disabled { "true" } else { "false" },
-                c.oidc_issuer.as_deref().unwrap_or(""),
-                c.oidc_client_id.as_deref().unwrap_or(""),
-                c.oidc_redirect_url.as_deref().unwrap_or(""),
-                c.oidc_audience.as_deref().unwrap_or(""),
-            )
+            let cfg_json = serde_json::json!({
+                "apiBaseUrl": c.api_base_url,
+                "apiPrefix": c.api_prefix,
+                "dashboardPrefix": c.dashboard_prefix,
+                "authDisabled": c.auth_disabled,
+                "oidcIssuer": c.oidc_issuer.as_deref().unwrap_or(""),
+                "oidcClientId": c.oidc_client_id.as_deref().unwrap_or(""),
+                "oidcRedirectUrl": c.oidc_redirect_url.as_deref().unwrap_or(""),
+                "oidcAudience": c.oidc_audience.as_deref().unwrap_or(""),
+            });
+            let cfg_str = serde_json::to_string(&cfg_json).unwrap_or_default();
+            format!("window.__KRONOS_CONFIG__={cfg_str};")
         })
         .unwrap_or_default();
 
@@ -104,8 +112,22 @@ pub fn App() -> impl IntoView {
                 let v = get(key);
                 if v.is_empty() { None } else { Some(v) }
             };
+            // Read a boolean key, tolerating either a real JS `true`/`false`
+            // (the new SSR shell injects real booleans via serde_json) OR a
+            // string fallback (`"1"`/`"true"`/`"yes"` — for backwards
+            // compatibility with any host that still injects strings).
             let get_bool = |key: &str| -> bool {
-                matches!(get(key).as_str(), "1" | "true" | "yes")
+                if config.is_undefined() || config.is_null() {
+                    return false;
+                }
+                let v = js_sys::Reflect::get(&config, &JsValue::from_str(key))
+                    .unwrap_or(JsValue::UNDEFINED);
+                if let Some(b) = v.as_bool() {
+                    return b;
+                }
+                v.as_string()
+                    .map(|s| matches!(s.as_str(), "1" | "true" | "yes"))
+                    .unwrap_or(false)
             };
             provide_context(DashboardConfig {
                 api_base_url: get("apiBaseUrl"),

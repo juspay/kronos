@@ -131,10 +131,10 @@ async fn resolve_identity(
                 .get("authorization")
                 .and_then(|v| v.to_str().ok())
                 .ok_or(AuthError::MissingHeader)?;
-            if let Some(token) = header.strip_prefix("Bearer ") {
+            if let Some(token) = strip_scheme_prefix(header, "Bearer") {
                 let claims = validator.validate(token).await?;
                 Ok(Identity::Bearer(claims))
-            } else if let Some(b64) = header.strip_prefix("Basic ") {
+            } else if let Some(b64) = strip_scheme_prefix(header, "Basic") {
                 let decoded = base64::engine::general_purpose::STANDARD
                     .decode(b64.trim())
                     .map_err(|_| AuthError::MalformedHeader)?;
@@ -149,4 +149,28 @@ async fn resolve_identity(
             }
         }
     }
+}
+
+/// Strip a case-insensitive auth-scheme prefix (RFC 7235 § 2.1: "Note that
+/// both scheme and parameter names are matched case-insensitively…"). The
+/// scheme token must be followed by a literal SP separator; surrounding
+/// whitespace on the credential is left for the caller to trim.
+///
+/// Returns `None` when the header doesn't begin with `<scheme> ` regardless
+/// of case, so e.g. `"bearer abc"`, `"BEARER abc"`, and `"Bearer abc"` all
+/// match `strip_scheme_prefix(header, "Bearer")`, while `"BearerToken abc"`
+/// (no space) and `"" / "Bearer"` (too short) do not.
+fn strip_scheme_prefix<'a>(header: &'a str, scheme: &str) -> Option<&'a str> {
+    let prefix_len = scheme.len();
+    if header.len() <= prefix_len {
+        return None;
+    }
+    if !header[..prefix_len].eq_ignore_ascii_case(scheme) {
+        return None;
+    }
+    let rest = &header[prefix_len..];
+    if !rest.starts_with(' ') {
+        return None;
+    }
+    Some(rest.trim_start())
 }

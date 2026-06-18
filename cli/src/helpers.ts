@@ -92,6 +92,14 @@ function authFromEnv(): Record<string, unknown> {
   const clientSecret = process.env.KRONOS_CLIENT_SECRET;
   const bearer = process.env.KRONOS_BEARER_TOKEN;
 
+  // Fail fast on partial credentials: it's almost always a config bug, and
+  // silently falling through to the no-creds path would otherwise hide it.
+  if ((clientId && !clientSecret) || (!clientId && clientSecret)) {
+    throw new Error(
+      "KRONOS_CLIENT_ID and KRONOS_CLIENT_SECRET must be set together"
+    );
+  }
+
   if (clientId && clientSecret) {
     if (bearer) {
       throw new Error(

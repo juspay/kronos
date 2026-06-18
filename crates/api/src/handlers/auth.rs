@@ -34,10 +34,28 @@ pub struct FlushRequest {
 /// `{"positive_evicted": 0, "negative_evicted": 0, "note": "..."}`.
 pub async fn flush_cache(
     _req: AuthenticatedRequest,
-    body: Option<web::Json<FlushRequest>>,
+    body: web::Bytes,
     state: web::Data<AuthState>,
 ) -> impl Responder {
-    let req = body.map(|b| b.into_inner()).unwrap_or_default();
+    // Parse the body manually rather than `Option<web::Json<…>>`: the latter
+    // returns `None` on malformed JSON, which would silently flush the entire
+    // cache for a typo'd body. We want a 400 with a structured error instead.
+    // An empty body is still accepted as `{}` for ergonomics.
+    let req = if body.is_empty() {
+        FlushRequest::default()
+    } else {
+        match serde_json::from_slice::<FlushRequest>(&body) {
+            Ok(v) => v,
+            Err(e) => {
+                return HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": {
+                        "code": "MALFORMED_BODY",
+                        "message": format!("flush_cache body must be JSON: {e}"),
+                    }
+                }));
+            }
+        }
+    };
     let Some(exchanger) = state.exchanger() else {
         return HttpResponse::Ok().json(serde_json::json!({
             "positive_evicted": 0,

@@ -112,6 +112,10 @@ smithy-build: smithy-validate
     // this declaration after each regeneration. See `crates/client/src/auth_ext.rs`.
     pub mod auth_ext;
     EOF
+    # Two INDEPENDENT idempotency guards — one per appended section. A single
+    # combined guard would silently skip the tokio block whenever the base64
+    # block happened to already be present (and vice-versa), so each section
+    # must be re-applied on its own merit.
     grep -q '^\[dependencies.base64\]' crates/client/Cargo.toml || cat >> crates/client/Cargo.toml <<'EOF'
 
     # ── Hand-authored deps (NOT produced by codegen) ─────────────────────────
@@ -120,6 +124,8 @@ smithy-build: smithy-validate
     # recipe re-appends this entry after each regeneration.
     [dependencies.base64]
     version = "0.22"
+    EOF
+    grep -q '^\[dev-dependencies.tokio\]' crates/client/Cargo.toml || cat >> crates/client/Cargo.toml <<'EOF'
 
     # ── Hand-authored dev-deps (NOT produced by codegen) ─────────────────────
     # Used by `tests/basic_auth_smoke.rs` (`#[tokio::test]`). The justfile's

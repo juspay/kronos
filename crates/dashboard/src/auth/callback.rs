@@ -118,8 +118,20 @@ pub fn CallbackPage() -> impl IntoView {
                 id_token: tokens.id_token,
                 claims: Some(claims),
             });
+            // Open-redirect guard: `return_to` must be a same-origin path
+            // (begins with `/` but NOT `//`, which is a protocol-relative
+            // URL and would let an attacker exfiltrate the auth flow to
+            // their own host via a crafted bookmark / link). Anything else
+            // falls back to the dashboard root.
+            let return_to = if artifacts.return_to.starts_with('/')
+                && !artifacts.return_to.starts_with("//")
+            {
+                artifacts.return_to.clone()
+            } else {
+                "/".to_string()
+            };
             if let Some(win) = web_sys::window() {
-                let _ = win.location().set_href(&artifacts.return_to);
+                let _ = win.location().set_href(&return_to);
             }
         });
     });

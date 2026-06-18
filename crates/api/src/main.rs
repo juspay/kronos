@@ -129,6 +129,23 @@ async fn main() -> anyhow::Result<()> {
                 }
             };
 
+        // Surface the misconfiguration loud: auth is enabled, the dashboard
+        // is being served, but the two envs the PKCE flow needs aren't set.
+        // Without these the dashboard will redirect to the IdP with an empty
+        // `client_id` / `redirect_uri` and fail every login at runtime —
+        // tracing this back from a user bug report is painful, so we
+        // pre-warn at startup.
+        if !matches!(mode, ServerMode::Api)
+            && matches!(config.auth, oidc_rs::AuthConfig::Enabled(_))
+            && (oidc_client_id.is_none() || oidc_redirect_url.is_none())
+        {
+            tracing::warn!(
+                "Auth is enabled and dashboard is being served, but \
+                 TE_OIDC_DASHBOARD_CLIENT_ID and/or TE_OIDC_DASHBOARD_REDIRECT_URL \
+                 are not set — the dashboard login flow will fail at runtime."
+            );
+        }
+
         Some(kronos_dashboard::config::DashboardConfig {
             api_base_url: String::new(), // same-origin; server functions handle routing
             api_prefix: path_prefix.clone(),
