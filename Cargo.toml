@@ -5,8 +5,6 @@ members = [
     "crates/worker",
     "crates/mock-server",
     "crates/dashboard",
-    "crates/oidc-rs",
-    "crates/oidc-rs-actix",
 ]
 exclude = [
     # Generated client SDK — committed for downstream consumers (e.g. aarokya)
@@ -102,9 +100,15 @@ async-trait = "0.1"
 # Misc
 dotenvy = "0.15"
 
-# OIDC
-openidconnect = "4"
+# OIDC — framework-agnostic core + Actix adapter live in their own repo:
+# https://github.com/juspay/oidc-rs. Pinned to a branch; promote to a tag
+# / rev when the upstream cuts a release.
+oidc-rs = { git = "https://github.com/juspay/oidc-rs.git", branch = "main" }
+oidc-rs-actix = { git = "https://github.com/juspay/oidc-rs.git", branch = "main" }
+
+# JWT minting in kronos-api's integration tests against a mock IdP.
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
+# PKCE randomness + secret hashing in the dashboard's hydrate build.
 getrandom = "0.2"
 sha2 = "0.10"
 

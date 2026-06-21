@@ -3671,6 +3671,7 @@ dependencies = [
 [[package]]
 name = "oidc-rs"
 version = "0.1.0"
+source = "git+https://github.com/juspay/oidc-rs.git?branch=main#2315ddb8299e9aaf1d4c8a8aacefa4a47ebe2b0c"
 dependencies = [
  "dashmap 5.5.3",
  "jsonwebtoken",
@@ -3682,12 +3683,12 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tracing",
- "wiremock",
 ]
 
 [[package]]
 name = "oidc-rs-actix"
 version = "0.1.0"
+source = "git+https://github.com/juspay/oidc-rs.git?branch=main#2315ddb8299e9aaf1d4c8a8aacefa4a47ebe2b0c"
 dependencies = [
  "actix-web",
  "base64 0.22.1",

@@ -23,16 +23,16 @@ impl MockIdp {
     pub async fn start() -> Self {
         let priv_pem = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../oidc-rs/tests/fixtures/test_rsa_priv.pem"
+            "/tests/fixtures/test_rsa_priv.pem"
         ));
         let n_b64 = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../oidc-rs/tests/fixtures/test_rsa_n.txt"
+            "/tests/fixtures/test_rsa_n.txt"
         ))
         .trim();
         let e_b64 = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../oidc-rs/tests/fixtures/test_rsa_e.txt"
+            "/tests/fixtures/test_rsa_e.txt"
         ))
         .trim();
 
@@ -94,7 +94,7 @@ impl MockIdp {
         let kid = self.kid.clone();
         let priv_pem = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../oidc-rs/tests/fixtures/test_rsa_priv.pem"
+            "/tests/fixtures/test_rsa_priv.pem"
         ))
         .to_vec();
         let calls = self.token_calls.clone();

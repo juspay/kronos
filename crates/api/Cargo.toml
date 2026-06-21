@@ -41,8 +41,8 @@ leptos_router = { workspace = true, features = ["ssr"] }
 leptos_actix.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
-oidc-rs = { path = "../oidc-rs" }
-oidc-rs-actix = { path = "../oidc-rs-actix" }
+oidc-rs = { workspace = true }
+oidc-rs-actix = { workspace = true }
 base64 = { workspace = true }
 
 [dev-dependencies]

@@ -31,4 +31,4 @@ cron.workspace = true
 dotenvy.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
-oidc-rs = { path = "../oidc-rs" }
+oidc-rs = { workspace = true }
