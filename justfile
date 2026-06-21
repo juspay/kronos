@@ -381,3 +381,27 @@ clean:
     rm -rf smithy/build
     rm -rf cli/node_modules cli/dist
     rm -rf crates/dashboard/pkg
+
+# ─── Documentation (Docusaurus) ──────────────────────────────
+
+# Start Docusaurus dev server (hot reload)
+docs-dev:
+    cd docs && npm start
+
+# Build the documentation site for production
+docs-build:
+    cd docs && npm run build
+
+# Serve the built documentation locally
+docs-serve:
+    cd docs && npm run serve
+
+# Regenerate API reference from OpenAPI spec (run after `just smithy-build`)
+docs-gen-api:
+    cp smithy/build/smithy/source/openapi/KronosService.openapi.json docs/api/kronos-openapi.json
+    cd docs && npx docusaurus clean-api-docs all || true
+    cd docs && npx docusaurus gen-api-docs all
+
+# Install documentation dependencies (first-time setup)
+docs-install:
+    cd docs && npm install
