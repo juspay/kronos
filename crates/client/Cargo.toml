@@ -31,6 +31,21 @@ version = "2.0.0"
 version = "0.2.9"
 [dependencies.tracing]
 version = "0.1"
+
+# ── Hand-authored deps (NOT produced by codegen) ─────────────────────────────
+# Used by `src/auth_ext.rs::Config::with_basic` to base64-encode the
+# `Authorization: Basic <b64(id:secret)>` value. The justfile's `smithy-build`
+# recipe re-appends this entry after each regeneration.
+[dependencies.base64]
+version = "0.22"
+
+# ── Hand-authored dev-deps (NOT produced by codegen) ─────────────────────────
+# Used by `tests/basic_auth_smoke.rs` (`#[tokio::test]`). The justfile's
+# `smithy-build` recipe re-appends this entry after each regeneration.
+[dev-dependencies.tokio]
+version = "1"
+features = ["macros", "rt-multi-thread", "net", "io-util", "time"]
+
 [features]
 rt-tokio = ["aws-smithy-async/rt-tokio", "aws-smithy-types/rt-tokio"]
 test-util = ["aws-smithy-runtime/test-util"]

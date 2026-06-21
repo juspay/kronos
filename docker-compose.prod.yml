@@ -79,6 +79,17 @@ services:
       TE_PATH_PREFIX: "/kronos"
       TE_DASHBOARD_PATH_PREFIX: "/dashboard"
       TE_DASHBOARD_DIST_DIR: "/app/dashboard-dist"
+      TE_AUTH_MODE: enabled
+      TE_OIDC_ISSUER: ${TE_OIDC_ISSUER:?TE_OIDC_ISSUER is required}
+      TE_OIDC_AUDIENCES: ${TE_OIDC_AUDIENCES:?TE_OIDC_AUDIENCES is required}
+      TE_OIDC_BASIC_AUDIENCE: ${TE_OIDC_BASIC_AUDIENCE:-}
+      TE_OIDC_BASIC_SCOPE: ${TE_OIDC_BASIC_SCOPE:-}
+      TE_OIDC_BASIC_CACHE_TTL_SEC: ${TE_OIDC_BASIC_CACHE_TTL_SEC:-3600}
+      TE_OIDC_JWKS_REFRESH_SEC: ${TE_OIDC_JWKS_REFRESH_SEC:-300}
+      TE_OIDC_DASHBOARD_CLIENT_ID: ${TE_OIDC_DASHBOARD_CLIENT_ID:?TE_OIDC_DASHBOARD_CLIENT_ID is required}
+      TE_OIDC_DASHBOARD_REDIRECT_URL: ${TE_OIDC_DASHBOARD_REDIRECT_URL:?TE_OIDC_DASHBOARD_REDIRECT_URL is required}
+      # Optional; required for Auth0 to get API-scoped access tokens from /authorize.
+      TE_OIDC_DASHBOARD_AUDIENCE: ${TE_OIDC_DASHBOARD_AUDIENCE:-}
     networks:
       - kronos-net
     depends_on:

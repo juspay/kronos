@@ -57,7 +57,8 @@ impl DeleteEndpoint {
                     ) -> ::aws_smithy_runtime_api::client::runtime_plugin::RuntimePlugins {
                         let mut runtime_plugins = client_runtime_plugins.with_operation_plugin(Self::new());
                         runtime_plugins = runtime_plugins
-                                        .with_client_plugin(crate::auth_plugin::DefaultAuthOptionsPlugin::new(vec![::aws_smithy_runtime_api::client::auth::http::HTTP_BEARER_AUTH_SCHEME_ID]));
+                                        .with_client_plugin(crate::auth_plugin::DefaultAuthOptionsPlugin::new(vec![::aws_smithy_runtime_api::client::auth::http::HTTP_BEARER_AUTH_SCHEME_ID
+    , ::aws_smithy_runtime_api::client::auth::http::HTTP_BASIC_AUTH_SCHEME_ID]));
                         if let ::std::option::Option::Some(config_override) = config_override {
                             for plugin in config_override.runtime_plugins.iter().cloned() {
                                 runtime_plugins = runtime_plugins.with_operation_plugin(plugin);
@@ -335,9 +336,9 @@ impl ::aws_smithy_runtime_api::client::result::CreateUnhandledError for DeleteEn
     }
 }
 
-pub use crate::operation::delete_endpoint::_delete_endpoint_input::DeleteEndpointInput;
-
 pub use crate::operation::delete_endpoint::_delete_endpoint_output::DeleteEndpointOutput;
+
+pub use crate::operation::delete_endpoint::_delete_endpoint_input::DeleteEndpointInput;
 
 mod _delete_endpoint_input;
 

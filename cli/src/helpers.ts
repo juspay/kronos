@@ -13,13 +13,121 @@ import {
 
 export const KRONOS_URL = process.env.KRONOS_URL ?? "http://localhost:8080";
 export const MOCK_URL = process.env.MOCK_URL ?? "http://localhost:9999";
-export const API_KEY = process.env.KRONOS_API_KEY ?? "dev-api-key";
 export const ORG_ID = process.env.KRONOS_ORG_ID!;
 export const WORKSPACE_ID = process.env.KRONOS_WORKSPACE_ID!;
 export const tenant = { org_id: ORG_ID, workspace_id: WORKSPACE_ID };
 export const POLL_INTERVAL_MS = 500;
 export const POLL_TIMEOUT_MS = 30_000;
 export const TERMINAL_STATUSES = new Set(["SUCCESS", "FAILED", "CANCELLED"]);
+
+// ─── Auth ─────────────────────────────────────────────────────────
+//
+// Priority:
+//   KRONOS_CLIENT_ID + KRONOS_CLIENT_SECRET  →  HTTP Basic
+//   KRONOS_BEARER_TOKEN                      →  HTTP Bearer
+//   (neither)                                →  no Authorization header (TE_AUTH_MODE=disabled)
+//
+// KRONOS_CLIENT_ID/SECRET and KRONOS_BEARER_TOKEN are mutually exclusive.
+//
+// SDK limitation: smithy-typescript 0.26.0 does not emit a first-class
+// `basic` config field even though @httpBasicAuth is declared in the model.
+// We work around this by supplying a custom `httpAuthSchemes` array that
+// includes a hand-rolled Basic signer registered under the scheme ID
+// "smithy.api#httpBasicAuth".  The @smithy/types and @smithy/core packages
+// are not direct CLI deps, so we type the scheme entries as `any` and
+// reproduce the minimal Bearer signer inline rather than importing it.
+
+/** Hand-rolled Basic signer: sets Authorization: Basic <base64(user:pass)>. */
+const makeBasicScheme = (username: string, password: string): any => ({
+  schemeId: "smithy.api#httpBasicAuth",
+  identityProvider: () => async () => ({ username, password }),
+  signer: {
+    async sign(httpRequest: any): Promise<any> {
+      const encoded = Buffer.from(`${username}:${password}`).toString("base64");
+      httpRequest.headers["authorization"] = `Basic ${encoded}`;
+      return httpRequest;
+    },
+  },
+});
+
+/** Minimal Bearer signer that mirrors HttpBearerAuthSigner from @smithy/core. */
+const bearerScheme = (): any => ({
+  schemeId: "smithy.api#httpBearerAuth",
+  identityProvider: (cfg: any) => cfg.getIdentityProvider("smithy.api#httpBearerAuth"),
+  signer: {
+    async sign(httpRequest: any, identity: any): Promise<any> {
+      httpRequest.headers["authorization"] = `Bearer ${identity.token}`;
+      return httpRequest;
+    },
+  },
+});
+
+/**
+ * No-op Bearer scheme: satisfies smithy's identity-resolution step (every
+ * operation advertises Bearer in its auth options) without actually adding
+ * an `Authorization` header. Used when the operator hasn't set any auth env
+ * — typically `TE_AUTH_MODE=disabled` local-dev runs. Without this, the
+ * SDK throws `NoMatchingAuthSchemeError` before sending the request.
+ */
+const noAuthBearerScheme = (): any => ({
+  schemeId: "smithy.api#httpBearerAuth",
+  identityProvider: () => async () => ({}),
+  signer: {
+    async sign(httpRequest: any): Promise<any> {
+      return httpRequest;
+    },
+  },
+});
+
+/**
+ * Returns the auth fragment to spread into KronosServiceClient config.
+ *
+ * - KRONOS_CLIENT_ID + KRONOS_CLIENT_SECRET  →  Basic via custom httpAuthSchemes
+ * - KRONOS_BEARER_TOKEN                      →  Bearer via the standard `token` field
+ * - Both set simultaneously                  →  throws (mutually exclusive)
+ * - Neither set                              →  empty object (no Authorization header)
+ */
+function authFromEnv(): Record<string, unknown> {
+  const clientId = process.env.KRONOS_CLIENT_ID;
+  const clientSecret = process.env.KRONOS_CLIENT_SECRET;
+  const bearer = process.env.KRONOS_BEARER_TOKEN;
+
+  // Fail fast on partial credentials: it's almost always a config bug, and
+  // silently falling through to the no-creds path would otherwise hide it.
+  if ((clientId && !clientSecret) || (!clientId && clientSecret)) {
+    throw new Error(
+      "KRONOS_CLIENT_ID and KRONOS_CLIENT_SECRET must be set together"
+    );
+  }
+
+  if (clientId && clientSecret) {
+    if (bearer) {
+      throw new Error(
+        "KRONOS_CLIENT_ID/KRONOS_CLIENT_SECRET and KRONOS_BEARER_TOKEN are mutually exclusive — " +
+        "unset one auth method before continuing"
+      );
+    }
+    // Override httpAuthSchemes so the Basic scheme is tried first.
+    // The default runtimeConfig only registers Bearer; we add Basic here.
+    return {
+      httpAuthSchemes: [
+        makeBasicScheme(clientId, clientSecret),
+        // Keep Bearer registered so the scheme list stays complete.
+        bearerScheme(),
+      ],
+    };
+  }
+
+  if (bearer) {
+    return { token: { token: bearer } };
+  }
+
+  // No credentials → use a no-op Bearer scheme that satisfies smithy's
+  // identity-resolution step without setting an Authorization header.
+  // Lets the CLI work against `TE_AUTH_MODE=disabled` without throwing
+  // `NoMatchingAuthSchemeError` before the request even leaves the client.
+  return { httpAuthSchemes: [noAuthBearerScheme()] };
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
@@ -35,8 +143,8 @@ export function sleep(ms: number): Promise<void> {
 export function createClient(): KronosServiceClient {
   return new KronosServiceClient({
     endpoint: KRONOS_URL,
-    token: { token: API_KEY },
-  });
+    ...authFromEnv(),
+  } as any);
 }
 
 export async function createTestEndpoint(

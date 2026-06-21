@@ -58,3 +58,5 @@ where
         })
     }
 }
+
+pub use oidc_rs_actix::{AuthMiddleware, AuthMode, AuthState};

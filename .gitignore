@@ -1,6 +1,9 @@
 # Rust
 **/target
 **/*.rs.bk
+# Generated when running `cargo` from inside the smithy-generated SDK crate;
+# the workspace `Cargo.lock` at repo root is the source of truth.
+crates/client/Cargo.lock
 
 # Environment
 .env

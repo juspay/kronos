@@ -39,12 +39,27 @@ fn pkg_base() -> String {
 /// Only used during server-side rendering, NOT during hydration.
 #[cfg(feature = "ssr")]
 pub fn shell(app: impl IntoView) -> impl IntoView {
+    // SECURITY: build the inline `window.__KRONOS_CONFIG__` literal via
+    // `serde_json::to_string`. JSON's escape rules are a strict subset of
+    // JavaScript's, so a JSON-encoded string is always a valid JS literal —
+    // and `"`, `\`, control chars, and the `</script>` sequence are all
+    // correctly escaped, which raw `format!()` interpolation does NOT do.
+    // Without this, an attacker-controlled `oidc_issuer` (etc.) string
+    // containing `</script><script>…</script>` would execute as JS.
     let config_script = use_context::<DashboardConfig>()
         .map(|c| {
-            format!(
-                r#"window.__KRONOS_CONFIG__={{apiBaseUrl:"{}",apiPrefix:"{}",dashboardPrefix:"{}",apiKey:"{}"}};"#,
-                c.api_base_url, c.api_prefix, c.dashboard_prefix, c.api_key
-            )
+            let cfg_json = serde_json::json!({
+                "apiBaseUrl": c.api_base_url,
+                "apiPrefix": c.api_prefix,
+                "dashboardPrefix": c.dashboard_prefix,
+                "authDisabled": c.auth_disabled,
+                "oidcIssuer": c.oidc_issuer.as_deref().unwrap_or(""),
+                "oidcClientId": c.oidc_client_id.as_deref().unwrap_or(""),
+                "oidcRedirectUrl": c.oidc_redirect_url.as_deref().unwrap_or(""),
+                "oidcAudience": c.oidc_audience.as_deref().unwrap_or(""),
+            });
+            let cfg_str = serde_json::to_string(&cfg_json).unwrap_or_default();
+            format!("window.__KRONOS_CONFIG__={cfg_str};")
         })
         .unwrap_or_default();
 
@@ -74,6 +89,7 @@ pub fn shell(app: impl IntoView) -> impl IntoView {
 #[component]
 pub fn App() -> impl IntoView {
     provide_meta_context();
+    crate::auth::provide_login_state();
 
     // During hydration, read config from the injected window.__KRONOS_CONFIG__
     #[cfg(feature = "hydrate")]
@@ -92,11 +108,61 @@ pub fn App() -> impl IntoView {
                     .and_then(|v| v.as_string())
                     .unwrap_or_default()
             };
+            let get_opt = |key: &str| -> Option<String> {
+                let v = get(key);
+                if v.is_empty() { None } else { Some(v) }
+            };
+            // Read a boolean key, tolerating either a real JS `true`/`false`
+            // (the new SSR shell injects real booleans via serde_json) OR a
+            // string fallback (`"1"`/`"true"`/`"yes"` — for backwards
+            // compatibility with any host that still injects strings).
+            let get_bool = |key: &str| -> bool {
+                if config.is_undefined() || config.is_null() {
+                    return false;
+                }
+                let v = js_sys::Reflect::get(&config, &JsValue::from_str(key))
+                    .unwrap_or(JsValue::UNDEFINED);
+                if let Some(b) = v.as_bool() {
+                    return b;
+                }
+                v.as_string()
+                    .map(|s| matches!(s.as_str(), "1" | "true" | "yes"))
+                    .unwrap_or(false)
+            };
             provide_context(DashboardConfig {
                 api_base_url: get("apiBaseUrl"),
                 api_prefix: get("apiPrefix"),
                 dashboard_prefix: get("dashboardPrefix"),
-                api_key: get("apiKey"),
+                auth_disabled: get_bool("authDisabled"),
+                oidc_issuer: get_opt("oidcIssuer"),
+                oidc_client_id: get_opt("oidcClientId"),
+                oidc_redirect_url: get_opt("oidcRedirectUrl"),
+                oidc_audience: get_opt("oidcAudience"),
+            });
+        }
+    }
+
+    // When auth is enabled and the user has no access token in `LoginState`,
+    // bounce to the IdP. Skip when we're already on the callback page (where
+    // the token exchange runs). Hydrate-only — SSR has no concept of an
+    // interactive login redirect.
+    #[cfg(feature = "hydrate")]
+    {
+        let config =
+            use_context::<DashboardConfig>().expect("DashboardConfig context not provided");
+        if !config.auth_disabled {
+            let login_state = use_context::<RwSignal<crate::auth::LoginState>>()
+                .expect("LoginState context not provided");
+            let cfg_for_effect = config.clone();
+            Effect::new(move |_| {
+                if login_state.with(|s| s.access_token.is_none()) {
+                    let path = web_sys::window()
+                        .and_then(|w| w.location().pathname().ok())
+                        .unwrap_or_default();
+                    if !path.contains("/auth/callback") {
+                        crate::auth::redirect_to_idp(&cfg_for_effect, &path);
+                    }
+                }
             });
         }
     }
@@ -115,9 +181,25 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/") view=OrganizationsPage />
                         <Route path=path!("/orgs/:org_id") view=OrgDetailPage />
                         <Route path=path!("/orgs/:org_id/workspaces/:workspace_id") view=WorkspaceDetailPage />
+                        <Route path=path!("/auth/callback") view=AuthCallbackRoute />
                     </Routes>
                 </main>
             </div>
         </Router>
+    }
+}
+
+/// Thin wrapper component for the `/auth/callback` route. Under SSR the
+/// real `CallbackPage` is unavailable (it depends on web-sys + gloo), so we
+/// render a placeholder; hydration replaces it with the real component.
+#[component]
+fn AuthCallbackRoute() -> impl IntoView {
+    #[cfg(feature = "hydrate")]
+    {
+        view! { <crate::auth::CallbackPage /> }.into_any()
+    }
+    #[cfg(not(feature = "hydrate"))]
+    {
+        view! { <div class="p-8">"Completing sign in..."</div> }.into_any()
     }
 }

@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod configs;
 pub mod endpoints;
 pub mod executions;
