@@ -93,6 +93,9 @@ pub fn DateRangeFilter(
     let (open, set_open) = signal(false);
     // Month currently displayed in the grid (first day of that month).
     let (view_month, set_view_month) = signal(first_of_month(Utc::now().date_naive()));
+    // Day currently hovered while picking the end of a range — drives the live
+    // preview highlight between the chosen start and the cursor.
+    let (hover_day, set_hover_day) = signal(Option::<NaiveDate>::None);
     let node_ref = NodeRef::<leptos::html::Div>::new();
 
     // Close on outside click.
@@ -221,32 +224,52 @@ pub fn DateRangeFilter(
                             .map(|d| view! { <span>{*d}</span> })
                             .collect_view()}
                     </div>
-                    <div class="grid grid-cols-7 gap-0.5">
+                    // No horizontal gap so the range fill on adjacent cells
+                    // touches into one continuous band; vertical gap separates weeks.
+                    <div class="grid grid-cols-7 gap-y-1"
+                        on:mouseleave=move |_| set_hover_day.set(None)>
                         {move || {
                             month_cells(view_month.get())
                                 .into_iter()
                                 .map(|cell| match cell {
-                                    None => view! { <span></span> }.into_any(),
+                                    None => view! { <div></div> }.into_any(),
                                     Some(d) => {
-                                        let in_range = move || {
-                                            let lo = after.get();
-                                            let hi = before.get();
-                                            match (lo, hi) {
-                                                (Some(a), Some(b)) => {
-                                                    start_of(d) >= a && end_of(d) <= b
+                                        // Wrapper paints the continuous range band
+                                        // (rounded only at the true ends); the inner
+                                        // button is the circular day target with a
+                                        // solid marker on each endpoint. One classifier
+                                        // drives both the committed range and the live
+                                        // hover preview.
+                                        let band_class = move || {
+                                            let base = "h-9 flex items-center justify-center ";
+                                            match day_highlight(d, after.get(), before.get(), hover_day.get()) {
+                                                DayHighlight::Start => format!("{base}bg-blue-100 rounded-l-full"),
+                                                DayHighlight::End => format!("{base}bg-blue-100 rounded-r-full"),
+                                                DayHighlight::Span => format!("{base}bg-blue-100"),
+                                                DayHighlight::Only | DayHighlight::None => base.to_string(),
+                                            }
+                                        };
+                                        let inner_class = move || {
+                                            let base = "h-9 w-9 flex items-center justify-center text-sm rounded-full transition-colors ";
+                                            match day_highlight(d, after.get(), before.get(), hover_day.get()) {
+                                                DayHighlight::Start
+                                                | DayHighlight::End
+                                                | DayHighlight::Only => {
+                                                    format!("{base}bg-blue-600 text-white font-semibold")
                                                 }
-                                                (Some(a), None) => d == a.date_naive(),
-                                                _ => false,
+                                                DayHighlight::Span => format!("{base}text-blue-900"),
+                                                DayHighlight::None => format!("{base}text-gray-700 hover:bg-gray-100"),
                                             }
                                         };
                                         view! {
-                                            <button type="button"
-                                                on:click=move |_| pick_day(d)
-                                                class="h-7 rounded text-sm hover:bg-blue-100"
-                                                class:bg-blue-600=in_range
-                                                class:text-white=in_range>
-                                                {d.day().to_string()}
-                                            </button>
+                                            <div class=band_class>
+                                                <button type="button"
+                                                    on:click=move |_| pick_day(d)
+                                                    on:mouseenter=move |_| set_hover_day.set(Some(d))
+                                                    class=inner_class>
+                                                    {d.day().to_string()}
+                                                </button>
+                                            </div>
                                         }.into_any()
                                     }
                                 })
@@ -256,6 +279,49 @@ pub fn DateRangeFilter(
                 </div>
             </div>
         </div>
+    }
+}
+
+/// Where a calendar day sits relative to the selection, unifying the committed
+/// range (`after`/`before`) and the live hover preview (`after`/`hover`). Drives
+/// the continuous band: `Start`/`End` round the band's ends, `Span` fills
+/// between, `Only` is a lone selected day, `None` is outside.
+#[derive(Debug, PartialEq)]
+pub(crate) enum DayHighlight {
+    None,
+    Only,
+    Start,
+    Span,
+    End,
+}
+
+pub(crate) fn day_highlight(
+    d: NaiveDate,
+    after: Option<DateTime<Utc>>,
+    before: Option<DateTime<Utc>>,
+    hover: Option<NaiveDate>,
+) -> DayHighlight {
+    let start = match after {
+        Some(a) => a.date_naive(),
+        None => return DayHighlight::None,
+    };
+    // The end is the committed `before`, or — while picking — the hovered day.
+    let end = match before.map(|b| b.date_naive()).or(hover) {
+        Some(e) => e,
+        // Start chosen, nothing hovered yet: only the start is marked.
+        None => return if d == start { DayHighlight::Only } else { DayHighlight::None },
+    };
+    let (lo, hi) = if end >= start { (start, end) } else { (end, start) };
+    if lo == hi {
+        if d == lo { DayHighlight::Only } else { DayHighlight::None }
+    } else if d == lo {
+        DayHighlight::Start
+    } else if d == hi {
+        DayHighlight::End
+    } else if d > lo && d < hi {
+        DayHighlight::Span
+    } else {
+        DayHighlight::None
     }
 }
 
@@ -271,6 +337,49 @@ mod tests {
                 .and_hms_opt(10, 30, 0)
                 .unwrap(),
         )
+    }
+
+    fn d(day: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 6, day).unwrap()
+    }
+
+    #[test]
+    fn day_highlight_marks_committed_range_ends_and_span() {
+        let a = Some(start_of(d(10)));
+        let b = Some(end_of(d(14)));
+        assert_eq!(day_highlight(d(10), a, b, None), DayHighlight::Start);
+        assert_eq!(day_highlight(d(14), a, b, None), DayHighlight::End);
+        assert_eq!(day_highlight(d(12), a, b, None), DayHighlight::Span);
+        assert_eq!(day_highlight(d(9), a, b, None), DayHighlight::None);
+        assert_eq!(day_highlight(d(15), a, b, None), DayHighlight::None);
+    }
+
+    #[test]
+    fn day_highlight_previews_hover_during_selection() {
+        let a = Some(start_of(d(10)));
+        // Start chosen, hovering the 13th: 10=Start, 13=End, 11-12=Span.
+        assert_eq!(day_highlight(d(10), a, None, Some(d(13))), DayHighlight::Start);
+        assert_eq!(day_highlight(d(13), a, None, Some(d(13))), DayHighlight::End);
+        assert_eq!(day_highlight(d(12), a, None, Some(d(13))), DayHighlight::Span);
+        assert_eq!(day_highlight(d(14), a, None, Some(d(13))), DayHighlight::None);
+    }
+
+    #[test]
+    fn day_highlight_preview_handles_hover_before_start() {
+        let a = Some(start_of(d(10)));
+        // Hovering the 7th (before start 10): band runs 7..10.
+        assert_eq!(day_highlight(d(7), a, None, Some(d(7))), DayHighlight::Start);
+        assert_eq!(day_highlight(d(10), a, None, Some(d(7))), DayHighlight::End);
+        assert_eq!(day_highlight(d(8), a, None, Some(d(7))), DayHighlight::Span);
+    }
+
+    #[test]
+    fn day_highlight_start_only_when_no_hover_or_single_day() {
+        let a = Some(start_of(d(10)));
+        assert_eq!(day_highlight(d(10), a, None, None), DayHighlight::Only);
+        assert_eq!(day_highlight(d(11), a, None, None), DayHighlight::None);
+        // Hovering the start day itself collapses to a single-day selection.
+        assert_eq!(day_highlight(d(10), a, None, Some(d(10))), DayHighlight::Only);
     }
 
     #[test]
