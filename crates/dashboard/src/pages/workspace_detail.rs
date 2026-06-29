@@ -1097,7 +1097,7 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
                     <input type="search" prop:value=move || endpoint_filter.get()
                         on:change=move |ev| { set_endpoint_filter.set(event_target_value(&ev)); reset_pagination(); }
                         class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                        placeholder="Search by name..." />
+                        placeholder="Search by endpoint name..." />
                 </div>
                 <Show when=any_filter>
                     <button

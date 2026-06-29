@@ -1,4 +1,8 @@
-use crate::{db::{tbl, DbContext}, models::job::Job};
+use crate::{
+    db::{tbl, DbContext},
+    models::endpoint::EndpointType,
+    models::job::{Job, JobStatus, TriggerType},
+};
 use chrono::{DateTime, Utc};
 use sqlx::{PgConnection, PgPool};
 
@@ -160,13 +164,29 @@ pub async fn get_by_idempotency(
 /// Optional, server-side filters applied to [`list`]. All fields are ANDed
 /// together; `None` fields are simply not constrained. `endpoint` is matched as
 /// a case-insensitive substring so the dashboard can offer a search box, while
-/// the enum-like fields (`status`, `trigger`, `endpoint_type`) match exactly.
+/// the enum fields (`status`, `trigger`, `endpoint_type`) match exactly. Holding
+/// real enums (rather than raw strings) makes invalid filters unrepresentable:
+/// once a `JobFilters` exists, every constraint it carries is already valid.
 #[derive(Debug, Default, Clone)]
 pub struct JobFilters {
-    pub status: Option<String>,
-    pub trigger: Option<String>,
+    pub status: Option<JobStatus>,
+    pub trigger: Option<TriggerType>,
     pub endpoint: Option<String>,
-    pub endpoint_type: Option<String>,
+    pub endpoint_type: Option<EndpointType>,
+}
+
+/// Escapes the LIKE/ILIKE metacharacters (`\`, `%`, `_`) in a user-supplied
+/// search term by prefixing each with a backslash. Pairs with an `ESCAPE '\'`
+/// clause so the term is matched as a literal substring rather than a pattern.
+fn escape_like(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        if matches!(ch, '\\' | '%' | '_') {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
 }
 
 /// Builds the `list` query and the ordered list of string binds. Kept pure (no
@@ -178,30 +198,38 @@ fn build_list_query(t: &str, cursor: Option<&str>, filters: &JobFilters) -> (Str
     let mut n = 1;
 
     if let Some(c) = cursor {
+        // Keyset cursor over the (created_at, job_id) tuple. `created_at` alone is
+        // not unique (TIMESTAMPTZ DEFAULT now()), so a plain `created_at < T` would
+        // skip rows that share the boundary timestamp. Tiebreaking on job_id (the
+        // PK) gives a strict total order so no row is dropped or repeated across
+        // pages. The cursor placeholder is referenced twice (subquery + tuple) but
+        // bound once — Postgres maps a placeholder to its parameter by number.
         conditions.push(format!(
-            "created_at < (SELECT created_at FROM {t} WHERE job_id = ${n})"
+            "(created_at, job_id) < ((SELECT created_at FROM {t} WHERE job_id = ${n}), ${n})"
         ));
         binds.push(c.to_string());
         n += 1;
     }
     if let Some(status) = &filters.status {
         conditions.push(format!("status = ${n}"));
-        binds.push(status.clone());
+        binds.push(status.as_str().to_string());
         n += 1;
     }
     if let Some(trigger) = &filters.trigger {
         conditions.push(format!("trigger_type = ${n}"));
-        binds.push(trigger.clone());
+        binds.push(trigger.as_str().to_string());
         n += 1;
     }
     if let Some(endpoint_type) = &filters.endpoint_type {
         conditions.push(format!("endpoint_type = ${n}"));
-        binds.push(endpoint_type.clone());
+        binds.push(endpoint_type.as_str().to_string());
         n += 1;
     }
     if let Some(endpoint) = &filters.endpoint {
-        conditions.push(format!("endpoint ILIKE '%' || ${n} || '%'"));
-        binds.push(endpoint.clone());
+        // Escape LIKE metacharacters so a literal `_` or `%` in an endpoint name
+        // (e.g. `order_created`) matches itself instead of acting as a wildcard.
+        conditions.push(format!("endpoint ILIKE '%' || ${n} || '%' ESCAPE '\\'"));
+        binds.push(escape_like(endpoint));
         n += 1;
     }
 
@@ -211,7 +239,11 @@ fn build_list_query(t: &str, cursor: Option<&str>, filters: &JobFilters) -> (Str
         format!(" WHERE {}", conditions.join(" AND "))
     };
 
-    let sql = format!("SELECT * FROM {t}{where_clause} ORDER BY created_at DESC LIMIT ${n}");
+    // ORDER BY must match the cursor's keyset tuple exactly, on every page
+    // (including page 1), or the boundary between pages becomes ambiguous.
+    let sql = format!(
+        "SELECT * FROM {t}{where_clause} ORDER BY created_at DESC, job_id DESC LIMIT ${n}"
+    );
     (sql, binds)
 }
 
@@ -481,17 +513,23 @@ mod tests {
     #[test]
     fn list_query_without_cursor_or_filters() {
         let (sql, binds) = build_list_query("jobs", None, &JobFilters::default());
-        assert_eq!(sql, "SELECT * FROM jobs ORDER BY created_at DESC LIMIT $1");
+        assert_eq!(
+            sql,
+            "SELECT * FROM jobs ORDER BY created_at DESC, job_id DESC LIMIT $1"
+        );
         assert!(binds.is_empty());
     }
 
     #[test]
     fn list_query_with_cursor_only() {
         let (sql, binds) = build_list_query("jobs", Some("job-9"), &JobFilters::default());
+        // Keyset over the (created_at, job_id) tuple; the cursor placeholder ($1)
+        // appears twice but is bound once.
         assert_eq!(
             sql,
-            "SELECT * FROM jobs WHERE created_at < (SELECT created_at FROM jobs WHERE job_id = $1) \
-             ORDER BY created_at DESC LIMIT $2"
+            "SELECT * FROM jobs WHERE \
+             (created_at, job_id) < ((SELECT created_at FROM jobs WHERE job_id = $1), $1) \
+             ORDER BY created_at DESC, job_id DESC LIMIT $2"
         );
         assert_eq!(binds, vec!["job-9".to_string()]);
     }
@@ -499,9 +537,9 @@ mod tests {
     #[test]
     fn list_query_binds_filters_in_order_after_cursor() {
         let filters = JobFilters {
-            status: Some("ACTIVE".into()),
-            trigger: Some("CRON".into()),
-            endpoint_type: Some("HTTP".into()),
+            status: Some(JobStatus::ACTIVE),
+            trigger: Some(TriggerType::CRON),
+            endpoint_type: Some(EndpointType::HTTP),
             endpoint: Some("notify".into()),
         };
         let (sql, binds) = build_list_query("jobs", Some("job-9"), &filters);
@@ -509,10 +547,10 @@ mod tests {
         assert_eq!(
             sql,
             "SELECT * FROM jobs WHERE \
-             created_at < (SELECT created_at FROM jobs WHERE job_id = $1) AND \
+             (created_at, job_id) < ((SELECT created_at FROM jobs WHERE job_id = $1), $1) AND \
              status = $2 AND trigger_type = $3 AND endpoint_type = $4 AND \
-             endpoint ILIKE '%' || $5 || '%' \
-             ORDER BY created_at DESC LIMIT $6"
+             endpoint ILIKE '%' || $5 || '%' ESCAPE '\\' \
+             ORDER BY created_at DESC, job_id DESC LIMIT $6"
         );
         assert_eq!(
             binds,
@@ -529,14 +567,33 @@ mod tests {
     #[test]
     fn list_query_filters_without_cursor_start_at_one() {
         let filters = JobFilters {
-            status: Some("RETIRED".into()),
+            status: Some(JobStatus::RETIRED),
             ..Default::default()
         };
         let (sql, binds) = build_list_query("jobs", None, &filters);
         assert_eq!(
             sql,
-            "SELECT * FROM jobs WHERE status = $1 ORDER BY created_at DESC LIMIT $2"
+            "SELECT * FROM jobs WHERE status = $1 ORDER BY created_at DESC, job_id DESC LIMIT $2"
         );
         assert_eq!(binds, vec!["RETIRED".to_string()]);
+    }
+
+    #[test]
+    fn list_query_escapes_like_metacharacters_in_endpoint() {
+        let filters = JobFilters {
+            endpoint: Some("order_50%_v2".into()),
+            ..Default::default()
+        };
+        let (_sql, binds) = build_list_query("jobs", None, &filters);
+        // `_` and `%` are escaped so they match literally, not as wildcards.
+        assert_eq!(binds, vec![r"order\_50\%\_v2".to_string()]);
+    }
+
+    #[test]
+    fn escape_like_passes_through_plain_text() {
+        assert_eq!(escape_like("notify"), "notify");
+        assert_eq!(escape_like("a_b"), r"a\_b");
+        assert_eq!(escape_like("100%"), r"100\%");
+        assert_eq!(escape_like(r"a\b"), r"a\\b");
     }
 }

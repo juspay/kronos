@@ -8,7 +8,7 @@ use kronos_common::{
     db::DbContext,
     error::AppError,
     models::endpoint::EndpointType,
-    models::job::{CreateJob, TriggerType, UpdateJob},
+    models::job::{CreateJob, JobStatus, TriggerType, UpdateJob},
     models::pg_cron_expr::PgCronExpr,
     pagination::{encode_cursor, PaginatedResponse, PaginationParams},
 };
@@ -283,35 +283,37 @@ fn blank_to_none(value: Option<String>) -> Option<String> {
     })
 }
 
+/// Trims a raw query value (blank == absent) then parses it into a typed enum.
+/// Validation and typing happen in one step, so a typo surfaces as a 400 and the
+/// parsed value — not the raw string — is what flows on to the DB layer.
+fn parse_filter<T>(
+    value: Option<String>,
+    parse: impl Fn(&str) -> Option<T>,
+    label: &str,
+) -> Result<Option<T>, AppError> {
+    match blank_to_none(value) {
+        Some(raw) => parse(&raw)
+            .map(Some)
+            .ok_or_else(|| AppError::InvalidRequest(format!("Invalid {label}: {raw}"))),
+        None => Ok(None),
+    }
+}
+
 impl JobListFilters {
-    /// Validates the enum-like filters and converts to the DB-layer struct.
+    /// Parses and validates each enum filter into the typed DB-layer struct.
     /// Invalid values are rejected up front so a typo surfaces as a 400 rather
-    /// than silently returning zero rows.
+    /// than silently returning zero rows. `endpoint` is a free-text substring
+    /// search, so it needs no validation.
     fn into_db_filters(self) -> Result<db::jobs::JobFilters, AppError> {
-        let status = blank_to_none(self.status);
-        if let Some(s) = &status {
-            if s != "ACTIVE" && s != "RETIRED" {
-                return Err(AppError::InvalidRequest(format!("Invalid status: {s}")));
-            }
-        }
-
-        let trigger = blank_to_none(self.trigger_type);
-        if let Some(t) = &trigger {
-            TriggerType::from_str_val(t)
-                .ok_or_else(|| AppError::InvalidRequest(format!("Invalid trigger: {t}")))?;
-        }
-
-        let endpoint_type = blank_to_none(self.endpoint_type);
-        if let Some(et) = &endpoint_type {
-            EndpointType::from_str_val(et)
-                .ok_or_else(|| AppError::InvalidRequest(format!("Invalid endpoint_type: {et}")))?;
-        }
-
         Ok(db::jobs::JobFilters {
-            status,
-            trigger,
+            status: parse_filter(self.status, JobStatus::from_str_val, "status")?,
+            trigger: parse_filter(self.trigger_type, TriggerType::from_str_val, "trigger")?,
             endpoint: blank_to_none(self.endpoint),
-            endpoint_type,
+            endpoint_type: parse_filter(
+                self.endpoint_type,
+                EndpointType::from_str_val,
+                "endpoint_type",
+            )?,
         })
     }
 }
@@ -740,4 +742,85 @@ fn job_summary(job: &kronos_common::models::Job) -> serde_json::Value {
         "next_run_at": job.cron_next_run_at,
         "created_at": job.created_at,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn filters(
+        status: Option<&str>,
+        trigger_type: Option<&str>,
+        endpoint: Option<&str>,
+        endpoint_type: Option<&str>,
+    ) -> JobListFilters {
+        JobListFilters {
+            status: status.map(String::from),
+            trigger_type: trigger_type.map(String::from),
+            endpoint: endpoint.map(String::from),
+            endpoint_type: endpoint_type.map(String::from),
+        }
+    }
+
+    fn assert_invalid_request(result: Result<db::jobs::JobFilters, AppError>) {
+        match result {
+            Err(AppError::InvalidRequest(_)) => {}
+            Err(_) => panic!("expected InvalidRequest"),
+            Ok(_) => panic!("expected an error, got Ok"),
+        }
+    }
+
+    #[test]
+    fn into_db_filters_parses_valid_values_into_enums() {
+        let f = filters(Some("ACTIVE"), Some("CRON"), Some("notify"), Some("HTTP"))
+            .into_db_filters()
+            .unwrap();
+        assert_eq!(f.status, Some(JobStatus::ACTIVE));
+        assert_eq!(f.trigger, Some(TriggerType::CRON));
+        assert_eq!(f.endpoint, Some("notify".to_string()));
+        assert_eq!(f.endpoint_type, Some(EndpointType::HTTP));
+    }
+
+    #[test]
+    fn into_db_filters_accepts_internal_endpoint_type() {
+        // INTERNAL jobs (the reaper) exist, so the filter must accept it.
+        let f = filters(None, None, None, Some("INTERNAL"))
+            .into_db_filters()
+            .unwrap();
+        assert_eq!(f.endpoint_type, Some(EndpointType::INTERNAL));
+    }
+
+    #[test]
+    fn into_db_filters_treats_blank_and_whitespace_as_absent() {
+        let f = filters(Some(""), Some("  "), Some(""), Some(" "))
+            .into_db_filters()
+            .unwrap();
+        assert_eq!(f.status, None);
+        assert_eq!(f.trigger, None);
+        assert_eq!(f.endpoint, None);
+        assert_eq!(f.endpoint_type, None);
+    }
+
+    #[test]
+    fn into_db_filters_trims_endpoint_substring() {
+        let f = filters(None, None, Some("  notify  "), None)
+            .into_db_filters()
+            .unwrap();
+        assert_eq!(f.endpoint, Some("notify".to_string()));
+    }
+
+    #[test]
+    fn into_db_filters_rejects_bad_status() {
+        assert_invalid_request(filters(Some("BOGUS"), None, None, None).into_db_filters());
+    }
+
+    #[test]
+    fn into_db_filters_rejects_bad_trigger() {
+        assert_invalid_request(filters(None, Some("HOURLY"), None, None).into_db_filters());
+    }
+
+    #[test]
+    fn into_db_filters_rejects_bad_endpoint_type() {
+        assert_invalid_request(filters(None, None, None, Some("FTP")).into_db_filters());
+    }
 }
