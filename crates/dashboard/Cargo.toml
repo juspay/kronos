@@ -17,7 +17,7 @@ leptos_router = { workspace = true }
 leptos_meta = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { version = "0.4", features = ["serde", "wasmbind"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = { version = "0.4", optional = true }
 web-sys = { version = "0.3", features = ["Window", "Location"] }
