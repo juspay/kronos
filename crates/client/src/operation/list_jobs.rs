@@ -152,12 +152,33 @@ fn uri_query(_input: &crate::operation::list_jobs::ListJobsInput, mut output: &m
     }
     if let ::std::option::Option::Some(inner_4) = &_input.trigger_type {
          {
-            query.push_kv("trigger_type", &::aws_smithy_http::query::fmt_string(inner_4));
+            for inner_5 in inner_4 {
+                query.push_kv("trigger_type", &::aws_smithy_http::query::fmt_string(inner_5));
+            }
         }
     }
-    if let ::std::option::Option::Some(inner_5) = &_input.status {
+    if let ::std::option::Option::Some(inner_6) = &_input.status {
          {
-            query.push_kv("status", &::aws_smithy_http::query::fmt_string(inner_5));
+            for inner_7 in inner_6 {
+                query.push_kv("status", &::aws_smithy_http::query::fmt_string(inner_7));
+            }
+        }
+    }
+    if let ::std::option::Option::Some(inner_8) = &_input.endpoint_type {
+         {
+            for inner_9 in inner_8 {
+                query.push_kv("endpoint_type", &::aws_smithy_http::query::fmt_string(inner_9));
+            }
+        }
+    }
+    if let ::std::option::Option::Some(inner_10) = &_input.created_after {
+         {
+            query.push_kv("created_after", &::aws_smithy_http::query::fmt_timestamp(inner_10, ::aws_smithy_types::date_time::Format::DateTime)?);
+        }
+    }
+    if let ::std::option::Option::Some(inner_11) = &_input.created_before {
+         {
+            query.push_kv("created_before", &::aws_smithy_http::query::fmt_timestamp(inner_11, ::aws_smithy_types::date_time::Format::DateTime)?);
         }
     }
     ::std::result::Result::Ok(())

@@ -13,6 +13,7 @@
 /// # let endpointtypeenum = unimplemented!();
 /// match endpointtypeenum {
 ///     EndpointTypeEnum::Http => { /* ... */ },
+///     EndpointTypeEnum::Internal => { /* ... */ },
 ///     EndpointTypeEnum::Kafka => { /* ... */ },
 ///     EndpointTypeEnum::RedisStream => { /* ... */ },
 ///     other @ _ if other.as_str() == "NewFeature" => { /* handles a case for `NewFeature` */ },
@@ -44,6 +45,8 @@ pub enum EndpointTypeEnum {
     #[allow(missing_docs)] // documentation missing in model
     Http,
     #[allow(missing_docs)] // documentation missing in model
+    Internal,
+    #[allow(missing_docs)] // documentation missing in model
     Kafka,
     #[allow(missing_docs)] // documentation missing in model
     RedisStream,
@@ -55,6 +58,7 @@ impl ::std::convert::From<&str> for EndpointTypeEnum {
                     fn from(s: &str) -> Self {
                         match s {
                             "HTTP" => EndpointTypeEnum::Http,
+"INTERNAL" => EndpointTypeEnum::Internal,
 "KAFKA" => EndpointTypeEnum::Kafka,
 "REDIS_STREAM" => EndpointTypeEnum::RedisStream,
 other => EndpointTypeEnum::Unknown(crate::primitives::sealed_enum_unknown::UnknownVariantValue(other.to_owned()))
@@ -73,6 +77,7 @@ impl EndpointTypeEnum {
                 pub fn as_str(&self) -> &str {
                     match self {
     EndpointTypeEnum::Http => "HTTP",
+    EndpointTypeEnum::Internal => "INTERNAL",
     EndpointTypeEnum::Kafka => "KAFKA",
     EndpointTypeEnum::RedisStream => "REDIS_STREAM",
     EndpointTypeEnum::Unknown(value) => value.as_str()
@@ -80,7 +85,7 @@ impl EndpointTypeEnum {
                 }
                 /// Returns all the `&str` representations of the enum members.
                 pub const fn values() -> &'static [&'static str] {
-                    &["HTTP", "KAFKA", "REDIS_STREAM"]
+                    &["HTTP", "INTERNAL", "KAFKA", "REDIS_STREAM"]
                 }
             }
 impl ::std::convert::AsRef<str> for EndpointTypeEnum {
@@ -104,6 +109,7 @@ impl ::std::fmt::Display for EndpointTypeEnum {
                         fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                             match self {
                                 EndpointTypeEnum::Http => write!(f, "HTTP"),
+EndpointTypeEnum::Internal => write!(f, "INTERNAL"),
 EndpointTypeEnum::Kafka => write!(f, "KAFKA"),
 EndpointTypeEnum::RedisStream => write!(f, "REDIS_STREAM"),
 EndpointTypeEnum::Unknown(value) => write!(f, "{}", value)
