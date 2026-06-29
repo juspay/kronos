@@ -7,7 +7,20 @@ pub fn ConfirmDialog(
     open: ReadSignal<bool>,
     set_open: WriteSignal<bool>,
     on_confirm: Callback<()>,
+    /// Confirm button text. Defaults to "Delete".
+    #[prop(into, optional)] confirm_label: Option<String>,
+    /// Dismiss button text. Defaults to "Cancel".
+    #[prop(into, optional)] dismiss_label: Option<String>,
+    /// When true, the confirm button is amber (cancel-style) instead of red.
+    #[prop(optional)] amber: bool,
 ) -> impl IntoView {
+    let confirm_label = confirm_label.unwrap_or_else(|| "Delete".to_string());
+    let dismiss_label = dismiss_label.unwrap_or_else(|| "Cancel".to_string());
+    let confirm_class = if amber {
+        "px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm font-medium transition-colors"
+    } else {
+        "px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium transition-colors"
+    };
     view! {
         <div
             class="fixed inset-0 z-50 flex items-center justify-center"
@@ -25,16 +38,16 @@ pub fn ConfirmDialog(
                         on:click=move |_| set_open.set(false)
                         class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors"
                     >
-                        "Cancel"
+                        {dismiss_label}
                     </button>
                     <button
                         on:click=move |_| {
                             set_open.set(false);
                             on_confirm.run(());
                         }
-                        class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium transition-colors"
+                        class=confirm_class
                     >
-                        "Delete"
+                        {confirm_label}
                     </button>
                 </div>
             </div>
