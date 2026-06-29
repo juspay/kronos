@@ -133,19 +133,21 @@ pub fn DateRangeFilter(
     // Click a day: first click sets `after` (00:00) and clears `before`; second
     // click sets `before` (23:59:59), swapping if before the start.
     let pick_day = move |d: NaiveDate| {
-        let a = after.get();
-        let b = before.get();
-        if a.is_none() || b.is_some() {
-            set_after.set(Some(start_of(d)));
-            set_before.set(None);
-        } else {
-            let start = a.unwrap();
-            let picked_end = end_of(d);
-            if picked_end < start {
+        match (after.get(), before.get()) {
+            // First click, or restarting after a complete range.
+            (None, _) | (Some(_), Some(_)) => {
                 set_after.set(Some(start_of(d)));
-                set_before.set(Some(end_of(start.date_naive())));
-            } else {
-                set_before.set(Some(picked_end));
+                set_before.set(None);
+            }
+            // Second click: close the range, swapping if it lands before the start.
+            (Some(start), None) => {
+                let picked_end = end_of(d);
+                if picked_end < start {
+                    set_after.set(Some(start_of(d)));
+                    set_before.set(Some(end_of(start.date_naive())));
+                } else {
+                    set_before.set(Some(picked_end));
+                }
             }
         }
     };
