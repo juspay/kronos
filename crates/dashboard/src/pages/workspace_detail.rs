@@ -1445,13 +1445,9 @@ fn JobsTable(jobs: Vec<Job>, org_id: String, workspace_id: String, set_refresh: 
     let (selected_job, set_selected_job) = signal(Option::<String>::None);
     let (status_job, set_status_job) = signal(Option::<String>::None);
     let (versions_job, set_versions_job) = signal(Option::<String>::None);
-    let (cancel_error, set_cancel_error) = signal(Option::<String>::None);
 
     view! {
         <div class="space-y-2">
-            <Show when=move || cancel_error.get().is_some()>
-                <ErrorAlert message=cancel_error.get().unwrap_or_default() />
-            </Show>
             <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
@@ -1473,11 +1469,8 @@ fn JobsTable(jobs: Vec<Job>, org_id: String, workspace_id: String, set_refresh: 
                             let jid_status_show = job.job_id.clone();
                             let jid_versions = job.job_id.clone();
                             let jid_versions_show = job.job_id.clone();
-                            let jid_cancel = job.job_id.clone();
                             let oid = org_id.clone();
                             let wid = workspace_id.clone();
-                            let oid_cancel = org_id.clone();
-                            let wid_cancel = workspace_id.clone();
                             let oid_status = org_id.clone();
                             let wid_status = workspace_id.clone();
                             let oid_versions = org_id.clone();
@@ -1487,6 +1480,23 @@ fn JobsTable(jobs: Vec<Job>, org_id: String, workspace_id: String, set_refresh: 
                             let jid_for_status = job.job_id.clone();
                             let jid_for_versions = job.job_id.clone();
                             let jid_for_execs = job.job_id.clone();
+
+                            // Per-row cancel confirmation state
+                            let (confirm_open, set_confirm_open) = signal(false);
+                            let oid_cancel = org_id.clone();
+                            let wid_cancel = workspace_id.clone();
+                            let jid_cancel = job.job_id.clone();
+
+                            let on_cancel_confirmed = Callback::new(move |_: ()| {
+                                let oid = oid_cancel.clone();
+                                let wid = wid_cancel.clone();
+                                let jid = jid_cancel.clone();
+                                leptos::task::spawn_local(async move {
+                                    let _ = api::cancel_job(oid, wid, jid).await;
+                                    set_refresh.update(|r| *r += 1);
+                                });
+                            });
+
                             view! {
                                 <tr class="hover:bg-gray-50 cursor-pointer transition-colors"
                                     on:click=move |_| {
@@ -1503,26 +1513,8 @@ fn JobsTable(jobs: Vec<Job>, org_id: String, workspace_id: String, set_refresh: 
                                     <td class="px-6 py-4"><StatusBadge status=job.status.clone() /></td>
                                     <td class="px-6 py-4 text-sm text-gray-500">{format_date(&job.created_at)}</td>
                                     <td class="px-6 py-4 text-right">
-                                        <div class="flex items-center justify-end gap-2" on:click=move |ev| ev.stop_propagation()>
-                                            {if is_active {
-                                                let oid_c = oid_cancel.clone();
-                                                let wid_c = wid_cancel.clone();
-                                                let jid_c = jid_cancel.clone();
-                                                Some(view! {
-                                                    <button on:click=move |_| {
-                                                        let oid = oid_c.clone();
-                                                        let wid = wid_c.clone();
-                                                        let jid = jid_c.clone();
-                                                        set_cancel_error.set(None);
-                                                        leptos::task::spawn_local(async move {
-                                                            match api::cancel_job(oid, wid, jid).await {
-                                                                Ok(_) => set_refresh.update(|c| *c += 1),
-                                                                Err(e) => set_cancel_error.set(Some(e.to_string())),
-                                                            }
-                                                        });
-                                                    } class="text-orange-600 hover:text-orange-800 text-xs font-medium">"Cancel"</button>
-                                                })
-                                            } else { None }}
+                                        <div class="flex items-center justify-end gap-3" on:click=move |ev| ev.stop_propagation()>
+                                            // Status + Versions on the left
                                             <button on:click=move |_| {
                                                 let current = status_job.get_untracked();
                                                 if current.as_deref() == Some(&jid_status) {
@@ -1544,9 +1536,28 @@ fn JobsTable(jobs: Vec<Job>, org_id: String, workspace_id: String, set_refresh: 
                                                     } class="text-teal-600 hover:text-teal-800 text-xs font-medium">"Versions"</button>
                                                 })
                                             } else { None }}
+                                            // Divider + Cancel on the right (ACTIVE jobs only)
+                                            <Show when=move || is_active>
+                                                <span class="text-gray-300">"|"</span>
+                                                <button on:click=move |_| set_confirm_open.set(true)
+                                                    class="px-2 py-1 border border-red-300 text-red-600 hover:bg-red-50 rounded text-xs font-medium">
+                                                    "Cancel"
+                                                </button>
+                                            </Show>
                                         </div>
                                     </td>
                                 </tr>
+                                // Per-row cancel confirmation dialog
+                                <ConfirmDialog
+                                    title="Cancel job"
+                                    message="Cancel this job? It will be retired and stop running. This cannot be undone."
+                                    open=confirm_open
+                                    set_open=set_confirm_open
+                                    on_confirm=on_cancel_confirmed
+                                    confirm_label="Cancel job"
+                                    dismiss_label="Keep job"
+                                    amber=true
+                                />
                                 // Status inline
                                 <Show when={
                                     let jid = jid_status_show.clone();
