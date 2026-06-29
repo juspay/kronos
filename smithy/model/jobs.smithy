@@ -153,14 +153,25 @@ structure ListJobsInput with [WorkspaceHeaders, PaginationQuery] {
     @httpQuery("endpoint")
     endpoint: String
 
+    /// Comma-separated list of trigger types, e.g. `CRON,DELAYED`.
     @httpQuery("trigger_type")
-    trigger_type: TriggerTypeEnum
+    trigger_type: TriggerTypeList
 
+    /// Comma-separated list of job statuses, e.g. `ACTIVE,RETIRED`.
     @httpQuery("status")
-    status: JobStatusEnum
+    status: JobStatusList
 
+    /// Comma-separated list of endpoint types, e.g. `HTTP,INTERNAL`.
     @httpQuery("endpoint_type")
-    endpoint_type: EndpointTypeEnum
+    endpoint_type: EndpointTypeList
+
+    /// Inclusive lower bound on `created_at` (RFC-3339).
+    @httpQuery("created_after")
+    created_after: Timestamp
+
+    /// Inclusive upper bound on `created_at` (RFC-3339).
+    @httpQuery("created_before")
+    created_before: Timestamp
 }
 
 structure ListJobsOutput {

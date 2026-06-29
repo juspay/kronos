@@ -56,6 +56,10 @@ enum JobStatusEnum {
     RETIRED
 }
 
+list JobStatusList { member: JobStatusEnum }
+list TriggerTypeList { member: TriggerTypeEnum }
+list EndpointTypeList { member: EndpointTypeEnum }
+
 enum ExecutionStatusEnum {
     PENDING
     QUEUED
