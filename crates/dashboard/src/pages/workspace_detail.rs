@@ -9,8 +9,10 @@ use crate::api::{
     UpdateSecret,
 };
 use crate::components::confirm::ConfirmDialog;
+use crate::components::date_range::DateRangeFilter;
 use crate::components::loading::{EmptyState, ErrorAlert, LoadingSpinner};
 use crate::components::modal::Modal;
+use crate::components::multi_select::MultiSelectFilter;
 use crate::components::status_badge::StatusBadge;
 
 #[component]
@@ -1001,11 +1003,14 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
     let (refresh, set_refresh) = signal(0u32);
     let (modal_open, set_modal_open) = signal(false);
 
-    // Filters ("" == "All"/unset). Changing any filter resets pagination.
-    let (status_filter, set_status_filter) = signal(String::new());
-    let (trigger_filter, set_trigger_filter) = signal(String::new());
-    let (endpoint_type_filter, set_endpoint_type_filter) = signal(String::new());
+    // Filters. Vec<String> fields are multi-select; empty means "All"/unset.
+    // Changing any filter resets pagination via the Effect below.
+    let (status_filter, set_status_filter) = signal(Vec::<String>::new());
+    let (trigger_filter, set_trigger_filter) = signal(Vec::<String>::new());
+    let (endpoint_type_filter, set_endpoint_type_filter) = signal(Vec::<String>::new());
     let (endpoint_filter, set_endpoint_filter) = signal(String::new());
+    let (created_after, set_created_after) = signal(Option::<chrono::DateTime<chrono::Utc>>::None);
+    let (created_before, set_created_before) = signal(Option::<chrono::DateTime<chrono::Utc>>::None);
     let (page_size, set_page_size) = signal(50i64);
 
     // Cursor pagination. The backend cursor is forward-only, so we keep the
@@ -1035,10 +1040,12 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
         let params = JobListQueryParams {
             cursor,
             limit: page_size.get(),
-            status: filter_opt(status_filter.get()),
-            trigger: filter_opt(trigger_filter.get()),
+            status: status_filter.get(),
+            trigger: trigger_filter.get(),
             endpoint: filter_opt(endpoint_filter.get()),
-            endpoint_type: filter_opt(endpoint_type_filter.get()),
+            endpoint_type: endpoint_type_filter.get(),
+            created_after: created_after.get().map(|d| d.to_rfc3339()),
+            created_before: created_before.get().map(|d| d.to_rfc3339()),
         };
         api::list_jobs(oid, wid, params)
     });
@@ -1053,60 +1060,58 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
             || !trigger_filter.get().is_empty()
             || !endpoint_type_filter.get().is_empty()
             || !endpoint_filter.get().is_empty()
+            || created_after.get().is_some()
+            || created_before.get().is_some()
     };
+
+    // Reset pagination whenever any filter signal changes. The `prev` guard
+    // skips the initial run so the first page load is not reset.
+    Effect::new(move |prev: Option<()>| {
+        let _ = (
+            status_filter.get(),
+            trigger_filter.get(),
+            endpoint_type_filter.get(),
+            endpoint_filter.get(),
+            created_after.get(),
+            created_before.get(),
+        );
+        if prev.is_some() {
+            reset_pagination();
+        }
+    });
 
     view! {
         <div class="space-y-4">
             // Filter bar + actions
             <div class="flex flex-wrap items-end gap-3">
-                <div>
-                    <label class="block text-xs font-medium text-gray-500 mb-1">"Status"</label>
-                    <select prop:value=move || status_filter.get()
-                        on:change=move |ev| { set_status_filter.set(event_target_value(&ev)); reset_pagination(); }
-                        class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
-                        <option value="">"All statuses"</option>
-                        <option value="ACTIVE">"Active"</option>
-                        <option value="RETIRED">"Retired"</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-500 mb-1">"Trigger"</label>
-                    <select prop:value=move || trigger_filter.get()
-                        on:change=move |ev| { set_trigger_filter.set(event_target_value(&ev)); reset_pagination(); }
-                        class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
-                        <option value="">"All triggers"</option>
-                        <option value="IMMEDIATE">"Immediate"</option>
-                        <option value="DELAYED">"Delayed"</option>
-                        <option value="CRON">"CRON"</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-500 mb-1">"Endpoint Type"</label>
-                    <select prop:value=move || endpoint_type_filter.get()
-                        on:change=move |ev| { set_endpoint_type_filter.set(event_target_value(&ev)); reset_pagination(); }
-                        class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
-                        <option value="">"All types"</option>
-                        <option value="HTTP">"HTTP"</option>
-                        <option value="KAFKA">"Kafka"</option>
-                        <option value="REDIS_STREAM">"Redis Stream"</option>
-                        <option value="INTERNAL">"Internal"</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-500 mb-1">"Endpoint"</label>
+                <MultiSelectFilter label="Status"
+                    options=vec![("ACTIVE", "Active"), ("RETIRED", "Retired")]
+                    selected=status_filter set_selected=set_status_filter />
+                <MultiSelectFilter label="Trigger"
+                    options=vec![("IMMEDIATE", "Immediate"), ("DELAYED", "Delayed"), ("CRON", "CRON")]
+                    selected=trigger_filter set_selected=set_trigger_filter />
+                <MultiSelectFilter label="Endpoint Type"
+                    options=vec![("HTTP", "HTTP"), ("KAFKA", "Kafka"), ("REDIS_STREAM", "Redis Stream"), ("INTERNAL", "Internal")]
+                    selected=endpoint_type_filter set_selected=set_endpoint_type_filter />
+                <div class="flex flex-col gap-1">
+                    <label class="text-xs font-medium text-gray-500">"Endpoint"</label>
                     <input type="search" prop:value=move || endpoint_filter.get()
-                        on:change=move |ev| { set_endpoint_filter.set(event_target_value(&ev)); reset_pagination(); }
-                        class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                        on:change=move |ev| set_endpoint_filter.set(event_target_value(&ev))
+                        class="h-9 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                         placeholder="Search by endpoint name..." />
                 </div>
+                <DateRangeFilter
+                    after=created_after set_after=set_created_after
+                    before=created_before set_before=set_created_before />
                 <Show when=any_filter>
                     <button
                         on:click=move |_| {
-                            set_status_filter.set(String::new());
-                            set_trigger_filter.set(String::new());
-                            set_endpoint_type_filter.set(String::new());
+                            set_status_filter.set(Vec::new());
+                            set_trigger_filter.set(Vec::new());
+                            set_endpoint_type_filter.set(Vec::new());
                             set_endpoint_filter.set(String::new());
-                            reset_pagination();
+                            set_created_after.set(None);
+                            set_created_before.set(None);
                         }
                         class="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 font-medium"
                     >"Clear filters"</button>
@@ -1123,7 +1128,7 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
                 </div>
             </div>
 
-            <Suspense fallback=move || view! { <LoadingSpinner /> }>
+            <Transition fallback=move || view! { <LoadingSpinner /> }>
                 {move || {
                     let oid = oid_render.clone();
                     let wid = wid_render.clone();
@@ -1171,7 +1176,7 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
                         }
                     })
                 }}
-            </Suspense>
+            </Transition>
 
             <Modal title="Create Job" open=modal_open set_open=set_modal_open>
                 <CreateJobForm org_id=oid_form workspace_id=wid_form set_modal_open=set_modal_open set_refresh=set_refresh />

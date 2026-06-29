@@ -206,17 +206,23 @@ mod inner {
             push_query_param(&mut qs, "cursor", cursor);
         }
         push_query_param(&mut qs, "limit", &params.limit.to_string());
-        if let Some(status) = &params.status {
-            push_query_param(&mut qs, "status", status);
+        if !params.status.is_empty() {
+            push_query_param(&mut qs, "status", &params.status.join(","));
         }
-        if let Some(trigger) = &params.trigger {
-            push_query_param(&mut qs, "trigger_type", trigger);
+        if !params.trigger.is_empty() {
+            push_query_param(&mut qs, "trigger_type", &params.trigger.join(","));
         }
-        if let Some(endpoint_type) = &params.endpoint_type {
-            push_query_param(&mut qs, "endpoint_type", endpoint_type);
+        if !params.endpoint_type.is_empty() {
+            push_query_param(&mut qs, "endpoint_type", &params.endpoint_type.join(","));
         }
         if let Some(endpoint) = &params.endpoint {
             push_query_param(&mut qs, "endpoint", endpoint);
+        }
+        if let Some(after) = &params.created_after {
+            push_query_param(&mut qs, "created_after", after);
+        }
+        if let Some(before) = &params.created_before {
+            push_query_param(&mut qs, "created_before", before);
         }
         let resp = Request::get(&format!("{base}/v1/jobs{qs}"))
             .header("Authorization", &format!("Bearer {}", config.api_key))
