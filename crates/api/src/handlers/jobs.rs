@@ -1,7 +1,7 @@
 use crate::extractors::{AuthenticatedRequest, Workspace};
 use crate::router::AppState;
 use actix_web::{web, HttpResponse};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use kronos_common::metrics as m;
 use kronos_common::{
     db,
@@ -270,6 +270,8 @@ pub struct JobListFilters {
     pub trigger_type: Option<String>,
     pub endpoint: Option<String>,
     pub endpoint_type: Option<String>,
+    pub created_after: Option<String>,
+    pub created_before: Option<String>,
 }
 
 fn blank_to_none(value: Option<String>) -> Option<String> {
@@ -283,18 +285,41 @@ fn blank_to_none(value: Option<String>) -> Option<String> {
     })
 }
 
-/// Trims a raw query value (blank == absent) then parses it into a typed enum.
-/// Validation and typing happen in one step, so a typo surfaces as a 400 and the
-/// parsed value — not the raw string — is what flows on to the DB layer.
-fn parse_filter<T>(
+/// Splits a comma-separated query value into validated, de-duplicated enum
+/// values. Blank tokens are skipped; an invalid token fails the whole request
+/// with a 400 rather than silently dropping rows.
+fn parse_filter_list<T: PartialEq>(
     value: Option<String>,
     parse: impl Fn(&str) -> Option<T>,
     label: &str,
-) -> Result<Option<T>, AppError> {
+) -> Result<Vec<T>, AppError> {
+    let raw = match blank_to_none(value) {
+        Some(r) => r,
+        None => return Ok(Vec::new()),
+    };
+    let mut out: Vec<T> = Vec::new();
+    for token in raw.split(',') {
+        let token = token.trim();
+        if token.is_empty() {
+            continue;
+        }
+        let parsed =
+            parse(token).ok_or_else(|| AppError::InvalidRequest(format!("Invalid {label}: {token}")))?;
+        if !out.contains(&parsed) {
+            out.push(parsed);
+        }
+    }
+    Ok(out)
+}
+
+/// Parses an optional RFC-3339 datetime query value to UTC; blank == absent.
+fn parse_datetime(value: Option<String>, label: &str) -> Result<Option<DateTime<Utc>>, AppError> {
     match blank_to_none(value) {
-        Some(raw) => parse(&raw)
-            .map(Some)
-            .ok_or_else(|| AppError::InvalidRequest(format!("Invalid {label}: {raw}"))),
+        Some(s) => {
+            let dt = DateTime::parse_from_rfc3339(&s)
+                .map_err(|_| AppError::InvalidRequest(format!("Invalid {label}: {s}")))?;
+            Ok(Some(dt.with_timezone(&Utc)))
+        }
         None => Ok(None),
     }
 }
@@ -305,15 +330,22 @@ impl JobListFilters {
     /// than silently returning zero rows. `endpoint` is a free-text substring
     /// search, so it needs no validation.
     fn into_db_filters(self) -> Result<db::jobs::JobFilters, AppError> {
+        let created_after = parse_datetime(self.created_after, "created_after")?;
+        let created_before = parse_datetime(self.created_before, "created_before")?;
+        if let (Some(a), Some(b)) = (created_after, created_before) {
+            if a > b {
+                return Err(AppError::InvalidRequest(
+                    "created_after must not be after created_before".into(),
+                ));
+            }
+        }
         Ok(db::jobs::JobFilters {
-            status: parse_filter(self.status, JobStatus::from_str_val, "status")?,
-            trigger: parse_filter(self.trigger_type, TriggerType::from_str_val, "trigger")?,
+            status: parse_filter_list(self.status, JobStatus::from_str_val, "status")?,
+            trigger: parse_filter_list(self.trigger_type, TriggerType::from_str_val, "trigger")?,
             endpoint: blank_to_none(self.endpoint),
-            endpoint_type: parse_filter(
-                self.endpoint_type,
-                EndpointType::from_str_val,
-                "endpoint_type",
-            )?,
+            endpoint_type: parse_filter_list(self.endpoint_type, EndpointType::from_str_val, "endpoint_type")?,
+            created_after,
+            created_before,
         })
     }
 }
@@ -753,12 +785,16 @@ mod tests {
         trigger_type: Option<&str>,
         endpoint: Option<&str>,
         endpoint_type: Option<&str>,
+        created_after: Option<&str>,
+        created_before: Option<&str>,
     ) -> JobListFilters {
         JobListFilters {
             status: status.map(String::from),
             trigger_type: trigger_type.map(String::from),
             endpoint: endpoint.map(String::from),
             endpoint_type: endpoint_type.map(String::from),
+            created_after: created_after.map(String::from),
+            created_before: created_before.map(String::from),
         }
     }
 
@@ -771,56 +807,58 @@ mod tests {
     }
 
     #[test]
-    fn into_db_filters_parses_valid_values_into_enums() {
-        let f = filters(Some("ACTIVE"), Some("CRON"), Some("notify"), Some("HTTP"))
+    fn into_db_filters_parses_comma_separated_enums() {
+        let f = filters(Some("ACTIVE,RETIRED"), Some("CRON,DELAYED"), Some("notify"), Some("HTTP,INTERNAL"), None, None)
             .into_db_filters()
             .unwrap();
-        assert_eq!(f.status, Some(JobStatus::ACTIVE));
-        assert_eq!(f.trigger, Some(TriggerType::CRON));
+        assert_eq!(f.status, vec![JobStatus::ACTIVE, JobStatus::RETIRED]);
+        assert_eq!(f.trigger, vec![TriggerType::CRON, TriggerType::DELAYED]);
         assert_eq!(f.endpoint, Some("notify".to_string()));
-        assert_eq!(f.endpoint_type, Some(EndpointType::HTTP));
+        assert_eq!(f.endpoint_type, vec![EndpointType::HTTP, EndpointType::INTERNAL]);
     }
 
     #[test]
-    fn into_db_filters_accepts_internal_endpoint_type() {
-        // INTERNAL jobs (the reaper) exist, so the filter must accept it.
-        let f = filters(None, None, None, Some("INTERNAL"))
+    fn into_db_filters_trims_dedupes_and_drops_blanks() {
+        let f = filters(Some(" ACTIVE , ACTIVE ,, RETIRED "), None, None, None, None, None)
             .into_db_filters()
             .unwrap();
-        assert_eq!(f.endpoint_type, Some(EndpointType::INTERNAL));
+        assert_eq!(f.status, vec![JobStatus::ACTIVE, JobStatus::RETIRED]);
     }
 
     #[test]
-    fn into_db_filters_treats_blank_and_whitespace_as_absent() {
-        let f = filters(Some(""), Some("  "), Some(""), Some(" "))
-            .into_db_filters()
-            .unwrap();
-        assert_eq!(f.status, None);
-        assert_eq!(f.trigger, None);
+    fn into_db_filters_empty_lists_when_absent() {
+        let f = filters(None, None, None, None, None, None).into_db_filters().unwrap();
+        assert!(f.status.is_empty());
+        assert!(f.trigger.is_empty());
+        assert!(f.endpoint_type.is_empty());
         assert_eq!(f.endpoint, None);
-        assert_eq!(f.endpoint_type, None);
+        assert_eq!(f.created_after, None);
+        assert_eq!(f.created_before, None);
     }
 
     #[test]
-    fn into_db_filters_trims_endpoint_substring() {
-        let f = filters(None, None, Some("  notify  "), None)
+    fn into_db_filters_parses_rfc3339_dates() {
+        let f = filters(None, None, None, None, Some("2026-06-18T00:00:00Z"), Some("2026-06-24T23:59:59Z"))
             .into_db_filters()
             .unwrap();
-        assert_eq!(f.endpoint, Some("notify".to_string()));
+        assert!(f.created_after.is_some());
+        assert!(f.created_before.is_some());
     }
 
     #[test]
-    fn into_db_filters_rejects_bad_status() {
-        assert_invalid_request(filters(Some("BOGUS"), None, None, None).into_db_filters());
+    fn into_db_filters_rejects_bad_enum_token() {
+        assert_invalid_request(filters(Some("ACTIVE,BOGUS"), None, None, None, None, None).into_db_filters());
     }
 
     #[test]
-    fn into_db_filters_rejects_bad_trigger() {
-        assert_invalid_request(filters(None, Some("HOURLY"), None, None).into_db_filters());
+    fn into_db_filters_rejects_bad_date() {
+        assert_invalid_request(filters(None, None, None, None, Some("yesterday"), None).into_db_filters());
     }
 
     #[test]
-    fn into_db_filters_rejects_bad_endpoint_type() {
-        assert_invalid_request(filters(None, None, None, Some("FTP")).into_db_filters());
+    fn into_db_filters_rejects_inverted_date_range() {
+        assert_invalid_request(
+            filters(None, None, None, None, Some("2026-06-24T00:00:00Z"), Some("2026-06-18T00:00:00Z")).into_db_filters(),
+        );
     }
 }
