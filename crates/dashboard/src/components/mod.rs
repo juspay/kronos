@@ -4,3 +4,4 @@ pub mod modal;
 pub mod loading;
 pub mod confirm;
 pub mod multi_select;
+pub mod date_range;
