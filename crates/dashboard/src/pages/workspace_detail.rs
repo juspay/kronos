@@ -9,6 +9,7 @@ use crate::api::{
     UpdateSecret,
 };
 use crate::components::confirm::ConfirmDialog;
+use crate::components::copyable_id::CopyableId;
 use crate::components::date_range::DateRangeFilter;
 use crate::components::loading::{EmptyState, ErrorAlert, LoadingSpinner};
 use crate::components::modal::Modal;
@@ -1520,7 +1521,7 @@ fn JobsTable(jobs: Vec<Job>, org_id: String, workspace_id: String, set_refresh: 
                                             set_selected_job.set(Some(jid_click.clone()));
                                         }
                                     }>
-                                    <td class="px-6 py-4 text-sm font-mono text-gray-900">{truncate_id(&jid)}</td>
+                                    <td class="px-6 py-4 text-sm text-gray-900"><CopyableId value=jid /></td>
                                     <td class="px-6 py-4 text-sm text-gray-600">{job.endpoint.clone()}</td>
                                     <td class="px-6 py-4 text-sm"><TriggerBadge trigger=job.trigger.clone() /></td>
                                     <td class="px-6 py-4"><StatusBadge status=job.status.clone() /></td>
@@ -1710,7 +1711,7 @@ fn JobVersionsPanel(org_id: String, workspace_id: String, job_id: String) -> imp
                                         {items.into_iter().map(|v| {
                                             view! {
                                                 <div class="flex items-center gap-4 bg-white rounded-lg border border-gray-200 px-4 py-2 text-xs">
-                                                    <span class="font-mono text-gray-600">{truncate_id(&v.job_id)}</span>
+                                                    <CopyableId value=v.job_id.clone() />
                                                     <span>"v" {v.version}</span>
                                                     <StatusBadge status=v.status.clone() />
                                                     {v.cron.as_ref().map(|c| view! { <span class="font-mono text-gray-500">{c.clone()}</span> })}
@@ -1806,7 +1807,7 @@ fn ExecutionsList(executions: Vec<Execution>, org_id: String, workspace_id: Stri
                                 }
                             }>
                             <div class="flex items-center gap-4">
-                                <span class="text-xs font-mono text-gray-600">{truncate_id(&eid)}</span>
+                                <CopyableId value=eid.clone() />
                                 <StatusBadge status=exec.status.clone() />
                             </div>
                             <div class="flex items-center gap-4 text-xs text-gray-500">
@@ -2334,14 +2335,6 @@ fn PlusIcon() -> impl IntoView {
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
         </svg>
-    }
-}
-
-fn truncate_id(id: &str) -> String {
-    if id.len() > 8 {
-        format!("{}...", &id[..8])
-    } else {
-        id.to_string()
     }
 }
 
