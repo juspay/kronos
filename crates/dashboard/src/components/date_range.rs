@@ -247,7 +247,7 @@ pub fn DateRangeFilter(
             </button>
             // Popover panel — always in DOM, toggled via display style (avoids
             // FnOnce constraint on <Show> children from moved Vecs).
-            <div class="absolute left-0 top-full z-50 mt-2 flex flex-col rounded-xl border border-gray-200 bg-white shadow-xl ring-1 ring-gray-900/5 overflow-hidden"
+            <div class="absolute right-0 top-full z-50 mt-2 flex flex-col rounded-xl border border-gray-200 bg-white shadow-xl ring-1 ring-gray-900/5 overflow-hidden"
                 style=move || if open.get() { "" } else { "display:none" }>
                 <div class="flex">
                 // Presets column
