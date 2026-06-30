@@ -1,4 +1,4 @@
-use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Utc};
 
 /// A named quick-pick range. `range(now)` returns inclusive [after, before].
 #[derive(Clone, Copy, PartialEq)]
@@ -51,6 +51,27 @@ pub(crate) fn first_of_month(d: NaiveDate) -> NaiveDate {
     NaiveDate::from_ymd_opt(d.year(), d.month(), 1).unwrap()
 }
 
+/// Combines a calendar date with a UTC time-of-day into an instant.
+pub(crate) fn combine(date: NaiveDate, time: NaiveTime) -> DateTime<Utc> {
+    Utc.from_utc_datetime(&date.and_time(time))
+}
+
+/// Parses an `<input type="time">` value (`HH:MM` or `HH:MM:SS`) into a time.
+pub(crate) fn parse_time(s: &str) -> Option<NaiveTime> {
+    NaiveTime::parse_from_str(s, "%H:%M:%S")
+        .or_else(|_| NaiveTime::parse_from_str(s, "%H:%M"))
+        .ok()
+}
+
+/// Default start-/end-of-day times. Until the user edits the time fields the
+/// picker behaves exactly as the date-only version did (00:00:00 / 23:59:59 UTC).
+fn default_start_time() -> NaiveTime {
+    NaiveTime::from_hms_opt(0, 0, 0).unwrap()
+}
+fn default_end_time() -> NaiveTime {
+    NaiveTime::from_hms_opt(23, 59, 59).unwrap()
+}
+
 /// Days of `month` laid out in a 7-col grid: leading `None` pad for the weekday
 /// offset (Sunday=0), then each day of the month.
 pub(crate) fn month_cells(month: NaiveDate) -> Vec<Option<NaiveDate>> {
@@ -96,6 +117,10 @@ pub fn DateRangeFilter(
     // Day currently hovered while picking the end of a range — drives the live
     // preview highlight between the chosen start and the cursor.
     let (hover_day, set_hover_day) = signal(Option::<NaiveDate>::None);
+    // UTC time-of-day applied to the start/end dates (defaults preserve the
+    // original full-day behaviour).
+    let (start_time, set_start_time) = signal(default_start_time());
+    let (end_time, set_end_time) = signal(default_end_time());
     let node_ref = NodeRef::<leptos::html::Div>::new();
 
     // Close on outside click.
@@ -118,8 +143,16 @@ pub fn DateRangeFilter(
     });
     on_cleanup(move || handle.remove());
 
+    // Show the time alongside the date only when it differs from the full-day
+    // default, so date-only selections stay compact.
     let button_text = move || match (after.get(), before.get()) {
-        (Some(a), Some(b)) => format!("{} \u{2013} {}", a.format("%b %d"), b.format("%b %d")),
+        (Some(a), Some(b)) => {
+            if a.time() != default_start_time() || b.time() != default_end_time() {
+                format!("{} \u{2013} {}", a.format("%b %d %H:%M"), b.format("%b %d %H:%M"))
+            } else {
+                format!("{} \u{2013} {}", a.format("%b %d"), b.format("%b %d"))
+            }
+        }
         (Some(a), None) => format!("From {}", a.format("%b %d")),
         (None, Some(b)) => format!("Until {}", b.format("%b %d")),
         (None, None) => "Created".to_string(),
@@ -128,29 +161,49 @@ pub fn DateRangeFilter(
 
     let apply_preset = move |p: Preset| {
         let (a, b) = p.range(Utc::now());
+        // Presets are whole-day ranges — reset the time fields to match.
+        set_start_time.set(default_start_time());
+        set_end_time.set(default_end_time());
         set_after.set(Some(a));
         set_before.set(Some(b));
         set_open.set(false);
     };
 
-    // Click a day: first click sets `after` (00:00) and clears `before`; second
-    // click sets `before` (23:59:59), swapping if before the start.
+    // Click a day: first click sets `after` at the start time and clears `before`;
+    // second click sets `before` at the end time, swapping if it lands earlier.
     let pick_day = move |d: NaiveDate| {
         match (after.get(), before.get()) {
             // First click, or restarting after a complete range.
             (None, _) | (Some(_), Some(_)) => {
-                set_after.set(Some(start_of(d)));
+                set_after.set(Some(combine(d, start_time.get())));
                 set_before.set(None);
             }
             // Second click: close the range, swapping if it lands before the start.
             (Some(start), None) => {
-                let picked_end = end_of(d);
-                if picked_end < start {
-                    set_after.set(Some(start_of(d)));
-                    set_before.set(Some(end_of(start.date_naive())));
+                if d < start.date_naive() {
+                    set_after.set(Some(combine(d, start_time.get())));
+                    set_before.set(Some(combine(start.date_naive(), end_time.get())));
                 } else {
-                    set_before.set(Some(picked_end));
+                    set_before.set(Some(combine(d, end_time.get())));
                 }
+            }
+        }
+    };
+
+    // Time-field edits re-attach the new time to the already-picked date.
+    let on_start_time = move |ev: leptos::ev::Event| {
+        if let Some(t) = parse_time(&event_target_value(&ev)) {
+            set_start_time.set(t);
+            if let Some(a) = after.get() {
+                set_after.set(Some(combine(a.date_naive(), t)));
+            }
+        }
+    };
+    let on_end_time = move |ev: leptos::ev::Event| {
+        if let Some(t) = parse_time(&event_target_value(&ev)) {
+            set_end_time.set(t);
+            if let Some(b) = before.get() {
+                set_before.set(Some(combine(b.date_naive(), t)));
             }
         }
     };
@@ -184,6 +237,8 @@ pub fn DateRangeFilter(
                                 ev.stop_propagation();
                                 set_after.set(None);
                                 set_before.set(None);
+                                set_start_time.set(default_start_time());
+                                set_end_time.set(default_end_time());
                             }
                             class="rounded p-0.5 hover:bg-gray-100">"\u{2715}"</span>
                     </Show>
@@ -198,7 +253,12 @@ pub fn DateRangeFilter(
                 <div class="flex flex-col gap-0.5 border-r border-gray-100 p-2 w-36">
                     {preset_buttons}
                     <button type="button"
-                        on:click=move |_| { set_after.set(None); set_before.set(None); }
+                        on:click=move |_| {
+                            set_after.set(None);
+                            set_before.set(None);
+                            set_start_time.set(default_start_time());
+                            set_end_time.set(default_end_time());
+                        }
                         class="mt-1 rounded px-2 py-1.5 text-sm text-left text-gray-500 hover:bg-gray-50 border-t border-gray-100">
                         "Clear"
                     </button>
@@ -276,6 +336,19 @@ pub fn DateRangeFilter(
                                 .collect_view()
                         }}
                     </div>
+                    // Time-of-day (UTC) for the start and end of the range.
+                    <div class="mt-3 flex items-center justify-center gap-2 text-xs text-gray-600">
+                        <input type="time" step="1"
+                            prop:value=move || start_time.get().format("%H:%M:%S").to_string()
+                            on:change=on_start_time
+                            class="rounded border border-gray-300 px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
+                        <span>"\u{2013}"</span>
+                        <input type="time" step="1"
+                            prop:value=move || end_time.get().format("%H:%M:%S").to_string()
+                            on:change=on_end_time
+                            class="rounded border border-gray-300 px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
+                        <span class="text-gray-400 font-medium">"UTC"</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -341,6 +414,19 @@ mod tests {
 
     fn d(day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 6, day).unwrap()
+    }
+
+    #[test]
+    fn combine_attaches_time_to_date_in_utc() {
+        let dt = combine(d(10), NaiveTime::from_hms_opt(9, 30, 15).unwrap());
+        assert_eq!(dt.to_rfc3339(), "2026-06-10T09:30:15+00:00");
+    }
+
+    #[test]
+    fn parse_time_accepts_hm_and_hms_rejects_garbage() {
+        assert_eq!(parse_time("09:30"), NaiveTime::from_hms_opt(9, 30, 0));
+        assert_eq!(parse_time("23:59:59"), NaiveTime::from_hms_opt(23, 59, 59));
+        assert_eq!(parse_time("not-a-time"), None);
     }
 
     #[test]
