@@ -121,6 +121,7 @@ pub fn DateRangeFilter(
     // original full-day behaviour).
     let (start_time, set_start_time) = signal(default_start_time());
     let (end_time, set_end_time) = signal(default_end_time());
+    let today = Utc::now().date_naive();
     let node_ref = NodeRef::<leptos::html::Div>::new();
 
     // Close on outside click.
@@ -209,14 +210,23 @@ pub fn DateRangeFilter(
     };
 
     // Build preset buttons eagerly to avoid FnOnce move issues inside view!
+    // Each highlights when the active range matches its (whole-day) bounds.
     let preset_buttons: Vec<_> = Preset::ALL
         .iter()
         .copied()
         .map(|p| {
+            let cls = move || {
+                let (a, b) = p.range(Utc::now());
+                let active = after.get() == Some(a) && before.get() == Some(b);
+                let base = "rounded-md px-3 py-1.5 text-sm text-left transition-colors ";
+                if active {
+                    format!("{base}bg-blue-50 text-blue-700 font-semibold")
+                } else {
+                    format!("{base}text-gray-600 hover:bg-gray-100 hover:text-gray-900")
+                }
+            };
             view! {
-                <button type="button"
-                    on:click=move |_| apply_preset(p)
-                    class="rounded px-2 py-1.5 text-sm text-left hover:bg-gray-50">
+                <button type="button" on:click=move |_| apply_preset(p) class=cls>
                     {p.label()}
                 </button>
             }
@@ -247,10 +257,11 @@ pub fn DateRangeFilter(
             </button>
             // Popover panel — always in DOM, toggled via display style (avoids
             // FnOnce constraint on <Show> children from moved Vecs).
-            <div class="absolute left-0 top-full z-50 mt-1 flex rounded-lg border border-gray-200 bg-white shadow-lg"
+            <div class="absolute left-0 top-full z-50 mt-2 flex rounded-xl border border-gray-200 bg-white shadow-xl ring-1 ring-gray-900/5 overflow-hidden"
                 style=move || if open.get() { "" } else { "display:none" }>
                 // Presets column
-                <div class="flex flex-col gap-0.5 border-r border-gray-100 p-2 w-36">
+                <div class="flex flex-col gap-0.5 border-r border-gray-100 bg-gray-50/50 p-3 w-40">
+                    <div class="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">"Quick ranges"</div>
                     {preset_buttons}
                     <button type="button"
                         on:click=move |_| {
@@ -259,26 +270,28 @@ pub fn DateRangeFilter(
                             set_start_time.set(default_start_time());
                             set_end_time.set(default_end_time());
                         }
-                        class="mt-1 rounded px-2 py-1.5 text-sm text-left text-gray-500 hover:bg-gray-50 border-t border-gray-100">
+                        class="mt-1.5 rounded-md px-3 py-1.5 text-sm text-left text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors border-t border-gray-100">
                         "Clear"
                     </button>
                 </div>
                 // Calendar column
-                <div class="p-3 w-64">
-                    <div class="flex items-center justify-between mb-2">
-                        <button type="button" class="px-2 rounded hover:bg-gray-100"
+                <div class="p-4 w-72">
+                    <div class="flex items-center justify-between mb-3">
+                        <button type="button"
+                            class="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
                             on:click=move |_| set_view_month.update(|m| *m = add_months(*m, -1))>
                             "\u{2039}"
                         </button>
-                        <span class="text-sm font-medium">
+                        <span class="text-sm font-semibold text-gray-900">
                             {move || view_month.get().format("%B %Y").to_string()}
                         </span>
-                        <button type="button" class="px-2 rounded hover:bg-gray-100"
+                        <button type="button"
+                            class="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
                             on:click=move |_| set_view_month.update(|m| *m = add_months(*m, 1))>
                             "\u{203a}"
                         </button>
                     </div>
-                    <div class="grid grid-cols-7 gap-0.5 text-center text-[10px] text-gray-400 mb-1">
+                    <div class="grid grid-cols-7 gap-0.5 text-center text-[11px] font-medium text-gray-400 mb-1">
                         {["Su","Mo","Tu","We","Th","Fr","Sa"]
                             .iter()
                             .map(|d| view! { <span>{*d}</span> })
@@ -318,6 +331,10 @@ pub fn DateRangeFilter(
                                                     format!("{base}bg-blue-600 text-white font-semibold")
                                                 }
                                                 DayHighlight::Span => format!("{base}text-blue-900"),
+                                                // "Today" gets a subtle ring when it isn't part of the selection.
+                                                DayHighlight::None if d == today => format!(
+                                                    "{base}text-blue-700 font-semibold ring-1 ring-inset ring-blue-300 hover:bg-gray-100"
+                                                ),
                                                 DayHighlight::None => format!("{base}text-gray-700 hover:bg-gray-100"),
                                             }
                                         };
