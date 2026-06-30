@@ -137,16 +137,10 @@ pub fn DateRangeFilter(
     });
     on_cleanup(move || handle.remove());
 
-    // Show the time alongside the date only when it differs from the full-day
-    // default, so date-only selections stay compact.
+    // The trigger shows only the date range so its width is stable — the time is
+    // set in the popover and never widens this button (which has a fixed width).
     let button_text = move || match (after.get(), before.get()) {
-        (Some(a), Some(b)) => {
-            if a.time() != default_start_time() || b.time() != default_end_time() {
-                format!("{} \u{2013} {}", a.format("%b %d %H:%M"), b.format("%b %d %H:%M"))
-            } else {
-                format!("{} \u{2013} {}", a.format("%b %d"), b.format("%b %d"))
-            }
-        }
+        (Some(a), Some(b)) => format!("{} \u{2013} {}", a.format("%b %d"), b.format("%b %d")),
         (Some(a), None) => format!("From {}", a.format("%b %d")),
         (None, Some(b)) => format!("Until {}", b.format("%b %d")),
         (None, None) => "Created".to_string(),
@@ -224,7 +218,7 @@ pub fn DateRangeFilter(
         .collect();
 
     view! {
-        <div node_ref=node_ref class="relative flex flex-col gap-1 w-64">
+        <div node_ref=node_ref class="relative flex flex-col gap-1 w-48">
             <label class="text-xs font-medium text-gray-500">"Created"</label>
             <button type="button"
                 on:click=move |_| set_open.update(|o| *o = !*o)
