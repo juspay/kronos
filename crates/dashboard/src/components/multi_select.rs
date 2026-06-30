@@ -85,7 +85,7 @@ pub fn MultiSelectFilter(
         .collect();
 
     view! {
-        <div node_ref=node_ref class="relative flex flex-col gap-1 min-w-[160px]">
+        <div node_ref=node_ref class="relative flex flex-col w-52">
             <button type="button"
                 on:click=move |_| set_open.update(|o| *o = !*o)
                 class="flex h-9 items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">

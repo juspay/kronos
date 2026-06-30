@@ -1094,7 +1094,7 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
                     <div class="flex flex-wrap items-center gap-3">
                         <input type="search" prop:value=move || job_id_filter.get()
                             on:change=move |ev| set_job_id_filter.set(event_target_value(&ev))
-                            class="h-9 w-44 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                            class="h-9 w-52 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                             placeholder="Exact job ID" />
                         <MultiSelectFilter label="Status"
                             options=vec![("ACTIVE", "Active"), ("RETIRED", "Retired")]
@@ -1110,8 +1110,8 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
                             selected=endpoint_type_filter set_selected=set_endpoint_type_filter />
                         <input type="search" prop:value=move || endpoint_filter.get()
                             on:change=move |ev| set_endpoint_filter.set(event_target_value(&ev))
-                            class="h-9 w-48 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                            placeholder="Search by endpoint name..." />
+                            class="h-9 w-52 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                            placeholder="Search endpoint\u{2026}" />
                         <DateRangeFilter
                             after=created_after set_after=set_created_after
                             before=created_before set_before=set_created_before />
