@@ -142,7 +142,7 @@ pub fn DateRangeFilter(
     let button_text = move || match (after.get(), before.get()) {
         (Some(a), Some(b)) => {
             if a.time() != default_start_time() || b.time() != default_end_time() {
-                format!("{} \u{2013} {}", a.format("%b %d %H:%M:%S"), b.format("%b %d %H:%M:%S"))
+                format!("{} \u{2013} {}", a.format("%b %d %H:%M"), b.format("%b %d %H:%M"))
             } else {
                 format!("{} \u{2013} {}", a.format("%b %d"), b.format("%b %d"))
             }
@@ -224,12 +224,12 @@ pub fn DateRangeFilter(
         .collect();
 
     view! {
-        <div node_ref=node_ref class="relative flex flex-col gap-1 min-w-[160px]">
+        <div node_ref=node_ref class="relative flex flex-col gap-1 w-64">
             <label class="text-xs font-medium text-gray-500">"Created"</label>
             <button type="button"
                 on:click=move |_| set_open.update(|o| *o = !*o)
                 class="flex h-9 items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
-                <span class="truncate" class:text-gray-400=move || !any()>{button_text}</span>
+                <span class="flex-1 min-w-0 truncate text-left" class:text-gray-400=move || !any()>{button_text}</span>
                 <span class="flex items-center gap-1 shrink-0">
                     <Show when=any>
                         <span role="button" aria-label="Clear"
