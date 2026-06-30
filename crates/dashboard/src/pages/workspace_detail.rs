@@ -1088,56 +1088,61 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
     view! {
         <div class="space-y-4">
             // Filter bar + actions
-            <div class="flex flex-wrap items-end gap-3">
-                <div class="flex flex-col gap-1">
-                    <label class="text-xs font-medium text-gray-500">"Job ID"</label>
-                    <input type="search" prop:value=move || job_id_filter.get()
-                        on:change=move |ev| set_job_id_filter.set(event_target_value(&ev))
-                        class="h-9 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                        placeholder="Exact job ID" />
+            <div class="space-y-3">
+                // Row 1 — identity / category filters + New Job
+                <div class="flex flex-wrap items-end gap-3">
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs font-medium text-gray-500">"Job ID"</label>
+                        <input type="search" prop:value=move || job_id_filter.get()
+                            on:change=move |ev| set_job_id_filter.set(event_target_value(&ev))
+                            class="h-9 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                            placeholder="Exact job ID" />
+                    </div>
+                    <MultiSelectFilter label="Status"
+                        options=vec![("ACTIVE", "Active"), ("RETIRED", "Retired")]
+                        selected=status_filter set_selected=set_status_filter />
+                    <MultiSelectFilter label="Trigger"
+                        options=vec![("IMMEDIATE", "Immediate"), ("DELAYED", "Delayed"), ("CRON", "CRON")]
+                        selected=trigger_filter set_selected=set_trigger_filter />
+                    <MultiSelectFilter label="Endpoint Type"
+                        options=vec![("HTTP", "HTTP"), ("KAFKA", "Kafka"), ("REDIS_STREAM", "Redis Stream"), ("INTERNAL", "Internal")]
+                        selected=endpoint_type_filter set_selected=set_endpoint_type_filter />
+                    <div class="ml-auto">
+                        <button
+                            on:click=move |_| set_modal_open.set(true)
+                            class="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                        >
+                            <PlusIcon />
+                            "New Job"
+                        </button>
+                    </div>
                 </div>
-                <MultiSelectFilter label="Status"
-                    options=vec![("ACTIVE", "Active"), ("RETIRED", "Retired")]
-                    selected=status_filter set_selected=set_status_filter />
-                <MultiSelectFilter label="Trigger"
-                    options=vec![("IMMEDIATE", "Immediate"), ("DELAYED", "Delayed"), ("CRON", "CRON")]
-                    selected=trigger_filter set_selected=set_trigger_filter />
-                <MultiSelectFilter label="Endpoint Type"
-                    options=vec![("HTTP", "HTTP"), ("KAFKA", "Kafka"), ("REDIS_STREAM", "Redis Stream"), ("INTERNAL", "Internal")]
-                    selected=endpoint_type_filter set_selected=set_endpoint_type_filter />
-                <div class="flex flex-col gap-1">
-                    <label class="text-xs font-medium text-gray-500">"Endpoint"</label>
-                    <input type="search" prop:value=move || endpoint_filter.get()
-                        on:change=move |ev| set_endpoint_filter.set(event_target_value(&ev))
-                        class="h-9 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                        placeholder="Search by endpoint name..." />
-                </div>
-                <DateRangeFilter
-                    after=created_after set_after=set_created_after
-                    before=created_before set_before=set_created_before />
-                <Show when=any_filter>
-                    <button
-                        on:click=move |_| {
-                            set_job_id_filter.set(String::new());
-                            set_status_filter.set(Vec::new());
-                            set_trigger_filter.set(Vec::new());
-                            set_endpoint_type_filter.set(Vec::new());
-                            set_endpoint_filter.set(String::new());
-                            set_created_after.set(None);
-                            set_created_before.set(None);
-                        }
-                        class="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 font-medium"
-                    >"Clear filters"</button>
-                </Show>
-
-                <div class="ml-auto">
-                    <button
-                        on:click=move |_| set_modal_open.set(true)
-                        class="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                    >
-                        <PlusIcon />
-                        "New Job"
-                    </button>
+                // Row 2 — endpoint search + created range + clear
+                <div class="flex flex-wrap items-end gap-3">
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs font-medium text-gray-500">"Endpoint"</label>
+                        <input type="search" prop:value=move || endpoint_filter.get()
+                            on:change=move |ev| set_endpoint_filter.set(event_target_value(&ev))
+                            class="h-9 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                            placeholder="Search by endpoint name..." />
+                    </div>
+                    <DateRangeFilter
+                        after=created_after set_after=set_created_after
+                        before=created_before set_before=set_created_before />
+                    <Show when=any_filter>
+                        <button
+                            on:click=move |_| {
+                                set_job_id_filter.set(String::new());
+                                set_status_filter.set(Vec::new());
+                                set_trigger_filter.set(Vec::new());
+                                set_endpoint_type_filter.set(Vec::new());
+                                set_endpoint_filter.set(String::new());
+                                set_created_after.set(None);
+                                set_created_before.set(None);
+                            }
+                            class="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 font-medium"
+                        >"Clear filters"</button>
+                    </Show>
                 </div>
             </div>
 

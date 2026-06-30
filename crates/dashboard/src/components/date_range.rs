@@ -137,12 +137,14 @@ pub fn DateRangeFilter(
     });
     on_cleanup(move || handle.remove());
 
-    // The trigger shows only the date range so its width is stable — the time is
-    // set in the popover and never widens this button (which has a fixed width).
+    // Trigger shows date + time (HH:MM). The button has a fixed width, so the
+    // time is always visible without the box reflowing as the time changes.
     let button_text = move || match (after.get(), before.get()) {
-        (Some(a), Some(b)) => format!("{} \u{2013} {}", a.format("%b %d"), b.format("%b %d")),
-        (Some(a), None) => format!("From {}", a.format("%b %d")),
-        (None, Some(b)) => format!("Until {}", b.format("%b %d")),
+        (Some(a), Some(b)) => {
+            format!("{} \u{2013} {}", a.format("%b %d %H:%M"), b.format("%b %d %H:%M"))
+        }
+        (Some(a), None) => format!("From {}", a.format("%b %d %H:%M")),
+        (None, Some(b)) => format!("Until {}", b.format("%b %d %H:%M")),
         (None, None) => "Created".to_string(),
     };
     let any = move || after.get().is_some() || before.get().is_some();
@@ -218,7 +220,7 @@ pub fn DateRangeFilter(
         .collect();
 
     view! {
-        <div node_ref=node_ref class="relative flex flex-col gap-1 w-48">
+        <div node_ref=node_ref class="relative flex flex-col gap-1 w-64">
             <label class="text-xs font-medium text-gray-500">"Created"</label>
             <button type="button"
                 on:click=move |_| set_open.update(|o| *o = !*o)
