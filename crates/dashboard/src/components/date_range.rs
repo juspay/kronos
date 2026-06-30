@@ -336,18 +336,39 @@ pub fn DateRangeFilter(
                                 .collect_view()
                         }}
                     </div>
-                    // Time-of-day (UTC) for the start and end of the range.
-                    <div class="mt-3 flex items-center justify-center gap-2 text-xs text-gray-600">
-                        <input type="time" step="1"
-                            prop:value=move || start_time.get().format("%H:%M:%S").to_string()
-                            on:change=on_start_time
-                            class="rounded border border-gray-300 px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
-                        <span>"\u{2013}"</span>
-                        <input type="time" step="1"
-                            prop:value=move || end_time.get().format("%H:%M:%S").to_string()
-                            on:change=on_end_time
-                            class="rounded border border-gray-300 px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
-                        <span class="text-gray-400 font-medium">"UTC"</span>
+                    // FROM / TO summary with UTC time-of-day. Stacked (one input
+                    // per row) so it fits the column and makes each bound's date
+                    // and time unambiguous.
+                    <div class="mt-3 border-t border-gray-100 pt-3 space-y-2">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="min-w-0">
+                                <div class="text-[10px] font-semibold uppercase tracking-wide text-gray-400">"From"</div>
+                                <div class="text-sm font-medium text-gray-900 truncate">
+                                    {move || after.get()
+                                        .map(|a| a.format("%b %-d, %Y").to_string())
+                                        .unwrap_or_else(|| "Pick a start date".to_string())}
+                                </div>
+                            </div>
+                            <input type="time"
+                                prop:value=move || start_time.get().format("%H:%M").to_string()
+                                on:change=on_start_time
+                                class="shrink-0 w-28 rounded-md border border-gray-300 px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
+                        </div>
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="min-w-0">
+                                <div class="text-[10px] font-semibold uppercase tracking-wide text-gray-400">"To"</div>
+                                <div class="text-sm font-medium text-gray-900 truncate">
+                                    {move || before.get()
+                                        .map(|b| b.format("%b %-d, %Y").to_string())
+                                        .unwrap_or_else(|| "Pick an end date".to_string())}
+                                </div>
+                            </div>
+                            <input type="time"
+                                prop:value=move || end_time.get().format("%H:%M").to_string()
+                                on:change=on_end_time
+                                class="shrink-0 w-28 rounded-md border border-gray-300 px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
+                        </div>
+                        <div class="text-right text-[10px] text-gray-400">"All times in UTC"</div>
                     </div>
                 </div>
             </div>
