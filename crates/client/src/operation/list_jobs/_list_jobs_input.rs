@@ -11,6 +11,8 @@ pub struct ListJobsInput  {
     pub cursor: ::std::option::Option<::std::string::String>,
     #[allow(missing_docs)] // documentation missing in model
     pub limit: ::std::option::Option<i32>,
+    /// Exact-match job id filter.
+    pub job_id: ::std::option::Option<::std::string::String>,
     #[allow(missing_docs)] // documentation missing in model
     pub endpoint: ::std::option::Option<::std::string::String>,
     /// Comma-separated list of trigger types, e.g. `CRON,DELAYED`.
@@ -40,6 +42,10 @@ impl  ListJobsInput  {
     #[allow(missing_docs)] // documentation missing in model
     pub fn limit(&self) -> ::std::option::Option<i32> {
         self.limit
+    }
+    /// Exact-match job id filter.
+    pub fn job_id(&self) -> ::std::option::Option<&str> {
+        self.job_id.as_deref()
     }
     #[allow(missing_docs)] // documentation missing in model
     pub fn endpoint(&self) -> ::std::option::Option<&str> {
@@ -90,6 +96,7 @@ pub struct ListJobsInputBuilder {
     pub(crate) workspace_id: ::std::option::Option<::std::string::String>,
     pub(crate) cursor: ::std::option::Option<::std::string::String>,
     pub(crate) limit: ::std::option::Option<i32>,
+    pub(crate) job_id: ::std::option::Option<::std::string::String>,
     pub(crate) endpoint: ::std::option::Option<::std::string::String>,
     pub(crate) trigger_type: ::std::option::Option<::std::vec::Vec::<crate::types::TriggerTypeEnum>>,
     pub(crate) status: ::std::option::Option<::std::vec::Vec::<crate::types::JobStatusEnum>>,
@@ -151,6 +158,19 @@ impl ListJobsInputBuilder {
     #[allow(missing_docs)] // documentation missing in model
     pub fn get_limit(&self) -> &::std::option::Option<i32> {
         &self.limit
+    }
+    /// Exact-match job id filter.
+    pub fn job_id(mut self, input: impl ::std::convert::Into<::std::string::String>) -> Self {
+        self.job_id = ::std::option::Option::Some(input.into());
+        self
+    }
+    /// Exact-match job id filter.
+    pub fn set_job_id(mut self, input: ::std::option::Option<::std::string::String>) -> Self {
+        self.job_id = input; self
+    }
+    /// Exact-match job id filter.
+    pub fn get_job_id(&self) -> &::std::option::Option<::std::string::String> {
+        &self.job_id
     }
     #[allow(missing_docs)] // documentation missing in model
     pub fn endpoint(mut self, input: impl ::std::convert::Into<::std::string::String>) -> Self {
@@ -259,6 +279,8 @@ impl ListJobsInputBuilder {
                 cursor: self.cursor
                 ,
                 limit: self.limit
+                ,
+                job_id: self.job_id
                 ,
                 endpoint: self.endpoint
                 ,

@@ -151,6 +151,20 @@ impl ListJobsFluentBuilder {
     pub fn get_limit(&self) -> &::std::option::Option<i32> {
                     self.inner.get_limit()
                 }
+    /// Exact-match job id filter.
+    pub fn job_id(mut self, input: impl ::std::convert::Into<::std::string::String>) -> Self {
+                    self.inner = self.inner.job_id(input.into());
+                    self
+                }
+    /// Exact-match job id filter.
+    pub fn set_job_id(mut self, input: ::std::option::Option<::std::string::String>) -> Self {
+                    self.inner = self.inner.set_job_id(input);
+                    self
+                }
+    /// Exact-match job id filter.
+    pub fn get_job_id(&self) -> &::std::option::Option<::std::string::String> {
+                    self.inner.get_job_id()
+                }
     #[allow(missing_docs)] // documentation missing in model
     pub fn endpoint(mut self, input: impl ::std::convert::Into<::std::string::String>) -> Self {
                     self.inner = self.inner.endpoint(input.into());
