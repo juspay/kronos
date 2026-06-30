@@ -167,6 +167,7 @@ pub async fn get_by_idempotency(
 /// (`= ANY`); the date bounds are inclusive.
 #[derive(Debug, Default, Clone)]
 pub struct JobFilters {
+    pub job_id: Option<String>,
     pub status: Vec<JobStatus>,
     pub trigger: Vec<TriggerType>,
     pub endpoint: Option<String>,
@@ -241,6 +242,11 @@ fn build_list_query(t: &str, cursor: Option<&str>, filters: &JobFilters) -> (Str
     if let Some(before) = &filters.created_before {
         conditions.push(format!("created_at <= ${n}::timestamptz"));
         binds.push(BindValue::Scalar(before.to_rfc3339()));
+        n += 1;
+    }
+    if let Some(job_id) = &filters.job_id {
+        conditions.push(format!("job_id = ${n}"));
+        binds.push(BindValue::Scalar(job_id.clone()));
         n += 1;
     }
 
@@ -612,6 +618,17 @@ mod tests {
         let filters = JobFilters { endpoint: Some("order_50%_v2".into()), ..Default::default() };
         let (_sql, binds) = build_list_query("jobs", None, &filters);
         assert_eq!(binds, vec![BindValue::Scalar(r"order\_50\%\_v2".into())]);
+    }
+
+    #[test]
+    fn list_query_filters_by_exact_job_id() {
+        let filters = JobFilters { job_id: Some("job-42".into()), ..Default::default() };
+        let (sql, binds) = build_list_query("jobs", None, &filters);
+        assert_eq!(
+            sql,
+            "SELECT * FROM jobs WHERE job_id = $1 ORDER BY created_at DESC, job_id DESC LIMIT $2"
+        );
+        assert_eq!(binds, vec![BindValue::Scalar("job-42".into())]);
     }
 
     #[test]

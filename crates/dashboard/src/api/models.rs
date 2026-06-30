@@ -96,6 +96,7 @@ pub struct Job {
 pub struct JobListQueryParams {
     pub cursor: Option<String>,
     pub limit: i64,
+    pub job_id: Option<String>,
     pub status: Vec<String>,
     pub trigger: Vec<String>,
     pub endpoint: Option<String>,
@@ -109,6 +110,7 @@ impl Default for JobListQueryParams {
         Self {
             cursor: None,
             limit: 50,
+            job_id: None,
             status: Vec::new(),
             trigger: Vec::new(),
             endpoint: None,

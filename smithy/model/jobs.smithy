@@ -150,6 +150,10 @@ operation CreateJob {
 
 @input
 structure ListJobsInput with [WorkspaceHeaders, PaginationQuery] {
+    /// Exact-match job id filter.
+    @httpQuery("job_id")
+    job_id: String
+
     @httpQuery("endpoint")
     endpoint: String
 

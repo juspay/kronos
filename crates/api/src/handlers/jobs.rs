@@ -266,6 +266,7 @@ pub async fn create(
 /// absent so the dashboard can send empty params for an "All" selection.
 #[derive(Debug, serde::Deserialize)]
 pub struct JobListFilters {
+    pub job_id: Option<String>,
     pub status: Option<String>,
     pub trigger_type: Option<String>,
     pub endpoint: Option<String>,
@@ -340,6 +341,7 @@ impl JobListFilters {
             }
         }
         Ok(db::jobs::JobFilters {
+            job_id: blank_to_none(self.job_id),
             status: parse_filter_list(self.status, JobStatus::from_str_val, "status")?,
             trigger: parse_filter_list(self.trigger_type, TriggerType::from_str_val, "trigger")?,
             endpoint: blank_to_none(self.endpoint),
@@ -789,6 +791,7 @@ mod tests {
         created_before: Option<&str>,
     ) -> JobListFilters {
         JobListFilters {
+            job_id: None,
             status: status.map(String::from),
             trigger_type: trigger_type.map(String::from),
             endpoint: endpoint.map(String::from),
@@ -796,6 +799,14 @@ mod tests {
             created_after: created_after.map(String::from),
             created_before: created_before.map(String::from),
         }
+    }
+
+    #[test]
+    fn into_db_filters_carries_trimmed_job_id() {
+        let mut f = filters(None, None, None, None, None, None);
+        f.job_id = Some("  job-42  ".to_string());
+        let db = f.into_db_filters().unwrap();
+        assert_eq!(db.job_id, Some("job-42".to_string()));
     }
 
     fn assert_invalid_request(result: Result<db::jobs::JobFilters, AppError>) {

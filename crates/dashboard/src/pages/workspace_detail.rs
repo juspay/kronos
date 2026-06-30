@@ -1006,6 +1006,7 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
 
     // Filters. Vec<String> fields are multi-select; empty means "All"/unset.
     // Changing any filter resets pagination via the Effect below.
+    let (job_id_filter, set_job_id_filter) = signal(String::new());
     let (status_filter, set_status_filter) = signal(Vec::<String>::new());
     let (trigger_filter, set_trigger_filter) = signal(Vec::<String>::new());
     let (endpoint_type_filter, set_endpoint_type_filter) = signal(Vec::<String>::new());
@@ -1041,6 +1042,7 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
         let params = JobListQueryParams {
             cursor,
             limit: page_size.get(),
+            job_id: filter_opt(job_id_filter.get()),
             status: status_filter.get(),
             trigger: trigger_filter.get(),
             endpoint: filter_opt(endpoint_filter.get()),
@@ -1057,7 +1059,8 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
     let wid_form = workspace_id.clone();
 
     let any_filter = move || {
-        !status_filter.get().is_empty()
+        !job_id_filter.get().is_empty()
+            || !status_filter.get().is_empty()
             || !trigger_filter.get().is_empty()
             || !endpoint_type_filter.get().is_empty()
             || !endpoint_filter.get().is_empty()
@@ -1069,6 +1072,7 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
     // skips the initial run so the first page load is not reset.
     Effect::new(move |prev: Option<()>| {
         let _ = (
+            job_id_filter.get(),
             status_filter.get(),
             trigger_filter.get(),
             endpoint_type_filter.get(),
@@ -1085,6 +1089,13 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
         <div class="space-y-4">
             // Filter bar + actions
             <div class="flex flex-wrap items-end gap-3">
+                <div class="flex flex-col gap-1">
+                    <label class="text-xs font-medium text-gray-500">"Job ID"</label>
+                    <input type="search" prop:value=move || job_id_filter.get()
+                        on:change=move |ev| set_job_id_filter.set(event_target_value(&ev))
+                        class="h-9 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                        placeholder="Exact job ID" />
+                </div>
                 <MultiSelectFilter label="Status"
                     options=vec![("ACTIVE", "Active"), ("RETIRED", "Retired")]
                     selected=status_filter set_selected=set_status_filter />
@@ -1107,6 +1118,7 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
                 <Show when=any_filter>
                     <button
                         on:click=move |_| {
+                            set_job_id_filter.set(String::new());
                             set_status_filter.set(Vec::new());
                             set_trigger_filter.set(Vec::new());
                             set_endpoint_type_filter.set(Vec::new());

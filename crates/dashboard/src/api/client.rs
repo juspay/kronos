@@ -206,6 +206,9 @@ mod inner {
             push_query_param(&mut qs, "cursor", cursor);
         }
         push_query_param(&mut qs, "limit", &params.limit.to_string());
+        if let Some(job_id) = &params.job_id {
+            push_query_param(&mut qs, "job_id", job_id);
+        }
         if !params.status.is_empty() {
             push_query_param(&mut qs, "status", &params.status.join(","));
         }
