@@ -374,10 +374,19 @@ pub fn DateRangeFilter(
     }
 }
 
-/// `0..end` as zero-padded `<option>`s for the time dropdowns.
-fn time_options(end: u32) -> Vec<impl IntoView> {
+/// `0..end` as zero-padded `<option>`s, marking the one matching `current()` as
+/// selected. We control selection via the option's `selected` (not a bare
+/// `prop:value` on the `<select>`, which doesn't apply on first render before
+/// the options exist — that left the dropdowns showing 00:00:00 by default).
+fn time_options(end: u32, current: impl Fn() -> u32 + Copy + Send + 'static) -> Vec<impl IntoView> {
     (0..end)
-        .map(|n| view! { <option value=n.to_string()>{format!("{n:02}")}</option> })
+        .map(move |n| {
+            view! {
+                <option value=n.to_string() selected=move || current() == n>
+                    {format!("{n:02}")}
+                </option>
+            }
+        })
         .collect()
 }
 
@@ -417,16 +426,16 @@ fn TimeSelect(
     };
     view! {
         <div class="flex shrink-0 items-center gap-1">
-            <select prop:value=move || time.get().hour().to_string() on:change=on_h class=sel>
-                {time_options(24)}
+            <select on:change=on_h class=sel>
+                {time_options(24, move || time.get().hour())}
             </select>
             <span class="text-xs text-gray-400">":"</span>
-            <select prop:value=move || time.get().minute().to_string() on:change=on_m class=sel>
-                {time_options(60)}
+            <select on:change=on_m class=sel>
+                {time_options(60, move || time.get().minute())}
             </select>
             <span class="text-xs text-gray-400">":"</span>
-            <select prop:value=move || time.get().second().to_string() on:change=on_s class=sel>
-                {time_options(60)}
+            <select on:change=on_s class=sel>
+                {time_options(60, move || time.get().second())}
             </select>
         </div>
     }

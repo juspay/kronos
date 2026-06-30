@@ -57,9 +57,22 @@ pub fn CopyableId(
                 aria-label=move || if copied.get() { "Copied" } else { "Copy ID" }
                 class="inline-flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
                 {move || if copied.get() {
-                    view! { <span class="text-green-600">"\u{2713}"</span> }.into_any()
+                    view! {
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13"
+                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" class="text-green-600">
+                            <path d="M20 6 9 17l-5-5"/>
+                        </svg>
+                    }.into_any()
                 } else {
-                    view! { <span>"\u{29C9}"</span> }.into_any()
+                    view! {
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13"
+                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                        </svg>
+                    }.into_any()
                 }}
             </button>
         </span>
