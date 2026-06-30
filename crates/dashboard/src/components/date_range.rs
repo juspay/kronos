@@ -1,4 +1,4 @@
-use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Timelike, Utc};
 
 /// A named quick-pick range. `range(now)` returns inclusive [after, before].
 #[derive(Clone, Copy, PartialEq)]
@@ -54,13 +54,6 @@ pub(crate) fn first_of_month(d: NaiveDate) -> NaiveDate {
 /// Combines a calendar date with a UTC time-of-day into an instant.
 pub(crate) fn combine(date: NaiveDate, time: NaiveTime) -> DateTime<Utc> {
     Utc.from_utc_datetime(&date.and_time(time))
-}
-
-/// Parses an `<input type="time">` value (`HH:MM` or `HH:MM:SS`) into a time.
-pub(crate) fn parse_time(s: &str) -> Option<NaiveTime> {
-    NaiveTime::parse_from_str(s, "%H:%M:%S")
-        .or_else(|_| NaiveTime::parse_from_str(s, "%H:%M"))
-        .ok()
 }
 
 /// Default start-/end-of-day times. Until the user edits the time fields the
@@ -191,23 +184,20 @@ pub fn DateRangeFilter(
         }
     };
 
-    // Time-field edits re-attach the new time to the already-picked date.
-    let on_start_time = move |ev: leptos::ev::Event| {
-        if let Some(t) = parse_time(&event_target_value(&ev)) {
-            set_start_time.set(t);
-            if let Some(a) = after.get() {
-                set_after.set(Some(combine(a.date_naive(), t)));
-            }
+    // Apply a new time-of-day to a bound, re-attaching it to the already-picked
+    // date. Handed to the time dropdowns.
+    let apply_start = Callback::new(move |t: NaiveTime| {
+        set_start_time.set(t);
+        if let Some(a) = after.get() {
+            set_after.set(Some(combine(a.date_naive(), t)));
         }
-    };
-    let on_end_time = move |ev: leptos::ev::Event| {
-        if let Some(t) = parse_time(&event_target_value(&ev)) {
-            set_end_time.set(t);
-            if let Some(b) = before.get() {
-                set_before.set(Some(combine(b.date_naive(), t)));
-            }
+    });
+    let apply_end = Callback::new(move |t: NaiveTime| {
+        set_end_time.set(t);
+        if let Some(b) = before.get() {
+            set_before.set(Some(combine(b.date_naive(), t)));
         }
-    };
+    });
 
     // Build preset buttons eagerly to avoid FnOnce move issues inside view!
     // Each highlights when the active range matches its (whole-day) bounds.
@@ -257,8 +247,9 @@ pub fn DateRangeFilter(
             </button>
             // Popover panel — always in DOM, toggled via display style (avoids
             // FnOnce constraint on <Show> children from moved Vecs).
-            <div class="absolute left-0 top-full z-50 mt-2 flex rounded-xl border border-gray-200 bg-white shadow-xl ring-1 ring-gray-900/5 overflow-hidden"
+            <div class="absolute left-0 top-full z-50 mt-2 flex flex-col rounded-xl border border-gray-200 bg-white shadow-xl ring-1 ring-gray-900/5 overflow-hidden"
                 style=move || if open.get() { "" } else { "display:none" }>
+                <div class="flex">
                 // Presets column
                 <div class="flex flex-col gap-0.5 border-r border-gray-100 bg-gray-50/50 p-3 w-40">
                     <div class="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">"Quick ranges"</div>
@@ -353,38 +344,90 @@ pub fn DateRangeFilter(
                                 .collect_view()
                         }}
                     </div>
-                    // FROM / TO summary with UTC time-of-day. Label, date, and
-                    // time share one line so each bound reads left-to-right and
-                    // the date and time stay aligned on the same baseline.
-                    <div class="mt-4 border-t border-gray-100 pt-3 space-y-2">
-                        <div class="flex items-center gap-2">
-                            <span class="w-9 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-gray-400">"From"</span>
-                            <span class="flex-1 min-w-0 truncate text-sm font-medium text-gray-900">
-                                {move || after.get()
-                                    .map(|a| a.format("%b %-d").to_string())
-                                    .unwrap_or_else(|| "\u{2014}".to_string())}
-                            </span>
-                            <input type="time" step="1"
-                                prop:value=move || start_time.get().format("%H:%M:%S").to_string()
-                                on:change=on_start_time
-                                class="shrink-0 rounded-md border border-gray-300 px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="w-9 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-gray-400">"To"</span>
-                            <span class="flex-1 min-w-0 truncate text-sm font-medium text-gray-900">
-                                {move || before.get()
-                                    .map(|b| b.format("%b %-d").to_string())
-                                    .unwrap_or_else(|| "\u{2014}".to_string())}
-                            </span>
-                            <input type="time" step="1"
-                                prop:value=move || end_time.get().format("%H:%M:%S").to_string()
-                                on:change=on_end_time
-                                class="shrink-0 rounded-md border border-gray-300 px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
-                        </div>
-                        <div class="text-right text-[10px] text-gray-400">"All times in UTC"</div>
                     </div>
                 </div>
+                // FROM / TO band, full width below the calendar — clear label, the
+                // date (with year), and styled HH:MM:SS dropdowns on one line.
+                <div class="border-t border-gray-100 bg-gray-50/60 px-4 py-3 space-y-2.5">
+                    <div class="flex items-center gap-3">
+                        <span class="w-10 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-gray-400">"From"</span>
+                        <span class="flex-1 min-w-0 truncate text-sm font-semibold text-gray-900">
+                            {move || after.get()
+                                .map(|a| a.format("%b %-d, %Y").to_string())
+                                .unwrap_or_else(|| "Not set".to_string())}
+                        </span>
+                        <TimeSelect time=start_time on_change=apply_start />
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="w-10 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-gray-400">"To"</span>
+                        <span class="flex-1 min-w-0 truncate text-sm font-semibold text-gray-900">
+                            {move || before.get()
+                                .map(|b| b.format("%b %-d, %Y").to_string())
+                                .unwrap_or_else(|| "Not set".to_string())}
+                        </span>
+                        <TimeSelect time=end_time on_change=apply_end />
+                    </div>
+                    <div class="text-right text-[10px] text-gray-400">"All times in UTC"</div>
+                </div>
             </div>
+        </div>
+    }
+}
+
+/// `0..end` as zero-padded `<option>`s for the time dropdowns.
+fn time_options(end: u32) -> Vec<impl IntoView> {
+    (0..end)
+        .map(|n| view! { <option value=n.to_string()>{format!("{n:02}")}</option> })
+        .collect()
+}
+
+/// Styled HH:MM:SS dropdowns bound to a `NaiveTime`; emits the new time on any
+/// change. Uses the app's own select styling so it matches the rest of the UI.
+#[component]
+fn TimeSelect(
+    time: ReadSignal<NaiveTime>,
+    #[prop(into)] on_change: Callback<NaiveTime>,
+) -> impl IntoView {
+    let sel = "rounded-md border border-gray-300 bg-white py-1 pl-1.5 pr-0.5 text-sm \
+               text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 \
+               outline-none cursor-pointer";
+    let on_h = move |ev: leptos::ev::Event| {
+        if let Ok(h) = event_target_value(&ev).parse::<u32>() {
+            let t = time.get_untracked();
+            if let Some(nt) = NaiveTime::from_hms_opt(h, t.minute(), t.second()) {
+                on_change.run(nt);
+            }
+        }
+    };
+    let on_m = move |ev: leptos::ev::Event| {
+        if let Ok(m) = event_target_value(&ev).parse::<u32>() {
+            let t = time.get_untracked();
+            if let Some(nt) = NaiveTime::from_hms_opt(t.hour(), m, t.second()) {
+                on_change.run(nt);
+            }
+        }
+    };
+    let on_s = move |ev: leptos::ev::Event| {
+        if let Ok(s) = event_target_value(&ev).parse::<u32>() {
+            let t = time.get_untracked();
+            if let Some(nt) = NaiveTime::from_hms_opt(t.hour(), t.minute(), s) {
+                on_change.run(nt);
+            }
+        }
+    };
+    view! {
+        <div class="flex shrink-0 items-center gap-1">
+            <select prop:value=move || time.get().hour().to_string() on:change=on_h class=sel>
+                {time_options(24)}
+            </select>
+            <span class="text-xs text-gray-400">":"</span>
+            <select prop:value=move || time.get().minute().to_string() on:change=on_m class=sel>
+                {time_options(60)}
+            </select>
+            <span class="text-xs text-gray-400">":"</span>
+            <select prop:value=move || time.get().second().to_string() on:change=on_s class=sel>
+                {time_options(60)}
+            </select>
         </div>
     }
 }
@@ -454,13 +497,6 @@ mod tests {
     fn combine_attaches_time_to_date_in_utc() {
         let dt = combine(d(10), NaiveTime::from_hms_opt(9, 30, 15).unwrap());
         assert_eq!(dt.to_rfc3339(), "2026-06-10T09:30:15+00:00");
-    }
-
-    #[test]
-    fn parse_time_accepts_hm_and_hms_rejects_garbage() {
-        assert_eq!(parse_time("09:30"), NaiveTime::from_hms_opt(9, 30, 0));
-        assert_eq!(parse_time("23:59:59"), NaiveTime::from_hms_opt(23, 59, 59));
-        assert_eq!(parse_time("not-a-time"), None);
     }
 
     #[test]
