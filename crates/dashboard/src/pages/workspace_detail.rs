@@ -1088,36 +1088,30 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
     view! {
         <div class="space-y-4">
             // Filter bar + actions
-            <div class="flex items-center justify-between gap-4">
+            <div class="flex items-start justify-between gap-4">
                 <div class="space-y-3">
-                    // Row 1 — identity / category filters
-                    <div class="flex flex-wrap items-end gap-3">
-                        <div class="flex flex-col gap-1">
-                            <label class="text-xs font-medium text-gray-500">"Job ID"</label>
-                            <input type="search" prop:value=move || job_id_filter.get()
-                                on:change=move |ev| set_job_id_filter.set(event_target_value(&ev))
-                                class="h-9 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                                placeholder="Exact job ID" />
-                        </div>
+                    // Row 1 — Job ID, Status, Trigger
+                    <div class="flex flex-wrap items-center gap-3">
+                        <input type="search" prop:value=move || job_id_filter.get()
+                            on:change=move |ev| set_job_id_filter.set(event_target_value(&ev))
+                            class="h-9 w-44 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                            placeholder="Exact job ID" />
                         <MultiSelectFilter label="Status"
                             options=vec![("ACTIVE", "Active"), ("RETIRED", "Retired")]
                             selected=status_filter set_selected=set_status_filter />
                         <MultiSelectFilter label="Trigger"
                             options=vec![("IMMEDIATE", "Immediate"), ("DELAYED", "Delayed"), ("CRON", "CRON")]
                             selected=trigger_filter set_selected=set_trigger_filter />
+                    </div>
+                    // Row 2 — Endpoint Type, Endpoint, Created
+                    <div class="flex flex-wrap items-center gap-3">
                         <MultiSelectFilter label="Endpoint Type"
                             options=vec![("HTTP", "HTTP"), ("KAFKA", "Kafka"), ("REDIS_STREAM", "Redis Stream"), ("INTERNAL", "Internal")]
                             selected=endpoint_type_filter set_selected=set_endpoint_type_filter />
-                    </div>
-                    // Row 2 — endpoint search + created range + clear
-                    <div class="flex flex-wrap items-end gap-3">
-                        <div class="flex flex-col gap-1">
-                            <label class="text-xs font-medium text-gray-500">"Endpoint"</label>
-                            <input type="search" prop:value=move || endpoint_filter.get()
-                                on:change=move |ev| set_endpoint_filter.set(event_target_value(&ev))
-                                class="h-9 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                                placeholder="Search by endpoint name..." />
-                        </div>
+                        <input type="search" prop:value=move || endpoint_filter.get()
+                            on:change=move |ev| set_endpoint_filter.set(event_target_value(&ev))
+                            class="h-9 w-48 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                            placeholder="Search by endpoint name..." />
                         <DateRangeFilter
                             after=created_after set_after=set_created_after
                             before=created_before set_before=set_created_before />
@@ -1140,7 +1134,7 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
                 // Primary action — distinct from the filters, pinned top-right.
                 <button
                     on:click=move |_| set_modal_open.set(true)
-                    class="inline-flex shrink-0 items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium self-start"
+                    class="inline-flex shrink-0 items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
                 >
                     <PlusIcon />
                     "New Job"

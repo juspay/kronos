@@ -86,7 +86,6 @@ pub fn MultiSelectFilter(
 
     view! {
         <div node_ref=node_ref class="relative flex flex-col gap-1 min-w-[160px]">
-            <label class="text-xs font-medium text-gray-500">{label.clone()}</label>
             <button type="button"
                 on:click=move |_| set_open.update(|o| *o = !*o)
                 class="flex h-9 items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">

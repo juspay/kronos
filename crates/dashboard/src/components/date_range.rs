@@ -137,14 +137,15 @@ pub fn DateRangeFilter(
     });
     on_cleanup(move || handle.remove());
 
-    // Trigger shows date + time (HH:MM). The button has a fixed width, so the
-    // time is always visible without the box reflowing as the time changes.
+    // Trigger is content-sized: small ("Created") when empty, expanding to show
+    // the selected date + time (with seconds). It's the last item in its row and
+    // left-aligned, so it grows rightward without disturbing the other filters.
     let button_text = move || match (after.get(), before.get()) {
         (Some(a), Some(b)) => {
-            format!("{} \u{2013} {}", a.format("%b %d %H:%M"), b.format("%b %d %H:%M"))
+            format!("{} \u{2013} {}", a.format("%b %d %H:%M:%S"), b.format("%b %d %H:%M:%S"))
         }
-        (Some(a), None) => format!("From {}", a.format("%b %d %H:%M")),
-        (None, Some(b)) => format!("Until {}", b.format("%b %d %H:%M")),
+        (Some(a), None) => format!("From {}", a.format("%b %d %H:%M:%S")),
+        (None, Some(b)) => format!("Until {}", b.format("%b %d %H:%M:%S")),
         (None, None) => "Created".to_string(),
     };
     let any = move || after.get().is_some() || before.get().is_some();
@@ -220,12 +221,11 @@ pub fn DateRangeFilter(
         .collect();
 
     view! {
-        <div node_ref=node_ref class="relative flex flex-col gap-1 w-64">
-            <label class="text-xs font-medium text-gray-500">"Created"</label>
+        <div node_ref=node_ref class="relative">
             <button type="button"
                 on:click=move |_| set_open.update(|o| *o = !*o)
                 class="flex h-9 items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
-                <span class="flex-1 min-w-0 truncate text-left" class:text-gray-400=move || !any()>{button_text}</span>
+                <span class="whitespace-nowrap" class:text-gray-400=move || !any()>{button_text}</span>
                 <span class="flex items-center gap-1 shrink-0">
                     <Show when=any>
                         <span role="button" aria-label="Clear"
@@ -243,7 +243,7 @@ pub fn DateRangeFilter(
             </button>
             // Popover panel — always in DOM, toggled via display style (avoids
             // FnOnce constraint on <Show> children from moved Vecs).
-            <div class="absolute right-0 top-full z-50 mt-2 flex flex-col rounded-xl border border-gray-200 bg-white shadow-xl ring-1 ring-gray-900/5 overflow-hidden"
+            <div class="absolute left-0 top-full z-50 mt-2 flex flex-col rounded-xl border border-gray-200 bg-white shadow-xl ring-1 ring-gray-900/5 overflow-hidden"
                 style=move || if open.get() { "" } else { "display:none" }>
                 <div class="flex">
                 // Presets column
