@@ -184,17 +184,17 @@ impl ListJobsFluentBuilder {
     /// 
     /// To override the contents of this collection use [`set_trigger_type`](Self::set_trigger_type).
     /// 
-    /// Comma-separated list of trigger types, e.g. `CRON,DELAYED`.
+    /// Trigger types to include (OR-ed). Sent as a repeated query param, e.g. `?trigger_type=CRON&amp;trigger_type=DELAYED`; the server also accepts a single comma-separated value.
     pub fn trigger_type(mut self, input: crate::types::TriggerTypeEnum) -> Self {
                         self.inner = self.inner.trigger_type(input);
                         self
                     }
-    /// Comma-separated list of trigger types, e.g. `CRON,DELAYED`.
+    /// Trigger types to include (OR-ed). Sent as a repeated query param, e.g. `?trigger_type=CRON&amp;trigger_type=DELAYED`; the server also accepts a single comma-separated value.
     pub fn set_trigger_type(mut self, input: ::std::option::Option<::std::vec::Vec::<crate::types::TriggerTypeEnum>>) -> Self {
                     self.inner = self.inner.set_trigger_type(input);
                     self
                 }
-    /// Comma-separated list of trigger types, e.g. `CRON,DELAYED`.
+    /// Trigger types to include (OR-ed). Sent as a repeated query param, e.g. `?trigger_type=CRON&amp;trigger_type=DELAYED`; the server also accepts a single comma-separated value.
     pub fn get_trigger_type(&self) -> &::std::option::Option<::std::vec::Vec::<crate::types::TriggerTypeEnum>> {
                     self.inner.get_trigger_type()
                 }
@@ -203,17 +203,17 @@ impl ListJobsFluentBuilder {
     /// 
     /// To override the contents of this collection use [`set_status`](Self::set_status).
     /// 
-    /// Comma-separated list of job statuses, e.g. `ACTIVE,RETIRED`.
+    /// Job statuses to include (OR-ed). Sent as a repeated query param, e.g. `?status=ACTIVE&amp;status=RETIRED`; the server also accepts a single comma-separated value.
     pub fn status(mut self, input: crate::types::JobStatusEnum) -> Self {
                         self.inner = self.inner.status(input);
                         self
                     }
-    /// Comma-separated list of job statuses, e.g. `ACTIVE,RETIRED`.
+    /// Job statuses to include (OR-ed). Sent as a repeated query param, e.g. `?status=ACTIVE&amp;status=RETIRED`; the server also accepts a single comma-separated value.
     pub fn set_status(mut self, input: ::std::option::Option<::std::vec::Vec::<crate::types::JobStatusEnum>>) -> Self {
                     self.inner = self.inner.set_status(input);
                     self
                 }
-    /// Comma-separated list of job statuses, e.g. `ACTIVE,RETIRED`.
+    /// Job statuses to include (OR-ed). Sent as a repeated query param, e.g. `?status=ACTIVE&amp;status=RETIRED`; the server also accepts a single comma-separated value.
     pub fn get_status(&self) -> &::std::option::Option<::std::vec::Vec::<crate::types::JobStatusEnum>> {
                     self.inner.get_status()
                 }
@@ -222,17 +222,17 @@ impl ListJobsFluentBuilder {
     /// 
     /// To override the contents of this collection use [`set_endpoint_type`](Self::set_endpoint_type).
     /// 
-    /// Comma-separated list of endpoint types, e.g. `HTTP,INTERNAL`.
+    /// Endpoint types to include (OR-ed). Sent as a repeated query param, e.g. `?endpoint_type=HTTP&amp;endpoint_type=INTERNAL`; the server also accepts a single comma-separated value.
     pub fn endpoint_type(mut self, input: crate::types::EndpointTypeEnum) -> Self {
                         self.inner = self.inner.endpoint_type(input);
                         self
                     }
-    /// Comma-separated list of endpoint types, e.g. `HTTP,INTERNAL`.
+    /// Endpoint types to include (OR-ed). Sent as a repeated query param, e.g. `?endpoint_type=HTTP&amp;endpoint_type=INTERNAL`; the server also accepts a single comma-separated value.
     pub fn set_endpoint_type(mut self, input: ::std::option::Option<::std::vec::Vec::<crate::types::EndpointTypeEnum>>) -> Self {
                     self.inner = self.inner.set_endpoint_type(input);
                     self
                 }
-    /// Comma-separated list of endpoint types, e.g. `HTTP,INTERNAL`.
+    /// Endpoint types to include (OR-ed). Sent as a repeated query param, e.g. `?endpoint_type=HTTP&amp;endpoint_type=INTERNAL`; the server also accepts a single comma-separated value.
     pub fn get_endpoint_type(&self) -> &::std::option::Option<::std::vec::Vec::<crate::types::EndpointTypeEnum>> {
                     self.inner.get_endpoint_type()
                 }

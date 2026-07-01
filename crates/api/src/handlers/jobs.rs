@@ -58,9 +58,7 @@ pub async fn create(
     }
 
     if let Some(ref key) = body.idempotency_key {
-        if let Some(existing) =
-            db::jobs::get_by_idempotency(&mut db, &body.endpoint, key).await?
-        {
+        if let Some(existing) = db::jobs::get_by_idempotency(&mut db, &body.endpoint, key).await? {
             let exec = db::executions::get_for_job(&mut db, &existing.job_id).await?;
             return Ok(HttpResponse::Ok()
                 .json(serde_json::json!({ "data": job_response(&existing, exec.as_ref()) })));
@@ -261,20 +259,6 @@ pub async fn create(
     }
 }
 
-/// Optional server-side filters for [`list`], parsed from the query string
-/// alongside [`PaginationParams`]. Blank values (e.g. `?status=`) are treated as
-/// absent so the dashboard can send empty params for an "All" selection.
-#[derive(Debug, serde::Deserialize)]
-pub struct JobListFilters {
-    pub job_id: Option<String>,
-    pub status: Option<String>,
-    pub trigger_type: Option<String>,
-    pub endpoint: Option<String>,
-    pub endpoint_type: Option<String>,
-    pub created_after: Option<String>,
-    pub created_before: Option<String>,
-}
-
 fn blank_to_none(value: Option<String>) -> Option<String> {
     value.and_then(|v| {
         let trimmed = v.trim();
@@ -286,28 +270,42 @@ fn blank_to_none(value: Option<String>) -> Option<String> {
     })
 }
 
-/// Splits a comma-separated query value into validated, de-duplicated enum
-/// values. Blank tokens are skipped; an invalid token fails the whole request
-/// with a 400 rather than silently dropping rows.
+/// The last non-blank value for `key` across the raw query pairs. Scalar filters
+/// (`job_id`, `endpoint`, the date bounds) are single-valued, so a repeated key
+/// keeps the final occurrence; blanks (e.g. `?job_id=`) are treated as absent.
+fn last_scalar(pairs: &[(String, String)], key: &str) -> Option<String> {
+    pairs
+        .iter()
+        .filter(|(k, _)| k == key)
+        .filter_map(|(_, v)| blank_to_none(Some(v.clone())))
+        .last()
+}
+
+/// Collects a validated, de-duplicated enum list from the query pairs for `key`.
+///
+/// Liberal in what it accepts: both repeated params (`?status=A&status=B`, which
+/// the generated Smithy SDK emits for a list-typed `@httpQuery`) and a single
+/// comma-separated value (`?status=A,B`, which the dashboard emits). Blank tokens
+/// are skipped; an invalid token fails the whole request with a 400 rather than
+/// silently dropping rows.
 fn parse_filter_list<T: PartialEq>(
-    value: Option<String>,
+    pairs: &[(String, String)],
+    key: &str,
     parse: impl Fn(&str) -> Option<T>,
     label: &str,
 ) -> Result<Vec<T>, AppError> {
-    let raw = match blank_to_none(value) {
-        Some(r) => r,
-        None => return Ok(Vec::new()),
-    };
     let mut out: Vec<T> = Vec::new();
-    for token in raw.split(',') {
-        let token = token.trim();
-        if token.is_empty() {
-            continue;
-        }
-        let parsed =
-            parse(token).ok_or_else(|| AppError::InvalidRequest(format!("Invalid {label}: {token}")))?;
-        if !out.contains(&parsed) {
-            out.push(parsed);
+    for (_, value) in pairs.iter().filter(|(k, _)| k == key) {
+        for token in value.split(',') {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+            let parsed = parse(token)
+                .ok_or_else(|| AppError::InvalidRequest(format!("Invalid {label}: {token}")))?;
+            if !out.contains(&parsed) {
+                out.push(parsed);
+            }
         }
     }
     Ok(out)
@@ -325,31 +323,38 @@ fn parse_datetime(value: Option<String>, label: &str) -> Result<Option<DateTime<
     }
 }
 
-impl JobListFilters {
-    /// Parses and validates each enum filter into the typed DB-layer struct.
-    /// Invalid values are rejected up front so a typo surfaces as a 400 rather
-    /// than silently returning zero rows. `endpoint` is a free-text substring
-    /// search, so it needs no validation.
-    fn into_db_filters(self) -> Result<db::jobs::JobFilters, AppError> {
-        let created_after = parse_datetime(self.created_after, "created_after")?;
-        let created_before = parse_datetime(self.created_before, "created_before")?;
-        if let (Some(a), Some(b)) = (created_after, created_before) {
-            if a > b {
-                return Err(AppError::InvalidRequest(
-                    "created_after must not be after created_before".into(),
-                ));
-            }
+/// Parses and validates the server-side jobs-list filters from the raw query
+/// pairs (parsed alongside [`PaginationParams`]). Enum filters are validated up
+/// front so a typo surfaces as a 400 rather than silently returning zero rows;
+/// `endpoint` is a free-text substring search, so it needs no validation.
+///
+/// Taking the raw pairs (rather than a `serde`-derived struct) is deliberate:
+/// the multi-value filters must accept a key appearing more than once, which
+/// `serde_urlencoded` cannot fold into a `Vec` for an `Option<String>` field.
+fn parse_job_filters(pairs: &[(String, String)]) -> Result<db::jobs::JobFilters, AppError> {
+    let created_after = parse_datetime(last_scalar(pairs, "created_after"), "created_after")?;
+    let created_before = parse_datetime(last_scalar(pairs, "created_before"), "created_before")?;
+    if let (Some(a), Some(b)) = (created_after, created_before) {
+        if a > b {
+            return Err(AppError::InvalidRequest(
+                "created_after must not be after created_before".into(),
+            ));
         }
-        Ok(db::jobs::JobFilters {
-            job_id: blank_to_none(self.job_id),
-            status: parse_filter_list(self.status, JobStatus::from_str_val, "status")?,
-            trigger: parse_filter_list(self.trigger_type, TriggerType::from_str_val, "trigger")?,
-            endpoint: blank_to_none(self.endpoint),
-            endpoint_type: parse_filter_list(self.endpoint_type, EndpointType::from_str_val, "endpoint_type")?,
-            created_after,
-            created_before,
-        })
     }
+    Ok(db::jobs::JobFilters {
+        job_id: last_scalar(pairs, "job_id"),
+        status: parse_filter_list(pairs, "status", JobStatus::from_str_val, "status")?,
+        trigger: parse_filter_list(pairs, "trigger_type", TriggerType::from_str_val, "trigger")?,
+        endpoint: last_scalar(pairs, "endpoint"),
+        endpoint_type: parse_filter_list(
+            pairs,
+            "endpoint_type",
+            EndpointType::from_str_val,
+            "endpoint_type",
+        )?,
+        created_after,
+        created_before,
+    })
 }
 
 pub async fn list(
@@ -357,7 +362,10 @@ pub async fn list(
     _auth: AuthenticatedRequest,
     ws: Workspace,
     params: web::Query<PaginationParams>,
-    filters: web::Query<JobListFilters>,
+    // Raw pairs rather than a typed struct: multi-value filters may repeat a key
+    // (`?status=A&status=B`), which the SDK emits and `serde_urlencoded` cannot
+    // fold into a `Vec`. `parse_job_filters` also still accepts `?status=A,B`.
+    raw_query: web::Query<Vec<(String, String)>>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
@@ -366,7 +374,7 @@ pub async fn list(
     let mut db = DbContext::new(&mut *conn, prefix);
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
-    let filters = filters.into_inner().into_db_filters()?;
+    let filters = parse_job_filters(&raw_query.into_inner())?;
     let items = db::jobs::list(&mut db, cursor.as_deref(), limit + 1, &filters).await?;
 
     let has_more = items.len() as i64 > limit;
@@ -439,15 +447,13 @@ pub async fn update(
         ));
     }
 
-    let cron_expr = match body.cron.clone() {
-        Some(c) => c,
-        None => PgCronExpr::try_from(
-            old_job
-                .cron_expression
-                .clone()
-                .ok_or_else(|| AppError::InvalidCron("Existing job has no cron expression".into()))?,
-        )?,
-    };
+    let cron_expr =
+        match body.cron.clone() {
+            Some(c) => c,
+            None => PgCronExpr::try_from(old_job.cron_expression.clone().ok_or_else(|| {
+                AppError::InvalidCron("Existing job has no cron expression".into())
+            })?)?,
+        };
     let tz_str = body
         .timezone
         .as_deref()
@@ -487,9 +493,7 @@ pub async fn update(
     drop(db);
     tx.commit().await.map_err(AppError::from)?;
 
-    if let Err(e) =
-        db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await
-    {
+    if let Err(e) = db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await {
         tracing::error!(job_id = %job_id, "Failed to unregister old pg_cron job: {}", e);
     }
     if let Err(e) = db::jobs::register_pg_cron(
@@ -559,8 +563,7 @@ pub async fn cancel(
     drop(db);
 
     if job.trigger_type == "CRON" {
-        if let Err(e) =
-            db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await
+        if let Err(e) = db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await
         {
             tracing::error!(job_id = %job_id, "Failed to unregister pg_cron job: {}", e);
         }
@@ -782,31 +785,12 @@ fn job_summary(job: &kronos_common::models::Job) -> serde_json::Value {
 mod tests {
     use super::*;
 
-    fn filters(
-        status: Option<&str>,
-        trigger_type: Option<&str>,
-        endpoint: Option<&str>,
-        endpoint_type: Option<&str>,
-        created_after: Option<&str>,
-        created_before: Option<&str>,
-    ) -> JobListFilters {
-        JobListFilters {
-            job_id: None,
-            status: status.map(String::from),
-            trigger_type: trigger_type.map(String::from),
-            endpoint: endpoint.map(String::from),
-            endpoint_type: endpoint_type.map(String::from),
-            created_after: created_after.map(String::from),
-            created_before: created_before.map(String::from),
-        }
-    }
-
-    #[test]
-    fn into_db_filters_carries_trimmed_job_id() {
-        let mut f = filters(None, None, None, None, None, None);
-        f.job_id = Some("  job-42  ".to_string());
-        let db = f.into_db_filters().unwrap();
-        assert_eq!(db.job_id, Some("job-42".to_string()));
+    /// Builds raw query pairs from `key=value` strings, mirroring what actix
+    /// hands the handler as `web::Query<Vec<(String, String)>>`.
+    fn pairs(kvs: &[(&str, &str)]) -> Vec<(String, String)> {
+        kvs.iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     fn assert_invalid_request(result: Result<db::jobs::JobFilters, AppError>) {
@@ -818,58 +802,121 @@ mod tests {
     }
 
     #[test]
-    fn into_db_filters_parses_comma_separated_enums() {
-        let f = filters(Some("ACTIVE,RETIRED"), Some("CRON,DELAYED"), Some("notify"), Some("HTTP,INTERNAL"), None, None)
-            .into_db_filters()
-            .unwrap();
+    fn parse_job_filters_carries_trimmed_job_id() {
+        let f = parse_job_filters(&pairs(&[("job_id", "  job-42  ")])).unwrap();
+        assert_eq!(f.job_id, Some("job-42".to_string()));
+    }
+
+    #[test]
+    fn parse_job_filters_parses_comma_separated_enums() {
+        let f = parse_job_filters(&pairs(&[
+            ("status", "ACTIVE,RETIRED"),
+            ("trigger_type", "CRON,DELAYED"),
+            ("endpoint", "notify"),
+            ("endpoint_type", "HTTP,INTERNAL"),
+        ]))
+        .unwrap();
         assert_eq!(f.status, vec![JobStatus::ACTIVE, JobStatus::RETIRED]);
         assert_eq!(f.trigger, vec![TriggerType::CRON, TriggerType::DELAYED]);
         assert_eq!(f.endpoint, Some("notify".to_string()));
-        assert_eq!(f.endpoint_type, vec![EndpointType::HTTP, EndpointType::INTERNAL]);
+        assert_eq!(
+            f.endpoint_type,
+            vec![EndpointType::HTTP, EndpointType::INTERNAL]
+        );
     }
 
     #[test]
-    fn into_db_filters_trims_dedupes_and_drops_blanks() {
-        let f = filters(Some(" ACTIVE , ACTIVE ,, RETIRED "), None, None, None, None, None)
-            .into_db_filters()
-            .unwrap();
+    fn parse_job_filters_parses_repeated_params() {
+        // The generated Smithy SDK emits one entry per list value.
+        let f = parse_job_filters(&pairs(&[
+            ("status", "ACTIVE"),
+            ("status", "RETIRED"),
+            ("endpoint_type", "HTTP"),
+            ("endpoint_type", "INTERNAL"),
+        ]))
+        .unwrap();
+        assert_eq!(f.status, vec![JobStatus::ACTIVE, JobStatus::RETIRED]);
+        assert_eq!(
+            f.endpoint_type,
+            vec![EndpointType::HTTP, EndpointType::INTERNAL]
+        );
+    }
+
+    #[test]
+    fn parse_job_filters_mixes_repeated_and_comma_separated() {
+        let f = parse_job_filters(&pairs(&[
+            ("status", "ACTIVE,RETIRED"),
+            ("status", "ACTIVE"),
+        ]))
+        .unwrap();
+        // Deduped across both the comma-split and the repeated occurrence.
         assert_eq!(f.status, vec![JobStatus::ACTIVE, JobStatus::RETIRED]);
     }
 
     #[test]
-    fn into_db_filters_empty_lists_when_absent() {
-        let f = filters(None, None, None, None, None, None).into_db_filters().unwrap();
+    fn parse_job_filters_scalar_takes_last_non_blank() {
+        let f = parse_job_filters(&pairs(&[("job_id", "job-1"), ("job_id", "  job-2  ")])).unwrap();
+        assert_eq!(f.job_id, Some("job-2".to_string()));
+    }
+
+    #[test]
+    fn parse_job_filters_trims_dedupes_and_drops_blanks() {
+        let f = parse_job_filters(&pairs(&[("status", " ACTIVE , ACTIVE ,, RETIRED ")])).unwrap();
+        assert_eq!(f.status, vec![JobStatus::ACTIVE, JobStatus::RETIRED]);
+    }
+
+    #[test]
+    fn parse_job_filters_empty_lists_when_absent() {
+        let f = parse_job_filters(&pairs(&[])).unwrap();
         assert!(f.status.is_empty());
         assert!(f.trigger.is_empty());
         assert!(f.endpoint_type.is_empty());
+        assert_eq!(f.job_id, None);
         assert_eq!(f.endpoint, None);
         assert_eq!(f.created_after, None);
         assert_eq!(f.created_before, None);
     }
 
     #[test]
-    fn into_db_filters_parses_rfc3339_dates() {
-        let f = filters(None, None, None, None, Some("2026-06-18T00:00:00Z"), Some("2026-06-24T23:59:59Z"))
-            .into_db_filters()
-            .unwrap();
+    fn parse_job_filters_blank_values_are_absent() {
+        // The dashboard sends empty params for an "All" selection.
+        let f = parse_job_filters(&pairs(&[
+            ("status", ""),
+            ("job_id", "  "),
+            ("endpoint", ""),
+        ]))
+        .unwrap();
+        assert!(f.status.is_empty());
+        assert_eq!(f.job_id, None);
+        assert_eq!(f.endpoint, None);
+    }
+
+    #[test]
+    fn parse_job_filters_parses_rfc3339_dates() {
+        let f = parse_job_filters(&pairs(&[
+            ("created_after", "2026-06-18T00:00:00Z"),
+            ("created_before", "2026-06-24T23:59:59Z"),
+        ]))
+        .unwrap();
         assert!(f.created_after.is_some());
         assert!(f.created_before.is_some());
     }
 
     #[test]
-    fn into_db_filters_rejects_bad_enum_token() {
-        assert_invalid_request(filters(Some("ACTIVE,BOGUS"), None, None, None, None, None).into_db_filters());
+    fn parse_job_filters_rejects_bad_enum_token() {
+        assert_invalid_request(parse_job_filters(&pairs(&[("status", "ACTIVE,BOGUS")])));
     }
 
     #[test]
-    fn into_db_filters_rejects_bad_date() {
-        assert_invalid_request(filters(None, None, None, None, Some("yesterday"), None).into_db_filters());
+    fn parse_job_filters_rejects_bad_date() {
+        assert_invalid_request(parse_job_filters(&pairs(&[("created_after", "yesterday")])));
     }
 
     #[test]
-    fn into_db_filters_rejects_inverted_date_range() {
-        assert_invalid_request(
-            filters(None, None, None, None, Some("2026-06-24T00:00:00Z"), Some("2026-06-18T00:00:00Z")).into_db_filters(),
-        );
+    fn parse_job_filters_rejects_inverted_date_range() {
+        assert_invalid_request(parse_job_filters(&pairs(&[
+            ("created_after", "2026-06-24T00:00:00Z"),
+            ("created_before", "2026-06-18T00:00:00Z"),
+        ])));
     }
 }
