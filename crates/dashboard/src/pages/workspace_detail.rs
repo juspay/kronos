@@ -2,12 +2,11 @@ use leptos::prelude::*;
 use leptos_router::components::A;
 use leptos_router::hooks::use_params_map;
 
-use crate::app::prefixed;
 use crate::api::{
     self, Config, CreateConfig, CreateEndpoint, CreatePayloadSpec, CreateSecret, Endpoint,
-    Execution, Job, JobListQueryParams, PayloadSpec, UpdateConfig, UpdatePayloadSpec,
-    UpdateSecret,
+    Execution, Job, JobListQueryParams, PayloadSpec, UpdateConfig, UpdatePayloadSpec, UpdateSecret,
 };
+use crate::app::prefixed;
 use crate::components::confirm::ConfirmDialog;
 use crate::components::copyable_id::CopyableId;
 use crate::components::date_range::DateRangeFilter;
@@ -295,7 +294,8 @@ fn CreatePayloadSpecForm(
     set_refresh: WriteSignal<u32>,
 ) -> impl IntoView {
     let (name, set_name) = signal(String::new());
-    let (schema_json, set_schema_json) = signal(r#"{"type": "object", "properties": {}}"#.to_string());
+    let (schema_json, set_schema_json) =
+        signal(r#"{"type": "object", "properties": {}}"#.to_string());
     let (error, set_error) = signal(Option::<String>::None);
     let (submitting, set_submitting) = signal(false);
 
@@ -316,7 +316,10 @@ fn CreatePayloadSpecForm(
                     return;
                 }
             };
-            let body = CreatePayloadSpec { name: name_val, schema };
+            let body = CreatePayloadSpec {
+                name: name_val,
+                schema,
+            };
             match api::create_payload_spec(oid, wid, body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
@@ -376,7 +379,12 @@ fn EditPayloadSpecForm(
         }
     });
 
-    let spec_name = move || editing_spec.get().map(|s| s.name.clone()).unwrap_or_default();
+    let spec_name = move || {
+        editing_spec
+            .get()
+            .map(|s| s.name.clone())
+            .unwrap_or_default()
+    };
 
     let on_submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
@@ -601,7 +609,10 @@ fn CreateConfigForm(
                     return;
                 }
             };
-            let body = CreateConfig { name: name_val, values };
+            let body = CreateConfig {
+                name: name_val,
+                values,
+            };
             match api::create_config(oid, wid, body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
@@ -661,7 +672,12 @@ fn EditConfigForm(
         }
     });
 
-    let cfg_name = move || editing_config.get().map(|c| c.name.clone()).unwrap_or_default();
+    let cfg_name = move || {
+        editing_config
+            .get()
+            .map(|c| c.name.clone())
+            .unwrap_or_default()
+    };
 
     let on_submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
@@ -999,6 +1015,19 @@ fn filter_opt(value: String) -> Option<String> {
     }
 }
 
+/// A snapshot of every jobs-list filter, in the same order as [`JobsTab`]'s
+/// `filter_key`. Used to detect when the active filters have changed out from
+/// under the cursor stack so pagination can fall back to page 1.
+type JobFilterKey = (
+    String,
+    Vec<String>,
+    Vec<String>,
+    Vec<String>,
+    String,
+    Option<chrono::DateTime<chrono::Utc>>,
+    Option<chrono::DateTime<chrono::Utc>>,
+);
+
 #[component]
 fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
     let (refresh, set_refresh) = signal(0u32);
@@ -1012,7 +1041,8 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
     let (endpoint_type_filter, set_endpoint_type_filter) = signal(Vec::<String>::new());
     let (endpoint_filter, set_endpoint_filter) = signal(String::new());
     let (created_after, set_created_after) = signal(Option::<chrono::DateTime<chrono::Utc>>::None);
-    let (created_before, set_created_before) = signal(Option::<chrono::DateTime<chrono::Utc>>::None);
+    let (created_before, set_created_before) =
+        signal(Option::<chrono::DateTime<chrono::Utc>>::None);
     let (page_size, set_page_size) = signal(50i64);
 
     // Cursor pagination. The backend cursor is forward-only, so we keep the
@@ -1024,12 +1054,24 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
     // list renders so applying a filter / paging doesn't jump the page to top.
     let (saved_scroll, set_saved_scroll) = signal(None::<f64>);
 
-    // Resetting pagination whenever filters or page size change keeps the cursor
-    // stack consistent with the active query.
-    let reset_pagination = move || {
-        set_page_cursors.set(vec![None]);
-        set_page_index.set(0);
+    // A snapshot of every active filter. The jobs resource compares the live
+    // snapshot against the one the cursor stack was built for (`applied_key`) and
+    // falls back to page 1 (cursor `None`) on any mismatch. This makes a filter
+    // change immune to the reset effect's timing: even if the resource re-runs
+    // with a stale `page_index` before the reset lands, the guard forces cursor
+    // `None`, so it can never fetch a mid-list page for freshly changed filters.
+    let filter_key = move || -> JobFilterKey {
+        (
+            job_id_filter.get(),
+            status_filter.get(),
+            trigger_filter.get(),
+            endpoint_type_filter.get(),
+            endpoint_filter.get(),
+            created_after.get(),
+            created_before.get(),
+        )
     };
+    let (applied_key, set_applied_key) = signal(filter_key());
 
     let oid = org_id.clone();
     let wid = workspace_id.clone();
@@ -1037,21 +1079,27 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
         let _ = refresh.get();
         let oid = oid.clone();
         let wid = wid.clone();
-        let cursor = page_cursors
-            .get()
-            .get(page_index.get())
-            .cloned()
-            .flatten();
+        let live = filter_key();
+        // Only trust the cursor stack while it still belongs to the live filters;
+        // otherwise a filter just changed and we must restart from page 1. Read
+        // `applied_key` untracked so bookkeeping writes to it don't refetch.
+        let cursor = if live == applied_key.get_untracked() {
+            page_cursors.get().get(page_index.get()).cloned().flatten()
+        } else {
+            None
+        };
+        let (job_id, status, trigger, endpoint_type, endpoint, created_after, created_before) =
+            live;
         let params = JobListQueryParams {
             cursor,
             limit: page_size.get(),
-            job_id: filter_opt(job_id_filter.get()),
-            status: status_filter.get(),
-            trigger: trigger_filter.get(),
-            endpoint: filter_opt(endpoint_filter.get()),
-            endpoint_type: endpoint_type_filter.get(),
-            created_after: created_after.get().map(|d| d.to_rfc3339()),
-            created_before: created_before.get().map(|d| d.to_rfc3339()),
+            job_id: filter_opt(job_id),
+            status,
+            trigger,
+            endpoint: filter_opt(endpoint),
+            endpoint_type,
+            created_after: created_after.map(|d| d.to_rfc3339()),
+            created_before: created_before.map(|d| d.to_rfc3339()),
         };
         api::list_jobs(oid, wid, params)
     });
@@ -1071,20 +1119,22 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
             || created_before.get().is_some()
     };
 
-    // Reset pagination whenever any filter signal changes. The `prev` guard
-    // skips the initial run so the first page load is not reset.
+    // Reset pagination whenever any filter changes, and record the snapshot the
+    // fresh page-1 cursor stack now belongs to. The `prev` guard skips the
+    // initial run. The cursor-stack writes are guarded so a filter change made
+    // while already on page 1 doesn't trigger a redundant refetch (the resource
+    // already fetches page 1 via the stale-snapshot guard above).
     Effect::new(move |prev: Option<()>| {
-        let _ = (
-            job_id_filter.get(),
-            status_filter.get(),
-            trigger_filter.get(),
-            endpoint_type_filter.get(),
-            endpoint_filter.get(),
-            created_after.get(),
-            created_before.get(),
-        );
+        let live = filter_key();
         if prev.is_some() {
-            reset_pagination();
+            set_applied_key.set(live);
+            if page_index.get_untracked() != 0 {
+                set_page_index.set(0);
+            }
+            let cursors = page_cursors.get_untracked();
+            if cursors.len() != 1 || cursors[0].is_some() {
+                set_page_cursors.set(vec![None]);
+            }
         }
     });
 
@@ -1493,7 +1543,12 @@ fn CreateJobForm(
 }
 
 #[component]
-fn JobsTable(jobs: Vec<Job>, org_id: String, workspace_id: String, set_refresh: WriteSignal<u32>) -> impl IntoView {
+fn JobsTable(
+    jobs: Vec<Job>,
+    org_id: String,
+    workspace_id: String,
+    set_refresh: WriteSignal<u32>,
+) -> impl IntoView {
     let (selected_job, set_selected_job) = signal(Option::<String>::None);
     let (status_job, set_status_job) = signal(Option::<String>::None);
     let (versions_job, set_versions_job) = signal(Option::<String>::None);
@@ -1827,7 +1882,12 @@ fn JobExecutions(org_id: String, workspace_id: String, job_id: String) -> impl I
 }
 
 #[component]
-fn ExecutionsList(executions: Vec<Execution>, org_id: String, workspace_id: String, set_refresh: WriteSignal<u32>) -> impl IntoView {
+fn ExecutionsList(
+    executions: Vec<Execution>,
+    org_id: String,
+    workspace_id: String,
+    set_refresh: WriteSignal<u32>,
+) -> impl IntoView {
     let (selected_exec, set_selected_exec) = signal(Option::<String>::None);
     let (cancel_error, set_cancel_error) = signal(Option::<String>::None);
 
@@ -1926,10 +1986,14 @@ fn ExecutionDetail(org_id: String, workspace_id: String, execution: Execution) -
         api::list_execution_logs(oid, wid, eid)
     });
 
-    let input_str = execution.input.as_ref()
+    let input_str = execution
+        .input
+        .as_ref()
         .map(|v| serde_json::to_string_pretty(v).unwrap_or_default())
         .unwrap_or_else(|| "null".to_string());
-    let output_str = execution.output.as_ref()
+    let output_str = execution
+        .output
+        .as_ref()
         .map(|v| serde_json::to_string_pretty(v).unwrap_or_default())
         .unwrap_or_else(|| "null".to_string());
 
@@ -2139,7 +2203,8 @@ fn CreateEndpointForm(
 ) -> impl IntoView {
     let (name, set_name) = signal(String::new());
     let (ep_type, set_ep_type) = signal("HTTP".to_string());
-    let (spec_json, set_spec_json) = signal(r#"{"url": "http://localhost:9999/webhook", "method": "POST"}"#.to_string());
+    let (spec_json, set_spec_json) =
+        signal(r#"{"url": "http://localhost:9999/webhook", "method": "POST"}"#.to_string());
     let (error, set_error) = signal(Option::<String>::None);
     let (submitting, set_submitting) = signal(false);
 
@@ -2300,7 +2365,12 @@ fn EditEndpointForm(
         }
     });
 
-    let ep_name = move || editing_ep.get().map(|ep| ep.name.clone()).unwrap_or_default();
+    let ep_name = move || {
+        editing_ep
+            .get()
+            .map(|ep| ep.name.clone())
+            .unwrap_or_default()
+    };
 
     let on_submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
@@ -2390,5 +2460,9 @@ fn PlusIcon() -> impl IntoView {
 }
 
 fn format_date(s: &str) -> String {
-    if s.len() >= 10 { s[..10].to_string() } else { s.to_string() }
+    if s.len() >= 10 {
+        s[..10].to_string()
+    } else {
+        s.to_string()
+    }
 }
