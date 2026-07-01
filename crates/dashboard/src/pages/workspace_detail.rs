@@ -1020,6 +1020,9 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
     // it to support a Previous button. Page 1 uses cursor `None`.
     let (page_cursors, set_page_cursors) = signal(vec![Option::<String>::None]);
     let (page_index, set_page_index) = signal(0usize);
+    // Scroll position captured when the query changes, restored after the new
+    // list renders so applying a filter / paging doesn't jump the page to top.
+    let (saved_scroll, set_saved_scroll) = signal(None::<f64>);
 
     // Resetting pagination whenever filters or page size change keeps the cursor
     // stack consistent with the active query.
@@ -1082,6 +1085,42 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
         );
         if prev.is_some() {
             reset_pagination();
+        }
+    });
+
+    // Capture the current scroll position just before any query change swaps the
+    // list content (filters, page navigation, page size).
+    Effect::new(move |prev: Option<()>| {
+        let _ = (
+            job_id_filter.get(),
+            status_filter.get(),
+            trigger_filter.get(),
+            endpoint_type_filter.get(),
+            endpoint_filter.get(),
+            created_after.get(),
+            created_before.get(),
+            page_index.get(),
+            page_size.get(),
+        );
+        if prev.is_some() {
+            if let Some(w) = web_sys::window() {
+                set_saved_scroll.set(w.scroll_y().ok());
+            }
+        }
+    });
+
+    // Once the refetched list has rendered, restore the saved scroll position so
+    // the viewport stays put instead of jumping to the top.
+    Effect::new(move |_| {
+        if jobs.get().is_some() {
+            if let Some(y) = saved_scroll.get_untracked() {
+                set_saved_scroll.set(None);
+                request_animation_frame(move || {
+                    if let Some(w) = web_sys::window() {
+                        w.scroll_to_with_x_and_y(0.0, y);
+                    }
+                });
+            }
         }
     });
 
