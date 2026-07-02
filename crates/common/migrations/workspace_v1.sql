@@ -1,5 +1,6 @@
 -- Workspace-scoped tables.
--- The {p} placeholder is replaced at runtime with the configured table prefix (e.g. "sched_") plus underscore, or empty string for no prefix.
+-- The {p} placeholder is replaced at runtime with the configured table prefix used as-is,
+-- including any trailing separator (e.g. "sched_"), or empty string for no prefix.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 

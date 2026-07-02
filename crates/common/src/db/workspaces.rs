@@ -6,7 +6,7 @@ use crate::models::workspace::Workspace;
 use crate::tenant::validate_schema_name;
 use sqlx::PgPool;
 
-const WORKSPACE_SCHEMA_V1: &str = include_str!("../../../../migrations/workspace_v1.sql");
+const WORKSPACE_SCHEMA_V1: &str = include_str!("../../migrations/workspace_v1.sql");
 
 /// Endpoint name kronos installs in every workspace for its dogfooded reaper.
 /// The reaper is an `INTERNAL` CRON job whose ticks materialize executions
@@ -40,7 +40,7 @@ pub async fn create(
     .await?;
 
     // Create the schema and apply workspace DDL
-    provision_schema(pool, schema_name).await?;
+    provision_schema(pool, schema_name, "").await?;
 
     // Install kronos's own dogfooded reaper into this workspace. Done as part
     // of provisioning rather than from a background loop, so a freshly-created
@@ -136,17 +136,22 @@ pub async fn resolve_schema(
     Ok(row.map(|r| r.0))
 }
 
-async fn provision_schema(pool: &PgPool, schema_name: &str) -> Result<(), sqlx::Error> {
-    let create_schema = format!("CREATE SCHEMA IF NOT EXISTS \"{}\"", schema_name);
-    sqlx::query(&create_schema).execute(pool).await?;
-
-    let mut conn = pool.acquire().await?;
-
-    sqlx::query(&format!("SET search_path TO \"{}\"", schema_name))
-        .execute(&mut *conn)
+pub async fn provision_schema(
+    pool: &PgPool,
+    schema_name: &str,
+    table_prefix: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(&format!("CREATE SCHEMA IF NOT EXISTS \"{}\"", schema_name))
+        .execute(pool)
         .await?;
 
-    let ddl = WORKSPACE_SCHEMA_V1.replace("{p}", "");
+    let mut conn = crate::db::scoped::scoped_connection(pool, schema_name).await?;
+
+    // `table_prefix` is used as-is: callers pass the full prefix including any trailing
+    // separator (e.g. "kronos_"), matching the read side (`tbl(prefix, name)` =
+    // `{prefix}{name}`). Do NOT append an underscore here, or provisioned tables
+    // (`kronos__endpoints`) won't match the names queried at runtime (`kronos_endpoints`).
+    let ddl = WORKSPACE_SCHEMA_V1.replace("{p}", table_prefix);
     for stmt in ddl.split(';') {
         let stmt = stmt.trim();
         if !stmt.is_empty() {

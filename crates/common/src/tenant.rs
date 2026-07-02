@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use sqlx::PgPool;
+use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -57,9 +57,14 @@ pub fn build_schema_name(org_id: &str, workspace_slug: &str) -> String {
 /// Trait for discovering active workspace schemas.
 /// Implement this to tell Kronos's worker where to find the list of workspaces.
 /// Kronos ships `SchemaRegistry` as the default implementation.
-#[async_trait]
+///
+/// Declared with `-> impl Future + Send` (rather than `async fn`) so the
+/// returned future is usable inside the spawned worker task; implementors
+/// can simply write `async fn get_active_schemas(&self)`.
 pub trait SchemaProvider: Send + Sync + 'static {
-    async fn get_active_schemas(&self) -> Result<Vec<String>, sqlx::Error>;
+    fn get_active_schemas(
+        &self,
+    ) -> impl Future<Output = Result<Vec<String>, sqlx::Error>> + Send;
 }
 
 /// Cached registry of active workspace schemas.
@@ -118,7 +123,6 @@ mod tests {
     }
 }
 
-#[async_trait]
 impl SchemaProvider for SchemaRegistry {
     async fn get_active_schemas(&self) -> Result<Vec<String>, sqlx::Error> {
         // Check cache first

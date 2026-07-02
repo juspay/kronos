@@ -115,13 +115,7 @@ pub struct KronosLibraryClient {
 }
 
 impl KronosLibraryClient {
-    /// Create a new client.
-    ///
-    /// - `pool`: caller-owned sqlx pool pointing at the same PostgreSQL instance.
-    /// - `table_prefix`: prefix for all Kronos tables (e.g. `"sched"` → `sched_jobs`).
-    ///   Empty string means no prefix (original table names).
-    /// - `encryption_key`: 64 hex-char AES-256 key for secrets; pass zeros if not using secrets.
-    /// - `http_client`: optional reqwest client to reuse the caller's connection pool.
+    /// `table_prefix` must include the trailing underscore (e.g. `"sched_"`); use `""` for no prefix.
     pub fn new(
         pool: PgPool,
         table_prefix: &str,
@@ -145,6 +139,30 @@ impl KronosLibraryClient {
         });
 
         Ok(Self { pool, ctx })
+    }
+
+    /// Convenience constructor for callers that don't manage their own `PgPool`:
+    /// builds an internal pool from `database_url` and `max_connections`.
+    /// Use [`Self::pool`] to share the pool (e.g. with a `SchemaProvider`).
+    /// Callers that need finer pool control should build a `PgPool` themselves
+    /// and use [`Self::new`].
+    pub async fn from_database_url(
+        database_url: &str,
+        max_connections: u32,
+        table_prefix: &str,
+        encryption_key: &str,
+        http_client: Option<Client>,
+    ) -> anyhow::Result<Self> {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(max_connections)
+            .connect(database_url)
+            .await?;
+        Self::new(pool, table_prefix, encryption_key, http_client)
+    }
+
+    /// The connection pool this client runs on.
+    pub fn pool(&self) -> &PgPool {
+        &self.pool
     }
 
     /// Create a job in the given workspace schema and return the execution_id.
@@ -321,26 +339,49 @@ impl KronosLibraryClient {
         Ok(db::executions::get(&mut db, execution_id).await?)
     }
 
-    /// Start the background worker. Returns a JoinHandle — the caller should
-    /// await it (or drop it) on shutdown.
+    /// Start the background worker. Returns a [`WorkerHandle`] — call
+    /// [`WorkerHandle::shutdown`] on shutdown, then await [`WorkerHandle::join`].
     ///
     /// Pass a `WorkerConfig` to control concurrency, poll interval, etc.
-    /// Pass a `CancellationToken` that the caller cancels on shutdown.
     pub fn start_worker<S: SchemaProvider>(
         &self,
         schema_provider: S,
-        cancel: CancellationToken,
         worker_config: WorkerConfig,
-    ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    ) -> WorkerHandle {
         let pool = self.pool.clone();
         let ctx = self.ctx.clone();
 
         // Build an AppConfig-compatible struct from the context + worker_config
         let config = build_app_config(&ctx, &worker_config);
 
-        tokio::spawn(async move {
-            poller::run(pool, config, schema_provider, cancel).await
-        })
+        let cancel = CancellationToken::new();
+        let join = {
+            let cancel = cancel.clone();
+            tokio::spawn(async move {
+                poller::run(pool, config, schema_provider, cancel).await
+            })
+        };
+        WorkerHandle { cancel, join }
+    }
+}
+
+/// Handle to a running background worker. Owns the cancellation token and the
+/// task handle so embedders don't need their own tokio-util dependency.
+pub struct WorkerHandle {
+    cancel: CancellationToken,
+    join: tokio::task::JoinHandle<anyhow::Result<()>>,
+}
+
+impl WorkerHandle {
+    /// Signal the worker to stop. Returns immediately; the worker finishes
+    /// in-flight jobs (bounded by `WorkerConfig::shutdown_timeout_sec`).
+    pub fn shutdown(&self) {
+        self.cancel.cancel();
+    }
+
+    /// Wait for the worker task to finish.
+    pub async fn join(self) -> anyhow::Result<()> {
+        self.join.await?
     }
 }
 
@@ -436,26 +477,7 @@ impl KronosClient for KronosLibraryClient {
     }
 
     async fn provision_workspace(&self, schema_name: &str) -> anyhow::Result<()> {
-        const TEMPLATE: &str = include_str!("../../../migrations/workspace_v1.sql");
-
-        let prefix = &self.ctx.table_prefix;
-        let p = if prefix.is_empty() {
-            String::new()
-        } else {
-            format!("{}_", prefix)
-        };
-
-        let ddl = TEMPLATE.replace("{p}", &p);
-        let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-
-        for stmt in ddl.split(';') {
-            let stmt = stmt.trim();
-            if !stmt.is_empty() {
-                sqlx::query(stmt).execute(&mut *conn).await?;
-            }
-        }
-
-        Ok(())
+        Ok(db::workspaces::provision_schema(&self.pool, schema_name, &self.ctx.table_prefix).await?)
     }
 
     async fn cancel_job(&self, schema_name: &str, job_id: &str) -> anyhow::Result<()> {
@@ -621,7 +643,7 @@ impl KronosClient for KronosHttpClient {
         schema_name: &str,
         endpoint: &str,
         input: serde_json::Value,
-        _max_attempts: i64,
+        max_attempts: i64,
         trigger: JobTrigger,
         idempotency_key: Option<&str>,
     ) -> anyhow::Result<String> {
@@ -647,6 +669,9 @@ impl KronosClient for KronosHttpClient {
             "input": input,
             "trigger": trigger_str,
         });
+        if max_attempts > 0 {
+            body["max_attempts"] = serde_json::json!(max_attempts);
+        }
         if let Some(key) = idempotency_key {
             body["idempotency_key"] = serde_json::json!(key);
         }
