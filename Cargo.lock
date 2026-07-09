@@ -2598,6 +2598,7 @@ dependencies = [
  "dashmap 5.5.3",
  "dotenvy",
  "jsonschema",
+ "log",
  "metrics",
  "metrics-exporter-prometheus",
  "rand 0.8.5",

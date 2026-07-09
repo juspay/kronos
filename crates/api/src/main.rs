@@ -46,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = AppConfig::from_env().await?;
-    let pool = sqlx::PgPool::connect(&config.db.url).await?;
+    let pool = kronos_common::db::connect_pool(&config.db.url, config.db.pool_size).await?;
 
     let metrics_handle = kronos_common::metrics::install_recorder();
 
