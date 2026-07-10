@@ -153,10 +153,7 @@ impl KronosLibraryClient {
         encryption_key: &str,
         http_client: Option<Client>,
     ) -> anyhow::Result<Self> {
-        let pool = sqlx::postgres::PgPoolOptions::new()
-            .max_connections(max_connections)
-            .connect(database_url)
-            .await?;
+        let pool = db::connect_pool(database_url, max_connections).await?;
         Self::new(pool, table_prefix, encryption_key, http_client)
     }
 
