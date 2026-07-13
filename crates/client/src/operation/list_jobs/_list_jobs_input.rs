@@ -11,12 +11,20 @@ pub struct ListJobsInput  {
     pub cursor: ::std::option::Option<::std::string::String>,
     #[allow(missing_docs)] // documentation missing in model
     pub limit: ::std::option::Option<i32>,
+    /// Exact-match job id filter.
+    pub job_id: ::std::option::Option<::std::string::String>,
     #[allow(missing_docs)] // documentation missing in model
     pub endpoint: ::std::option::Option<::std::string::String>,
-    #[allow(missing_docs)] // documentation missing in model
-    pub trigger_type: ::std::option::Option<crate::types::TriggerTypeEnum>,
-    #[allow(missing_docs)] // documentation missing in model
-    pub status: ::std::option::Option<crate::types::JobStatusEnum>,
+    /// Trigger types to include (OR-ed). Sent as a repeated query param, e.g. `?trigger_type=CRON&amp;trigger_type=DELAYED`; the server also accepts a single comma-separated value.
+    pub trigger_type: ::std::option::Option<::std::vec::Vec::<crate::types::TriggerTypeEnum>>,
+    /// Job statuses to include (OR-ed). Sent as a repeated query param, e.g. `?status=ACTIVE&amp;status=RETIRED`; the server also accepts a single comma-separated value.
+    pub status: ::std::option::Option<::std::vec::Vec::<crate::types::JobStatusEnum>>,
+    /// Endpoint types to include (OR-ed). Sent as a repeated query param, e.g. `?endpoint_type=HTTP&amp;endpoint_type=INTERNAL`; the server also accepts a single comma-separated value.
+    pub endpoint_type: ::std::option::Option<::std::vec::Vec::<crate::types::EndpointTypeEnum>>,
+    /// Inclusive lower bound on `created_at` (RFC-3339).
+    pub created_after: ::std::option::Option<::aws_smithy_types::DateTime>,
+    /// Inclusive upper bound on `created_at` (RFC-3339).
+    pub created_before: ::std::option::Option<::aws_smithy_types::DateTime>,
 }
 impl  ListJobsInput  {
     #[allow(missing_docs)] // documentation missing in model
@@ -35,17 +43,42 @@ impl  ListJobsInput  {
     pub fn limit(&self) -> ::std::option::Option<i32> {
         self.limit
     }
+    /// Exact-match job id filter.
+    pub fn job_id(&self) -> ::std::option::Option<&str> {
+        self.job_id.as_deref()
+    }
     #[allow(missing_docs)] // documentation missing in model
     pub fn endpoint(&self) -> ::std::option::Option<&str> {
         self.endpoint.as_deref()
     }
-    #[allow(missing_docs)] // documentation missing in model
-    pub fn trigger_type(&self) -> ::std::option::Option<&crate::types::TriggerTypeEnum> {
-        self.trigger_type.as_ref()
+    /// Trigger types to include (OR-ed). Sent as a repeated query param, e.g. `?trigger_type=CRON&amp;trigger_type=DELAYED`; the server also accepts a single comma-separated value.
+    /// 
+    /// If no value was sent for this field, a default will be set. If you want to determine if no value was sent, use `.trigger_type.is_none()`.
+    pub fn trigger_type(&self) -> &[crate::types::TriggerTypeEnum] {
+        self.trigger_type.as_deref()
+        .unwrap_or_default()
     }
-    #[allow(missing_docs)] // documentation missing in model
-    pub fn status(&self) -> ::std::option::Option<&crate::types::JobStatusEnum> {
-        self.status.as_ref()
+    /// Job statuses to include (OR-ed). Sent as a repeated query param, e.g. `?status=ACTIVE&amp;status=RETIRED`; the server also accepts a single comma-separated value.
+    /// 
+    /// If no value was sent for this field, a default will be set. If you want to determine if no value was sent, use `.status.is_none()`.
+    pub fn status(&self) -> &[crate::types::JobStatusEnum] {
+        self.status.as_deref()
+        .unwrap_or_default()
+    }
+    /// Endpoint types to include (OR-ed). Sent as a repeated query param, e.g. `?endpoint_type=HTTP&amp;endpoint_type=INTERNAL`; the server also accepts a single comma-separated value.
+    /// 
+    /// If no value was sent for this field, a default will be set. If you want to determine if no value was sent, use `.endpoint_type.is_none()`.
+    pub fn endpoint_type(&self) -> &[crate::types::EndpointTypeEnum] {
+        self.endpoint_type.as_deref()
+        .unwrap_or_default()
+    }
+    /// Inclusive lower bound on `created_at` (RFC-3339).
+    pub fn created_after(&self) -> ::std::option::Option<&::aws_smithy_types::DateTime> {
+        self.created_after.as_ref()
+    }
+    /// Inclusive upper bound on `created_at` (RFC-3339).
+    pub fn created_before(&self) -> ::std::option::Option<&::aws_smithy_types::DateTime> {
+        self.created_before.as_ref()
     }
 }
 impl ListJobsInput {
@@ -63,9 +96,13 @@ pub struct ListJobsInputBuilder {
     pub(crate) workspace_id: ::std::option::Option<::std::string::String>,
     pub(crate) cursor: ::std::option::Option<::std::string::String>,
     pub(crate) limit: ::std::option::Option<i32>,
+    pub(crate) job_id: ::std::option::Option<::std::string::String>,
     pub(crate) endpoint: ::std::option::Option<::std::string::String>,
-    pub(crate) trigger_type: ::std::option::Option<crate::types::TriggerTypeEnum>,
-    pub(crate) status: ::std::option::Option<crate::types::JobStatusEnum>,
+    pub(crate) trigger_type: ::std::option::Option<::std::vec::Vec::<crate::types::TriggerTypeEnum>>,
+    pub(crate) status: ::std::option::Option<::std::vec::Vec::<crate::types::JobStatusEnum>>,
+    pub(crate) endpoint_type: ::std::option::Option<::std::vec::Vec::<crate::types::EndpointTypeEnum>>,
+    pub(crate) created_after: ::std::option::Option<::aws_smithy_types::DateTime>,
+    pub(crate) created_before: ::std::option::Option<::aws_smithy_types::DateTime>,
 }
 impl ListJobsInputBuilder {
     #[allow(missing_docs)] // documentation missing in model
@@ -122,6 +159,19 @@ impl ListJobsInputBuilder {
     pub fn get_limit(&self) -> &::std::option::Option<i32> {
         &self.limit
     }
+    /// Exact-match job id filter.
+    pub fn job_id(mut self, input: impl ::std::convert::Into<::std::string::String>) -> Self {
+        self.job_id = ::std::option::Option::Some(input.into());
+        self
+    }
+    /// Exact-match job id filter.
+    pub fn set_job_id(mut self, input: ::std::option::Option<::std::string::String>) -> Self {
+        self.job_id = input; self
+    }
+    /// Exact-match job id filter.
+    pub fn get_job_id(&self) -> &::std::option::Option<::std::string::String> {
+        &self.job_id
+    }
     #[allow(missing_docs)] // documentation missing in model
     pub fn endpoint(mut self, input: impl ::std::convert::Into<::std::string::String>) -> Self {
         self.endpoint = ::std::option::Option::Some(input.into());
@@ -135,31 +185,88 @@ impl ListJobsInputBuilder {
     pub fn get_endpoint(&self) -> &::std::option::Option<::std::string::String> {
         &self.endpoint
     }
-    #[allow(missing_docs)] // documentation missing in model
+    /// Appends an item to `trigger_type`.
+    ///
+    /// To override the contents of this collection use [`set_trigger_type`](Self::set_trigger_type).
+    ///
+    /// Trigger types to include (OR-ed). Sent as a repeated query param, e.g. `?trigger_type=CRON&amp;trigger_type=DELAYED`; the server also accepts a single comma-separated value.
     pub fn trigger_type(mut self, input: crate::types::TriggerTypeEnum) -> Self {
-        self.trigger_type = ::std::option::Option::Some(input);
-        self
+        let mut v = self.trigger_type.unwrap_or_default();
+                        v.push(input);
+                        self.trigger_type = ::std::option::Option::Some(v);
+                        self
     }
-    #[allow(missing_docs)] // documentation missing in model
-    pub fn set_trigger_type(mut self, input: ::std::option::Option<crate::types::TriggerTypeEnum>) -> Self {
+    /// Trigger types to include (OR-ed). Sent as a repeated query param, e.g. `?trigger_type=CRON&amp;trigger_type=DELAYED`; the server also accepts a single comma-separated value.
+    pub fn set_trigger_type(mut self, input: ::std::option::Option<::std::vec::Vec::<crate::types::TriggerTypeEnum>>) -> Self {
         self.trigger_type = input; self
     }
-    #[allow(missing_docs)] // documentation missing in model
-    pub fn get_trigger_type(&self) -> &::std::option::Option<crate::types::TriggerTypeEnum> {
+    /// Trigger types to include (OR-ed). Sent as a repeated query param, e.g. `?trigger_type=CRON&amp;trigger_type=DELAYED`; the server also accepts a single comma-separated value.
+    pub fn get_trigger_type(&self) -> &::std::option::Option<::std::vec::Vec::<crate::types::TriggerTypeEnum>> {
         &self.trigger_type
     }
-    #[allow(missing_docs)] // documentation missing in model
+    /// Appends an item to `status`.
+    ///
+    /// To override the contents of this collection use [`set_status`](Self::set_status).
+    ///
+    /// Job statuses to include (OR-ed). Sent as a repeated query param, e.g. `?status=ACTIVE&amp;status=RETIRED`; the server also accepts a single comma-separated value.
     pub fn status(mut self, input: crate::types::JobStatusEnum) -> Self {
-        self.status = ::std::option::Option::Some(input);
-        self
+        let mut v = self.status.unwrap_or_default();
+                        v.push(input);
+                        self.status = ::std::option::Option::Some(v);
+                        self
     }
-    #[allow(missing_docs)] // documentation missing in model
-    pub fn set_status(mut self, input: ::std::option::Option<crate::types::JobStatusEnum>) -> Self {
+    /// Job statuses to include (OR-ed). Sent as a repeated query param, e.g. `?status=ACTIVE&amp;status=RETIRED`; the server also accepts a single comma-separated value.
+    pub fn set_status(mut self, input: ::std::option::Option<::std::vec::Vec::<crate::types::JobStatusEnum>>) -> Self {
         self.status = input; self
     }
-    #[allow(missing_docs)] // documentation missing in model
-    pub fn get_status(&self) -> &::std::option::Option<crate::types::JobStatusEnum> {
+    /// Job statuses to include (OR-ed). Sent as a repeated query param, e.g. `?status=ACTIVE&amp;status=RETIRED`; the server also accepts a single comma-separated value.
+    pub fn get_status(&self) -> &::std::option::Option<::std::vec::Vec::<crate::types::JobStatusEnum>> {
         &self.status
+    }
+    /// Appends an item to `endpoint_type`.
+    ///
+    /// To override the contents of this collection use [`set_endpoint_type`](Self::set_endpoint_type).
+    ///
+    /// Endpoint types to include (OR-ed). Sent as a repeated query param, e.g. `?endpoint_type=HTTP&amp;endpoint_type=INTERNAL`; the server also accepts a single comma-separated value.
+    pub fn endpoint_type(mut self, input: crate::types::EndpointTypeEnum) -> Self {
+        let mut v = self.endpoint_type.unwrap_or_default();
+                        v.push(input);
+                        self.endpoint_type = ::std::option::Option::Some(v);
+                        self
+    }
+    /// Endpoint types to include (OR-ed). Sent as a repeated query param, e.g. `?endpoint_type=HTTP&amp;endpoint_type=INTERNAL`; the server also accepts a single comma-separated value.
+    pub fn set_endpoint_type(mut self, input: ::std::option::Option<::std::vec::Vec::<crate::types::EndpointTypeEnum>>) -> Self {
+        self.endpoint_type = input; self
+    }
+    /// Endpoint types to include (OR-ed). Sent as a repeated query param, e.g. `?endpoint_type=HTTP&amp;endpoint_type=INTERNAL`; the server also accepts a single comma-separated value.
+    pub fn get_endpoint_type(&self) -> &::std::option::Option<::std::vec::Vec::<crate::types::EndpointTypeEnum>> {
+        &self.endpoint_type
+    }
+    /// Inclusive lower bound on `created_at` (RFC-3339).
+    pub fn created_after(mut self, input: ::aws_smithy_types::DateTime) -> Self {
+        self.created_after = ::std::option::Option::Some(input);
+        self
+    }
+    /// Inclusive lower bound on `created_at` (RFC-3339).
+    pub fn set_created_after(mut self, input: ::std::option::Option<::aws_smithy_types::DateTime>) -> Self {
+        self.created_after = input; self
+    }
+    /// Inclusive lower bound on `created_at` (RFC-3339).
+    pub fn get_created_after(&self) -> &::std::option::Option<::aws_smithy_types::DateTime> {
+        &self.created_after
+    }
+    /// Inclusive upper bound on `created_at` (RFC-3339).
+    pub fn created_before(mut self, input: ::aws_smithy_types::DateTime) -> Self {
+        self.created_before = ::std::option::Option::Some(input);
+        self
+    }
+    /// Inclusive upper bound on `created_at` (RFC-3339).
+    pub fn set_created_before(mut self, input: ::std::option::Option<::aws_smithy_types::DateTime>) -> Self {
+        self.created_before = input; self
+    }
+    /// Inclusive upper bound on `created_at` (RFC-3339).
+    pub fn get_created_before(&self) -> &::std::option::Option<::aws_smithy_types::DateTime> {
+        &self.created_before
     }
     /// Consumes the builder and constructs a [`ListJobsInput`](crate::operation::list_jobs::ListJobsInput).
     pub fn build(self) -> ::std::result::Result<crate::operation::list_jobs::ListJobsInput, ::aws_smithy_types::error::operation::BuildError> {
@@ -173,11 +280,19 @@ impl ListJobsInputBuilder {
                 ,
                 limit: self.limit
                 ,
+                job_id: self.job_id
+                ,
                 endpoint: self.endpoint
                 ,
                 trigger_type: self.trigger_type
                 ,
                 status: self.status
+                ,
+                endpoint_type: self.endpoint_type
+                ,
+                created_after: self.created_after
+                ,
+                created_before: self.created_before
                 ,
             }
         )

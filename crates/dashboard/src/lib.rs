@@ -1,3 +1,8 @@
+// The WASM (hydrate) build monomorphizes the same deeply-nested `view!` trees
+// that the SSR binary does; their generated generic types exceed rustc's default
+// recursion limit (128) during codegen. Raise it so `wasm-pack build` succeeds.
+#![recursion_limit = "512"]
+
 pub mod api;
 pub mod app;
 pub mod components;

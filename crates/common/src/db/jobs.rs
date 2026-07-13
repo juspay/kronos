@@ -1,4 +1,8 @@
-use crate::{db::{tbl, DbContext}, models::job::Job};
+use crate::{
+    db::{tbl, DbContext},
+    models::endpoint::EndpointType,
+    models::job::{Job, JobStatus, TriggerType},
+};
 use chrono::{DateTime, Utc};
 use sqlx::{PgConnection, PgPool};
 
@@ -158,50 +162,91 @@ pub async fn get_by_idempotency(
 }
 
 /// Optional, server-side filters applied to [`list`]. All fields are ANDed
-/// together; `None` fields are simply not constrained. `endpoint` is matched as
-/// a case-insensitive substring so the dashboard can offer a search box, while
-/// the enum-like fields (`status`, `trigger`, `endpoint_type`) match exactly.
+/// together. Empty `Vec`s / `None` fields are unconstrained. `endpoint` is a
+/// case-insensitive substring; the enum lists match any of their values
+/// (`= ANY`); the date bounds are inclusive.
 #[derive(Debug, Default, Clone)]
 pub struct JobFilters {
-    pub status: Option<String>,
-    pub trigger: Option<String>,
+    pub job_id: Option<String>,
+    pub status: Vec<JobStatus>,
+    pub trigger: Vec<TriggerType>,
     pub endpoint: Option<String>,
-    pub endpoint_type: Option<String>,
+    pub endpoint_type: Vec<EndpointType>,
+    pub created_after: Option<DateTime<Utc>>,
+    pub created_before: Option<DateTime<Utc>>,
 }
 
-/// Builds the `list` query and the ordered list of string binds. Kept pure (no
-/// DB access) so the placeholder/bind bookkeeping can be unit tested. The final
-/// `LIMIT` placeholder is left for the caller to bind as an `i64`.
-fn build_list_query(t: &str, cursor: Option<&str>, filters: &JobFilters) -> (String, Vec<String>) {
+/// One positional bind for the list query. `Scalar` is a single text value
+/// (cursor, endpoint substring, an RFC-3339 timestamp); `Array` is bound as a
+/// Postgres `text[]` for `= ANY($n)`.
+#[derive(Debug, Clone, PartialEq)]
+enum BindValue {
+    Scalar(String),
+    Array(Vec<String>),
+}
+
+/// Escapes the LIKE/ILIKE metacharacters (`\`, `%`, `_`) in a user-supplied
+/// search term by prefixing each with a backslash. Pairs with an `ESCAPE '\'`
+/// clause so the term is matched as a literal substring rather than a pattern.
+fn escape_like(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        if matches!(ch, '\\' | '%' | '_') {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
+}
+
+/// Builds the `list` query and the ordered binds. Pure (no DB access) so the
+/// placeholder/bind bookkeeping is unit-tested. The final `LIMIT` placeholder is
+/// left for the caller to bind as an `i64`.
+fn build_list_query(t: &str, cursor: Option<&str>, filters: &JobFilters) -> (String, Vec<BindValue>) {
     let mut conditions: Vec<String> = Vec::new();
-    let mut binds: Vec<String> = Vec::new();
+    let mut binds: Vec<BindValue> = Vec::new();
     let mut n = 1;
 
     if let Some(c) = cursor {
         conditions.push(format!(
-            "created_at < (SELECT created_at FROM {t} WHERE job_id = ${n})"
+            "(created_at, job_id) < ((SELECT created_at FROM {t} WHERE job_id = ${n}), ${n})"
         ));
-        binds.push(c.to_string());
+        binds.push(BindValue::Scalar(c.to_string()));
         n += 1;
     }
-    if let Some(status) = &filters.status {
-        conditions.push(format!("status = ${n}"));
-        binds.push(status.clone());
+    if !filters.status.is_empty() {
+        conditions.push(format!("status = ANY(${n})"));
+        binds.push(BindValue::Array(filters.status.iter().map(|s| s.as_str().to_string()).collect()));
         n += 1;
     }
-    if let Some(trigger) = &filters.trigger {
-        conditions.push(format!("trigger_type = ${n}"));
-        binds.push(trigger.clone());
+    if !filters.trigger.is_empty() {
+        conditions.push(format!("trigger_type = ANY(${n})"));
+        binds.push(BindValue::Array(filters.trigger.iter().map(|x| x.as_str().to_string()).collect()));
         n += 1;
     }
-    if let Some(endpoint_type) = &filters.endpoint_type {
-        conditions.push(format!("endpoint_type = ${n}"));
-        binds.push(endpoint_type.clone());
+    if !filters.endpoint_type.is_empty() {
+        conditions.push(format!("endpoint_type = ANY(${n})"));
+        binds.push(BindValue::Array(filters.endpoint_type.iter().map(|x| x.as_str().to_string()).collect()));
         n += 1;
     }
     if let Some(endpoint) = &filters.endpoint {
-        conditions.push(format!("endpoint ILIKE '%' || ${n} || '%'"));
-        binds.push(endpoint.clone());
+        conditions.push(format!("endpoint ILIKE '%' || ${n} || '%' ESCAPE '\\'"));
+        binds.push(BindValue::Scalar(escape_like(endpoint)));
+        n += 1;
+    }
+    if let Some(after) = &filters.created_after {
+        conditions.push(format!("created_at >= ${n}::timestamptz"));
+        binds.push(BindValue::Scalar(after.to_rfc3339()));
+        n += 1;
+    }
+    if let Some(before) = &filters.created_before {
+        conditions.push(format!("created_at <= ${n}::timestamptz"));
+        binds.push(BindValue::Scalar(before.to_rfc3339()));
+        n += 1;
+    }
+    if let Some(job_id) = &filters.job_id {
+        conditions.push(format!("job_id = ${n}"));
+        binds.push(BindValue::Scalar(job_id.clone()));
         n += 1;
     }
 
@@ -210,8 +255,9 @@ fn build_list_query(t: &str, cursor: Option<&str>, filters: &JobFilters) -> (Str
     } else {
         format!(" WHERE {}", conditions.join(" AND "))
     };
-
-    let sql = format!("SELECT * FROM {t}{where_clause} ORDER BY created_at DESC LIMIT ${n}");
+    let sql = format!(
+        "SELECT * FROM {t}{where_clause} ORDER BY created_at DESC, job_id DESC LIMIT ${n}"
+    );
     (sql, binds)
 }
 
@@ -225,7 +271,10 @@ pub async fn list(
     let (sql, binds) = build_list_query(&t, cursor, filters);
     let mut query = sqlx::query_as::<_, Job>(&sql);
     for bind in &binds {
-        query = query.bind(bind);
+        query = match bind {
+            BindValue::Scalar(s) => query.bind(s),
+            BindValue::Array(a) => query.bind(a.as_slice()),
+        };
     }
     query.bind(limit).fetch_all(&mut *db.conn).await
 }
@@ -481,7 +530,10 @@ mod tests {
     #[test]
     fn list_query_without_cursor_or_filters() {
         let (sql, binds) = build_list_query("jobs", None, &JobFilters::default());
-        assert_eq!(sql, "SELECT * FROM jobs ORDER BY created_at DESC LIMIT $1");
+        assert_eq!(
+            sql,
+            "SELECT * FROM jobs ORDER BY created_at DESC, job_id DESC LIMIT $1"
+        );
         assert!(binds.is_empty());
     }
 
@@ -490,53 +542,100 @@ mod tests {
         let (sql, binds) = build_list_query("jobs", Some("job-9"), &JobFilters::default());
         assert_eq!(
             sql,
-            "SELECT * FROM jobs WHERE created_at < (SELECT created_at FROM jobs WHERE job_id = $1) \
-             ORDER BY created_at DESC LIMIT $2"
-        );
-        assert_eq!(binds, vec!["job-9".to_string()]);
-    }
-
-    #[test]
-    fn list_query_binds_filters_in_order_after_cursor() {
-        let filters = JobFilters {
-            status: Some("ACTIVE".into()),
-            trigger: Some("CRON".into()),
-            endpoint_type: Some("HTTP".into()),
-            endpoint: Some("notify".into()),
-        };
-        let (sql, binds) = build_list_query("jobs", Some("job-9"), &filters);
-        // Cursor is $1, filters follow in declaration order, LIMIT is last ($6).
-        assert_eq!(
-            sql,
             "SELECT * FROM jobs WHERE \
-             created_at < (SELECT created_at FROM jobs WHERE job_id = $1) AND \
-             status = $2 AND trigger_type = $3 AND endpoint_type = $4 AND \
-             endpoint ILIKE '%' || $5 || '%' \
-             ORDER BY created_at DESC LIMIT $6"
+             (created_at, job_id) < ((SELECT created_at FROM jobs WHERE job_id = $1), $1) \
+             ORDER BY created_at DESC, job_id DESC LIMIT $2"
         );
-        assert_eq!(
-            binds,
-            vec![
-                "job-9".to_string(),
-                "ACTIVE".to_string(),
-                "CRON".to_string(),
-                "HTTP".to_string(),
-                "notify".to_string(),
-            ]
-        );
+        assert_eq!(binds, vec![BindValue::Scalar("job-9".into())]);
     }
 
     #[test]
-    fn list_query_filters_without_cursor_start_at_one() {
+    fn list_query_uses_any_for_multi_value_enum_filters() {
         let filters = JobFilters {
-            status: Some("RETIRED".into()),
+            status: vec![JobStatus::ACTIVE, JobStatus::RETIRED],
+            trigger: vec![TriggerType::CRON],
+            endpoint_type: vec![EndpointType::HTTP, EndpointType::INTERNAL],
             ..Default::default()
         };
         let (sql, binds) = build_list_query("jobs", None, &filters);
         assert_eq!(
             sql,
-            "SELECT * FROM jobs WHERE status = $1 ORDER BY created_at DESC LIMIT $2"
+            "SELECT * FROM jobs WHERE \
+             status = ANY($1) AND trigger_type = ANY($2) AND endpoint_type = ANY($3) \
+             ORDER BY created_at DESC, job_id DESC LIMIT $4"
         );
-        assert_eq!(binds, vec!["RETIRED".to_string()]);
+        assert_eq!(
+            binds,
+            vec![
+                BindValue::Array(vec!["ACTIVE".into(), "RETIRED".into()]),
+                BindValue::Array(vec!["CRON".into()]),
+                BindValue::Array(vec!["HTTP".into(), "INTERNAL".into()]),
+            ]
+        );
+    }
+
+    #[test]
+    fn list_query_combines_cursor_filters_endpoint_and_dates_in_order() {
+        let filters = JobFilters {
+            status: vec![JobStatus::ACTIVE],
+            endpoint: Some("notify".into()),
+            created_after: Some(
+                chrono::DateTime::parse_from_rfc3339("2026-06-18T00:00:00Z")
+                    .unwrap()
+                    .with_timezone(&chrono::Utc),
+            ),
+            created_before: Some(
+                chrono::DateTime::parse_from_rfc3339("2026-06-24T23:59:59Z")
+                    .unwrap()
+                    .with_timezone(&chrono::Utc),
+            ),
+            ..Default::default()
+        };
+        let (sql, binds) = build_list_query("jobs", Some("job-9"), &filters);
+        assert_eq!(
+            sql,
+            "SELECT * FROM jobs WHERE \
+             (created_at, job_id) < ((SELECT created_at FROM jobs WHERE job_id = $1), $1) AND \
+             status = ANY($2) AND \
+             endpoint ILIKE '%' || $3 || '%' ESCAPE '\\' AND \
+             created_at >= $4::timestamptz AND created_at <= $5::timestamptz \
+             ORDER BY created_at DESC, job_id DESC LIMIT $6"
+        );
+        assert_eq!(
+            binds,
+            vec![
+                BindValue::Scalar("job-9".into()),
+                BindValue::Array(vec!["ACTIVE".into()]),
+                BindValue::Scalar("notify".into()),
+                BindValue::Scalar("2026-06-18T00:00:00+00:00".into()),
+                BindValue::Scalar("2026-06-24T23:59:59+00:00".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn list_query_escapes_like_metacharacters_in_endpoint() {
+        let filters = JobFilters { endpoint: Some("order_50%_v2".into()), ..Default::default() };
+        let (_sql, binds) = build_list_query("jobs", None, &filters);
+        assert_eq!(binds, vec![BindValue::Scalar(r"order\_50\%\_v2".into())]);
+    }
+
+    #[test]
+    fn list_query_filters_by_exact_job_id() {
+        let filters = JobFilters { job_id: Some("job-42".into()), ..Default::default() };
+        let (sql, binds) = build_list_query("jobs", None, &filters);
+        assert_eq!(
+            sql,
+            "SELECT * FROM jobs WHERE job_id = $1 ORDER BY created_at DESC, job_id DESC LIMIT $2"
+        );
+        assert_eq!(binds, vec![BindValue::Scalar("job-42".into())]);
+    }
+
+    #[test]
+    fn escape_like_passes_through_plain_text() {
+        assert_eq!(escape_like("notify"), "notify");
+        assert_eq!(escape_like("a_b"), r"a\_b");
+        assert_eq!(escape_like("100%"), r"100\%");
+        assert_eq!(escape_like(r"a\b"), r"a\\b");
     }
 }

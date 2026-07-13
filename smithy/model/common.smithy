@@ -38,6 +38,11 @@ enum EndpointTypeEnum {
     HTTP
     KAFKA
     REDIS_STREAM
+    // Internal, kronos-provisioned endpoints (e.g. the dogfooded reaper). Not
+    // user-creatable — the API rejects INTERNAL on endpoint/job creation — but it
+    // appears in outputs and is a valid ListJobs `endpoint_type` filter, so the
+    // contract must be able to represent it.
+    INTERNAL
 }
 
 enum TriggerTypeEnum {
@@ -50,6 +55,10 @@ enum JobStatusEnum {
     ACTIVE
     RETIRED
 }
+
+list JobStatusList { member: JobStatusEnum }
+list TriggerTypeList { member: TriggerTypeEnum }
+list EndpointTypeList { member: EndpointTypeEnum }
 
 enum ExecutionStatusEnum {
     PENDING

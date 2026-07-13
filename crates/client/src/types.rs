@@ -13,8 +13,6 @@ pub use crate::types::_trigger_type_enum::TriggerTypeEnum;
 
 pub use crate::types::_job_resource::JobResource;
 
-pub use crate::types::_job_status_enum::JobStatusEnum;
-
 pub use crate::types::_job_status_response::JobStatusResponse;
 
 pub use crate::types::_execution_status_enum::ExecutionStatusEnum;
@@ -22,6 +20,8 @@ pub use crate::types::_execution_status_enum::ExecutionStatusEnum;
 pub use crate::types::_execution_resource::ExecutionResource;
 
 pub use crate::types::_backoff_type_enum::BackoffTypeEnum;
+
+pub use crate::types::_job_status_enum::JobStatusEnum;
 
 pub use crate::types::_job_summary::JobSummary;
 
