@@ -25,9 +25,11 @@ pub(crate) fn format_id(value: &str, head: usize, tail: usize) -> String {
 pub fn CopyableId(
     #[prop(into)] value: String,
     /// Leading chars before the ellipsis; `0` (default) shows the full value.
-    #[prop(default = 0)] truncate: usize,
+    #[prop(default = 0)]
+    truncate: usize,
     /// Trailing chars after the ellipsis (UUID-style). Default `4`.
-    #[prop(default = 4)] truncate_tail: usize,
+    #[prop(default = 4)]
+    truncate_tail: usize,
 ) -> impl IntoView {
     let (copied, set_copied) = signal(false);
     let display = format_id(&value, truncate, truncate_tail);
@@ -41,11 +43,14 @@ pub fn CopyableId(
             let _ = clipboard.write_text(&value);
         }
         set_copied.set(true);
-        set_timeout(move || set_copied.set(false), std::time::Duration::from_millis(1500));
+        set_timeout(
+            move || set_copied.set(false),
+            std::time::Duration::from_millis(1500),
+        );
     };
 
     view! {
-        <span class="inline-flex items-center gap-1.5 font-mono text-xs" title=title>
+        <span class="inline-flex items-center gap-1.5 whitespace-nowrap font-mono text-xs" title=title>
             <span>{display}</span>
             <button type="button"
                 on:click=on_copy

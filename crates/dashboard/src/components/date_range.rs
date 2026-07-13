@@ -21,8 +21,13 @@ impl Preset {
         }
     }
 
-    pub const ALL: [Preset; 5] =
-        [Preset::Today, Preset::Last2Days, Preset::Last7Days, Preset::ThisMonth, Preset::LastMonth];
+    pub const ALL: [Preset; 5] = [
+        Preset::Today,
+        Preset::Last2Days,
+        Preset::Last7Days,
+        Preset::ThisMonth,
+        Preset::LastMonth,
+    ];
 
     /// Inclusive [after, before] in UTC for the preset, relative to `now`.
     pub fn range(self, now: DateTime<Utc>) -> (DateTime<Utc>, DateTime<Utc>) {
@@ -109,6 +114,11 @@ pub fn DateRangeFilter(
     // UTC time-of-day for the start/end dates (defaults = full day).
     let (start_time, set_start_time) = signal(default_start_time());
     let (end_time, set_end_time) = signal(default_end_time());
+    // Draft [after, before] bounds edited inside the popover; committed to the
+    // real filter only on Apply. Seeded from the committed values on open,
+    // discarded on close.
+    let (draft_after, set_draft_after) = signal(after.get_untracked());
+    let (draft_before, set_draft_before) = signal(before.get_untracked());
     let today = Utc::now().date_naive();
     let node_ref = NodeRef::<leptos::html::Div>::new();
 
@@ -132,58 +142,112 @@ pub fn DateRangeFilter(
     });
     on_cleanup(move || handle.remove());
 
-    // Trigger is content-sized: "Created" when empty, else the selected date + time.
-    let button_text = move || match (after.get(), before.get()) {
-        (Some(a), Some(b)) => {
-            format!("{} \u{2013} {}", a.format("%b %d %H:%M:%S"), b.format("%b %d %H:%M:%S"))
+    // Trigger shows the draft while the popover is open (live preview), the
+    // committed value when closed.
+    let button_text = move || {
+        let (a, b) = if open.get() {
+            (draft_after.get(), draft_before.get())
+        } else {
+            (after.get(), before.get())
+        };
+        match (a, b) {
+            (Some(a), Some(b)) => {
+                format!(
+                    "{} \u{2013} {}",
+                    a.format("%b %d %H:%M:%S"),
+                    b.format("%b %d %H:%M:%S")
+                )
+            }
+            (Some(a), None) => format!("From {}", a.format("%b %d %H:%M:%S")),
+            (None, Some(b)) => format!("Until {}", b.format("%b %d %H:%M:%S")),
+            (None, None) => "Created".to_string(),
         }
-        (Some(a), None) => format!("From {}", a.format("%b %d %H:%M:%S")),
-        (None, Some(b)) => format!("Until {}", b.format("%b %d %H:%M:%S")),
-        (None, None) => "Created".to_string(),
     };
-    let any = move || after.get().is_some() || before.get().is_some();
+    // Whether the shown summary is non-empty (drives the gray placeholder color).
+    let has_value = move || {
+        if open.get() {
+            draft_after.get().is_some() || draft_before.get().is_some()
+        } else {
+            after.get().is_some() || before.get().is_some()
+        }
+    };
 
-    let apply_preset = move |p: Preset| {
-        let (a, b) = p.range(Utc::now());
-        // Presets are whole-day ranges — reset the time fields to match.
+    // Open seeds the draft (and time fields + view month) from the committed
+    // values; closing without Apply discards the draft.
+    let toggle_open = move |_| {
+        if open.get_untracked() {
+            set_open.set(false);
+            return;
+        }
+        let a = after.get_untracked();
+        let b = before.get_untracked();
+        set_draft_after.set(a);
+        set_draft_before.set(b);
+        set_start_time.set(a.map(|d| d.time()).unwrap_or_else(default_start_time));
+        set_end_time.set(b.map(|d| d.time()).unwrap_or_else(default_end_time));
+        set_hover_day.set(None);
+        set_view_month.set(first_of_month(a.map(|d| d.date_naive()).unwrap_or(today)));
+        set_open.set(true);
+    };
+
+    // Apply commits the draft to the real filter; Clear wipes it. Both close.
+    let apply = move |_| {
+        set_after.set(draft_after.get_untracked());
+        set_before.set(draft_before.get_untracked());
+        set_open.set(false);
+    };
+    let clear = move |_| {
+        set_after.set(None);
+        set_before.set(None);
+        set_draft_after.set(None);
+        set_draft_before.set(None);
         set_start_time.set(default_start_time());
         set_end_time.set(default_end_time());
-        set_after.set(Some(a));
-        set_before.set(Some(b));
         set_open.set(false);
     };
 
-    // First click sets `after` (clears `before`); second sets `before`, swapping if earlier.
+    let apply_preset = move |p: Preset| {
+        let (a, b) = p.range(Utc::now());
+        // Presets are whole-day ranges — reset the time fields to match. Updates
+        // the draft only; the user still confirms with Apply.
+        set_start_time.set(default_start_time());
+        set_end_time.set(default_end_time());
+        set_draft_after.set(Some(a));
+        set_draft_before.set(Some(b));
+        set_view_month.set(first_of_month(a.date_naive()));
+    };
+
+    // First click sets the draft start (clears end); second sets the end, swapping if earlier.
     let pick_day = move |d: NaiveDate| {
-        match (after.get(), before.get()) {
+        match (draft_after.get(), draft_before.get()) {
             // First click, or restarting after a complete range.
             (None, _) | (Some(_), Some(_)) => {
-                set_after.set(Some(combine(d, start_time.get())));
-                set_before.set(None);
+                set_draft_after.set(Some(combine(d, start_time.get())));
+                set_draft_before.set(None);
             }
             // Second click: close the range, swapping if it lands before the start.
             (Some(start), None) => {
                 if d < start.date_naive() {
-                    set_after.set(Some(combine(d, start_time.get())));
-                    set_before.set(Some(combine(start.date_naive(), end_time.get())));
+                    set_draft_after.set(Some(combine(d, start_time.get())));
+                    set_draft_before.set(Some(combine(start.date_naive(), end_time.get())));
                 } else {
-                    set_before.set(Some(combine(d, end_time.get())));
+                    set_draft_before.set(Some(combine(d, end_time.get())));
                 }
             }
         }
     };
 
-    // Re-attach a new time-of-day to an already-picked date; handed to the time dropdowns.
+    // Re-attach a new time-of-day to an already-picked draft date; handed to the time dropdowns.
     let apply_start = Callback::new(move |t: NaiveTime| {
         set_start_time.set(t);
-        if let Some(a) = after.get() {
-            set_after.set(Some(combine(a.date_naive(), t)));
+        if let Some(a) = draft_after.get() {
+            set_draft_after.set(Some(combine(a.date_naive(), t)));
         }
     });
     let apply_end = Callback::new(move |t: NaiveTime| {
         set_end_time.set(t);
-        if let Some(b) = before.get() {
-            set_before.set(Some(combine(b.date_naive(), t)));
+        if let Some(b) = draft_before.get() {
+            set_draft_before.set(Some(combine(b.date_naive(), t)));
         }
     });
 
@@ -194,7 +258,7 @@ pub fn DateRangeFilter(
         .map(|p| {
             let cls = move || {
                 let (a, b) = p.range(Utc::now());
-                let active = after.get() == Some(a) && before.get() == Some(b);
+                let active = draft_after.get() == Some(a) && draft_before.get() == Some(b);
                 let base = "rounded-md px-3 py-1.5 text-sm text-left transition-colors ";
                 if active {
                     format!("{base}bg-blue-50 text-blue-700 font-semibold")
@@ -213,23 +277,10 @@ pub fn DateRangeFilter(
     view! {
         <div node_ref=node_ref class="relative">
             <button type="button"
-                on:click=move |_| set_open.update(|o| *o = !*o)
+                on:click=toggle_open
                 class="flex h-9 items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
-                <span class="whitespace-nowrap" class:text-gray-400=move || !any()>{button_text}</span>
-                <span class="flex items-center gap-1 shrink-0">
-                    <Show when=any>
-                        <span role="button" aria-label="Clear"
-                            on:click=move |ev| {
-                                ev.stop_propagation();
-                                set_after.set(None);
-                                set_before.set(None);
-                                set_start_time.set(default_start_time());
-                                set_end_time.set(default_end_time());
-                            }
-                            class="rounded p-0.5 hover:bg-gray-100">"\u{2715}"</span>
-                    </Show>
-                    <span class="text-gray-400">"\u{25be}"</span>
-                </span>
+                <span class="whitespace-nowrap" class:text-gray-400=move || !has_value()>{button_text}</span>
+                <span class="text-gray-400 shrink-0">"\u{25be}"</span>
             </button>
             // Popover: kept in DOM, toggled via display style (avoids FnOnce on <Show>).
             <div class="absolute left-0 top-full z-50 mt-2 flex flex-col rounded-xl border border-gray-200 bg-white shadow-xl ring-1 ring-gray-900/5 overflow-hidden"
@@ -239,16 +290,6 @@ pub fn DateRangeFilter(
                 <div class="flex flex-col gap-0.5 border-r border-gray-100 bg-gray-50/50 p-3 w-40">
                     <div class="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">"Quick ranges"</div>
                     {preset_buttons}
-                    <button type="button"
-                        on:click=move |_| {
-                            set_after.set(None);
-                            set_before.set(None);
-                            set_start_time.set(default_start_time());
-                            set_end_time.set(default_end_time());
-                        }
-                        class="mt-1.5 rounded-md px-3 py-1.5 text-sm text-left text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors border-t border-gray-100">
-                        "Clear"
-                    </button>
                 </div>
                 // Calendar column
                 <div class="p-4 w-80">
@@ -286,7 +327,7 @@ pub fn DateRangeFilter(
                                         // is the circular day target.
                                         let band_class = move || {
                                             let base = "h-9 flex items-center justify-center ";
-                                            match day_highlight(d, after.get(), before.get(), hover_day.get()) {
+                                            match day_highlight(d, draft_after.get(), draft_before.get(), hover_day.get()) {
                                                 DayHighlight::Start => format!("{base}bg-blue-100 rounded-l-full"),
                                                 DayHighlight::End => format!("{base}bg-blue-100 rounded-r-full"),
                                                 DayHighlight::Span => format!("{base}bg-blue-100"),
@@ -295,7 +336,7 @@ pub fn DateRangeFilter(
                                         };
                                         let inner_class = move || {
                                             let base = "h-9 w-9 flex items-center justify-center text-sm rounded-full transition-colors ";
-                                            match day_highlight(d, after.get(), before.get(), hover_day.get()) {
+                                            match day_highlight(d, draft_after.get(), draft_before.get(), hover_day.get()) {
                                                 DayHighlight::Start
                                                 | DayHighlight::End
                                                 | DayHighlight::Only => {
@@ -331,7 +372,7 @@ pub fn DateRangeFilter(
                     <div class="flex items-center gap-3">
                         <span class="w-10 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-gray-400">"From"</span>
                         <span class="flex-1 min-w-0 truncate text-sm font-semibold text-gray-900">
-                            {move || after.get()
+                            {move || draft_after.get()
                                 .map(|a| a.format("%b %-d, %Y").to_string())
                                 .unwrap_or_else(|| "Not set".to_string())}
                         </span>
@@ -340,13 +381,24 @@ pub fn DateRangeFilter(
                     <div class="flex items-center gap-3">
                         <span class="w-10 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-gray-400">"To"</span>
                         <span class="flex-1 min-w-0 truncate text-sm font-semibold text-gray-900">
-                            {move || before.get()
+                            {move || draft_before.get()
                                 .map(|b| b.format("%b %-d, %Y").to_string())
                                 .unwrap_or_else(|| "Not set".to_string())}
                         </span>
                         <TimeSelect time=end_time on_change=apply_end />
                     </div>
                     <div class="text-right text-[10px] text-gray-400">"All times in UTC"</div>
+                </div>
+                // Footer: draft is discarded on close, committed only on Apply.
+                <div class="flex justify-end gap-2 border-t border-gray-100 px-4 py-3">
+                    <button type="button" on:click=clear
+                        class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                        "Clear"
+                    </button>
+                    <button type="button" on:click=apply
+                        class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors">
+                        "Apply"
+                    </button>
                 </div>
             </div>
         </div>
@@ -442,11 +494,25 @@ pub(crate) fn day_highlight(
     let end = match before.map(|b| b.date_naive()).or(hover) {
         Some(e) => e,
         // Start chosen, nothing hovered yet: only the start is marked.
-        None => return if d == start { DayHighlight::Only } else { DayHighlight::None },
+        None => {
+            return if d == start {
+                DayHighlight::Only
+            } else {
+                DayHighlight::None
+            }
+        }
     };
-    let (lo, hi) = if end >= start { (start, end) } else { (end, start) };
+    let (lo, hi) = if end >= start {
+        (start, end)
+    } else {
+        (end, start)
+    };
     if lo == hi {
-        if d == lo { DayHighlight::Only } else { DayHighlight::None }
+        if d == lo {
+            DayHighlight::Only
+        } else {
+            DayHighlight::None
+        }
     } else if d == lo {
         DayHighlight::Start
     } else if d == hi {
@@ -497,17 +563,32 @@ mod tests {
     fn day_highlight_previews_hover_during_selection() {
         let a = Some(start_of(d(10)));
         // Start chosen, hovering the 13th: 10=Start, 13=End, 11-12=Span.
-        assert_eq!(day_highlight(d(10), a, None, Some(d(13))), DayHighlight::Start);
-        assert_eq!(day_highlight(d(13), a, None, Some(d(13))), DayHighlight::End);
-        assert_eq!(day_highlight(d(12), a, None, Some(d(13))), DayHighlight::Span);
-        assert_eq!(day_highlight(d(14), a, None, Some(d(13))), DayHighlight::None);
+        assert_eq!(
+            day_highlight(d(10), a, None, Some(d(13))),
+            DayHighlight::Start
+        );
+        assert_eq!(
+            day_highlight(d(13), a, None, Some(d(13))),
+            DayHighlight::End
+        );
+        assert_eq!(
+            day_highlight(d(12), a, None, Some(d(13))),
+            DayHighlight::Span
+        );
+        assert_eq!(
+            day_highlight(d(14), a, None, Some(d(13))),
+            DayHighlight::None
+        );
     }
 
     #[test]
     fn day_highlight_preview_handles_hover_before_start() {
         let a = Some(start_of(d(10)));
         // Hovering the 7th (before start 10): band runs 7..10.
-        assert_eq!(day_highlight(d(7), a, None, Some(d(7))), DayHighlight::Start);
+        assert_eq!(
+            day_highlight(d(7), a, None, Some(d(7))),
+            DayHighlight::Start
+        );
         assert_eq!(day_highlight(d(10), a, None, Some(d(7))), DayHighlight::End);
         assert_eq!(day_highlight(d(8), a, None, Some(d(7))), DayHighlight::Span);
     }
@@ -518,7 +599,10 @@ mod tests {
         assert_eq!(day_highlight(d(10), a, None, None), DayHighlight::Only);
         assert_eq!(day_highlight(d(11), a, None, None), DayHighlight::None);
         // Hovering the start day itself collapses to a single-day selection.
-        assert_eq!(day_highlight(d(10), a, None, Some(d(10))), DayHighlight::Only);
+        assert_eq!(
+            day_highlight(d(10), a, None, Some(d(10))),
+            DayHighlight::Only
+        );
     }
 
     #[test]

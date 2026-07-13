@@ -1629,7 +1629,7 @@ fn JobsTable(
                                     <td class="px-6 py-4 text-sm text-gray-600">{job.endpoint.clone()}</td>
                                     <td class="px-6 py-4 text-sm"><TriggerBadge trigger=job.trigger.clone() /></td>
                                     <td class="px-6 py-4"><StatusBadge status=job.status.clone() /></td>
-                                    <td class="px-6 py-4 text-sm text-gray-500">{format_date(&job.created_at)}</td>
+                                    <td class="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">{format_datetime(&job.created_at)}</td>
                                     <td class="px-6 py-4 text-right">
                                         <div class="flex items-center justify-end gap-3" on:click=move |ev| ev.stop_propagation()>
                                             // Status + Versions on the left
@@ -2462,5 +2462,14 @@ fn format_date(s: &str) -> String {
         s[..10].to_string()
     } else {
         s.to_string()
+    }
+}
+
+/// RFC-3339 timestamp -> `"YYYY-MM-DD HH:MM:SS"` (UTC), e.g. `2026-07-03 12:34:56`.
+fn format_datetime(s: &str) -> String {
+    if s.len() >= 19 {
+        s[..19].replace('T', " ")
+    } else {
+        s.replace('T', " ")
     }
 }
