@@ -151,6 +151,20 @@ impl ListJobsFluentBuilder {
     pub fn get_limit(&self) -> &::std::option::Option<i32> {
                     self.inner.get_limit()
                 }
+    /// Exact-match job id filter.
+    pub fn job_id(mut self, input: impl ::std::convert::Into<::std::string::String>) -> Self {
+                    self.inner = self.inner.job_id(input.into());
+                    self
+                }
+    /// Exact-match job id filter.
+    pub fn set_job_id(mut self, input: ::std::option::Option<::std::string::String>) -> Self {
+                    self.inner = self.inner.set_job_id(input);
+                    self
+                }
+    /// Exact-match job id filter.
+    pub fn get_job_id(&self) -> &::std::option::Option<::std::string::String> {
+                    self.inner.get_job_id()
+                }
     #[allow(missing_docs)] // documentation missing in model
     pub fn endpoint(mut self, input: impl ::std::convert::Into<::std::string::String>) -> Self {
                     self.inner = self.inner.endpoint(input.into());
@@ -165,33 +179,90 @@ impl ListJobsFluentBuilder {
     pub fn get_endpoint(&self) -> &::std::option::Option<::std::string::String> {
                     self.inner.get_endpoint()
                 }
+    /// 
+    /// Appends an item to `trigger_type`.
+    /// 
+    /// To override the contents of this collection use [`set_trigger_type`](Self::set_trigger_type).
+    /// 
     #[allow(missing_docs)] // documentation missing in model
     pub fn trigger_type(mut self, input: crate::types::TriggerTypeEnum) -> Self {
-                    self.inner = self.inner.trigger_type(input);
-                    self
-                }
+                        self.inner = self.inner.trigger_type(input);
+                        self
+                    }
     #[allow(missing_docs)] // documentation missing in model
-    pub fn set_trigger_type(mut self, input: ::std::option::Option<crate::types::TriggerTypeEnum>) -> Self {
+    pub fn set_trigger_type(mut self, input: ::std::option::Option<::std::vec::Vec::<crate::types::TriggerTypeEnum>>) -> Self {
                     self.inner = self.inner.set_trigger_type(input);
                     self
                 }
     #[allow(missing_docs)] // documentation missing in model
-    pub fn get_trigger_type(&self) -> &::std::option::Option<crate::types::TriggerTypeEnum> {
+    pub fn get_trigger_type(&self) -> &::std::option::Option<::std::vec::Vec::<crate::types::TriggerTypeEnum>> {
                     self.inner.get_trigger_type()
                 }
+    /// 
+    /// Appends an item to `status`.
+    /// 
+    /// To override the contents of this collection use [`set_status`](Self::set_status).
+    /// 
     #[allow(missing_docs)] // documentation missing in model
     pub fn status(mut self, input: crate::types::JobStatusEnum) -> Self {
-                    self.inner = self.inner.status(input);
-                    self
-                }
+                        self.inner = self.inner.status(input);
+                        self
+                    }
     #[allow(missing_docs)] // documentation missing in model
-    pub fn set_status(mut self, input: ::std::option::Option<crate::types::JobStatusEnum>) -> Self {
+    pub fn set_status(mut self, input: ::std::option::Option<::std::vec::Vec::<crate::types::JobStatusEnum>>) -> Self {
                     self.inner = self.inner.set_status(input);
                     self
                 }
     #[allow(missing_docs)] // documentation missing in model
-    pub fn get_status(&self) -> &::std::option::Option<crate::types::JobStatusEnum> {
+    pub fn get_status(&self) -> &::std::option::Option<::std::vec::Vec::<crate::types::JobStatusEnum>> {
                     self.inner.get_status()
+                }
+    /// 
+    /// Appends an item to `endpoint_type`.
+    /// 
+    /// To override the contents of this collection use [`set_endpoint_type`](Self::set_endpoint_type).
+    /// 
+    #[allow(missing_docs)] // documentation missing in model
+    pub fn endpoint_type(mut self, input: crate::types::EndpointTypeEnum) -> Self {
+                        self.inner = self.inner.endpoint_type(input);
+                        self
+                    }
+    #[allow(missing_docs)] // documentation missing in model
+    pub fn set_endpoint_type(mut self, input: ::std::option::Option<::std::vec::Vec::<crate::types::EndpointTypeEnum>>) -> Self {
+                    self.inner = self.inner.set_endpoint_type(input);
+                    self
+                }
+    #[allow(missing_docs)] // documentation missing in model
+    pub fn get_endpoint_type(&self) -> &::std::option::Option<::std::vec::Vec::<crate::types::EndpointTypeEnum>> {
+                    self.inner.get_endpoint_type()
+                }
+    /// Inclusive lower bound on `created_at` (RFC-3339).
+    pub fn created_after(mut self, input: ::aws_smithy_types::DateTime) -> Self {
+                    self.inner = self.inner.created_after(input);
+                    self
+                }
+    /// Inclusive lower bound on `created_at` (RFC-3339).
+    pub fn set_created_after(mut self, input: ::std::option::Option<::aws_smithy_types::DateTime>) -> Self {
+                    self.inner = self.inner.set_created_after(input);
+                    self
+                }
+    /// Inclusive lower bound on `created_at` (RFC-3339).
+    pub fn get_created_after(&self) -> &::std::option::Option<::aws_smithy_types::DateTime> {
+                    self.inner.get_created_after()
+                }
+    /// Inclusive upper bound on `created_at` (RFC-3339).
+    pub fn created_before(mut self, input: ::aws_smithy_types::DateTime) -> Self {
+                    self.inner = self.inner.created_before(input);
+                    self
+                }
+    /// Inclusive upper bound on `created_at` (RFC-3339).
+    pub fn set_created_before(mut self, input: ::std::option::Option<::aws_smithy_types::DateTime>) -> Self {
+                    self.inner = self.inner.set_created_before(input);
+                    self
+                }
+    /// Inclusive upper bound on `created_at` (RFC-3339).
+    pub fn get_created_before(&self) -> &::std::option::Option<::aws_smithy_types::DateTime> {
+                    self.inner.get_created_before()
                 }
 }
 

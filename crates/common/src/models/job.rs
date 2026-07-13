@@ -120,6 +120,14 @@ impl JobStatus {
             Self::RETIRED => "RETIRED",
         }
     }
+
+    pub fn from_str_val(s: &str) -> Option<Self> {
+        match s {
+            "ACTIVE" => Some(Self::ACTIVE),
+            "RETIRED" => Some(Self::RETIRED),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

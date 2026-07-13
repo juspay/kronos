@@ -3,7 +3,6 @@ $version: "2"
 namespace com.kronos
 
 // ─── Job structures ──────────────────────────────────────────────
-
 structure JobResource {
     @required
     job_id: String
@@ -80,7 +79,6 @@ list JobVersionList {
 }
 
 // ─── Job Status ──────────────────────────────────────────────────
-
 structure JobStatusResponse {
     @required
     job_id: String
@@ -110,7 +108,6 @@ structure ExecutionSummary {
 }
 
 // ─── Create ──────────────────────────────────────────────────────
-
 @input
 structure CreateJobInput with [WorkspaceHeaders] {
     @required
@@ -143,21 +140,40 @@ structure CreateJobOutput {
 operation CreateJob {
     input: CreateJobInput
     output: CreateJobOutput
-    errors: [InvalidRequestError, ConflictError, NotFoundError, UnprocessableEntityError]
+    errors: [
+        InvalidRequestError
+        ConflictError
+        NotFoundError
+        UnprocessableEntityError
+    ]
 }
 
 // ─── List ────────────────────────────────────────────────────────
-
 @input
 structure ListJobsInput with [WorkspaceHeaders, PaginationQuery] {
+    /// Exact-match job id filter.
+    @httpQuery("job_id")
+    job_id: String
+
     @httpQuery("endpoint")
     endpoint: String
 
     @httpQuery("trigger_type")
-    trigger_type: TriggerTypeEnum
+    trigger_type: TriggerTypeList
 
     @httpQuery("status")
-    status: JobStatusEnum
+    status: JobStatusList
+
+    @httpQuery("endpoint_type")
+    endpoint_type: EndpointTypeList
+
+    /// Inclusive lower bound on `created_at` (RFC-3339).
+    @httpQuery("created_after")
+    created_after: Timestamp
+
+    /// Inclusive upper bound on `created_at` (RFC-3339).
+    @httpQuery("created_before")
+    created_before: Timestamp
 }
 
 structure ListJobsOutput {
@@ -175,7 +191,6 @@ operation ListJobs {
 }
 
 // ─── Get ─────────────────────────────────────────────────────────
-
 @input
 structure GetJobInput with [WorkspaceHeaders] {
     @required
@@ -193,11 +208,12 @@ structure GetJobOutput {
 operation GetJob {
     input: GetJobInput
     output: GetJobOutput
-    errors: [NotFoundError]
+    errors: [
+        NotFoundError
+    ]
 }
 
 // ─── Update ──────────────────────────────────────────────────────
-
 @input
 structure UpdateJobInput with [WorkspaceHeaders] {
     @required
@@ -225,11 +241,14 @@ structure UpdateJobOutput {
 operation UpdateJob {
     input: UpdateJobInput
     output: UpdateJobOutput
-    errors: [NotFoundError, InvalidRequestError, UnprocessableEntityError]
+    errors: [
+        NotFoundError
+        InvalidRequestError
+        UnprocessableEntityError
+    ]
 }
 
 // ─── Cancel ──────────────────────────────────────────────────────
-
 @input
 structure CancelJobInput with [WorkspaceHeaders] {
     @required
@@ -246,11 +265,13 @@ structure CancelJobOutput {
 operation CancelJob {
     input: CancelJobInput
     output: CancelJobOutput
-    errors: [NotFoundError, ConflictError]
+    errors: [
+        NotFoundError
+        ConflictError
+    ]
 }
 
 // ─── Get Status ──────────────────────────────────────────────────
-
 @input
 structure GetJobStatusInput with [WorkspaceHeaders] {
     @required
@@ -268,11 +289,12 @@ structure GetJobStatusOutput {
 operation GetJobStatus {
     input: GetJobStatusInput
     output: GetJobStatusOutput
-    errors: [NotFoundError]
+    errors: [
+        NotFoundError
+    ]
 }
 
 // ─── Get Versions ────────────────────────────────────────────────
-
 @input
 structure GetJobVersionsInput with [WorkspaceHeaders] {
     @required
@@ -290,11 +312,12 @@ structure GetJobVersionsOutput {
 operation GetJobVersions {
     input: GetJobVersionsInput
     output: GetJobVersionsOutput
-    errors: [NotFoundError]
+    errors: [
+        NotFoundError
+    ]
 }
 
 // ─── List Job Executions ─────────────────────────────────────────
-
 @input
 structure ListJobExecutionsInput with [WorkspaceHeaders, PaginationQuery] {
     @required
@@ -317,5 +340,7 @@ structure ListJobExecutionsOutput {
 operation ListJobExecutions {
     input: ListJobExecutionsInput
     output: ListJobExecutionsOutput
-    errors: [NotFoundError]
+    errors: [
+        NotFoundError
+    ]
 }

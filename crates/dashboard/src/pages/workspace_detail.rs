@@ -2,15 +2,17 @@ use leptos::prelude::*;
 use leptos_router::components::A;
 use leptos_router::hooks::use_params_map;
 
-use crate::app::prefixed;
 use crate::api::{
     self, Config, CreateConfig, CreateEndpoint, CreatePayloadSpec, CreateSecret, Endpoint,
-    Execution, Job, PayloadSpec, UpdateConfig, UpdatePayloadSpec,
-    UpdateSecret,
+    Execution, Job, JobListQueryParams, PayloadSpec, UpdateConfig, UpdatePayloadSpec, UpdateSecret,
 };
+use crate::app::prefixed;
 use crate::components::confirm::ConfirmDialog;
+use crate::components::copyable_id::CopyableId;
+use crate::components::date_range::DateRangeFilter;
 use crate::components::loading::{EmptyState, ErrorAlert, LoadingSpinner};
 use crate::components::modal::Modal;
+use crate::components::multi_select::MultiSelectFilter;
 use crate::components::status_badge::StatusBadge;
 
 #[component]
@@ -292,7 +294,8 @@ fn CreatePayloadSpecForm(
     set_refresh: WriteSignal<u32>,
 ) -> impl IntoView {
     let (name, set_name) = signal(String::new());
-    let (schema_json, set_schema_json) = signal(r#"{"type": "object", "properties": {}}"#.to_string());
+    let (schema_json, set_schema_json) =
+        signal(r#"{"type": "object", "properties": {}}"#.to_string());
     let (error, set_error) = signal(Option::<String>::None);
     let (submitting, set_submitting) = signal(false);
 
@@ -313,7 +316,10 @@ fn CreatePayloadSpecForm(
                     return;
                 }
             };
-            let body = CreatePayloadSpec { name: name_val, schema };
+            let body = CreatePayloadSpec {
+                name: name_val,
+                schema,
+            };
             match api::create_payload_spec(oid, wid, body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
@@ -373,7 +379,12 @@ fn EditPayloadSpecForm(
         }
     });
 
-    let spec_name = move || editing_spec.get().map(|s| s.name.clone()).unwrap_or_default();
+    let spec_name = move || {
+        editing_spec
+            .get()
+            .map(|s| s.name.clone())
+            .unwrap_or_default()
+    };
 
     let on_submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
@@ -598,7 +609,10 @@ fn CreateConfigForm(
                     return;
                 }
             };
-            let body = CreateConfig { name: name_val, values };
+            let body = CreateConfig {
+                name: name_val,
+                values,
+            };
             match api::create_config(oid, wid, body).await {
                 Ok(_) => {
                     set_modal_open.set(false);
@@ -658,7 +672,12 @@ fn EditConfigForm(
         }
     });
 
-    let cfg_name = move || editing_config.get().map(|c| c.name.clone()).unwrap_or_default();
+    let cfg_name = move || {
+        editing_config
+            .get()
+            .map(|c| c.name.clone())
+            .unwrap_or_default()
+    };
 
     let on_submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
@@ -985,10 +1004,72 @@ fn UpdateSecretForm(
 // Jobs Tab (Enhanced)
 // ════════════════════════════════════════════════════════════
 
+/// Blank filter string → `None`, else `Some(trimmed)`.
+fn filter_opt(value: String) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+/// Snapshot of every jobs-list filter; detects filter changes so pagination
+/// resets to page 1.
+type JobFilterKey = (
+    String,
+    Vec<String>,
+    Vec<String>,
+    Vec<String>,
+    String,
+    Option<chrono::DateTime<chrono::Utc>>,
+    Option<chrono::DateTime<chrono::Utc>>,
+);
+
 #[component]
 fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
     let (refresh, set_refresh) = signal(0u32);
     let (modal_open, set_modal_open) = signal(false);
+
+    // Filters. Vec<String> fields are multi-select; empty means "All"/unset.
+    // Changing any filter resets pagination via the Effect below.
+    let (job_id_filter, set_job_id_filter) = signal(String::new());
+    let (status_filter, set_status_filter) = signal(Vec::<String>::new());
+    let (trigger_filter, set_trigger_filter) = signal(Vec::<String>::new());
+    let (endpoint_type_filter, set_endpoint_type_filter) = signal(Vec::<String>::new());
+    let (endpoint_filter, set_endpoint_filter) = signal(String::new());
+    let (created_after, set_created_after) = signal(Option::<chrono::DateTime<chrono::Utc>>::None);
+    let (created_before, set_created_before) =
+        signal(Option::<chrono::DateTime<chrono::Utc>>::None);
+    let (page_size, set_page_size) = signal(50i64);
+
+    // Cursor pagination. The backend cursor is forward-only, so we keep the
+    // cursor used for each visited page (`page_cursors[i]`) and an index into
+    // it to support a Previous button. Page 1 uses cursor `None`.
+    let (page_cursors, set_page_cursors) = signal(vec![Option::<String>::None]);
+    let (page_index, set_page_index) = signal(0usize);
+    // Scroll position captured when the query changes, restored after the new
+    // list renders so applying a filter / paging doesn't jump the page to top.
+    let (saved_scroll, set_saved_scroll) = signal(None::<f64>);
+
+    // A snapshot of every active filter. The jobs resource compares the live
+    // snapshot against the one the cursor stack was built for (`applied_key`) and
+    // falls back to page 1 (cursor `None`) on any mismatch. This makes a filter
+    // change immune to the reset effect's timing: even if the resource re-runs
+    // with a stale `page_index` before the reset lands, the guard forces cursor
+    // `None`, so it can never fetch a mid-list page for freshly changed filters.
+    let filter_key = move || -> JobFilterKey {
+        (
+            job_id_filter.get(),
+            status_filter.get(),
+            trigger_filter.get(),
+            endpoint_type_filter.get(),
+            endpoint_filter.get(),
+            created_after.get(),
+            created_before.get(),
+        )
+    };
+    let (applied_key, set_applied_key) = signal(filter_key());
 
     let oid = org_id.clone();
     let wid = workspace_id.clone();
@@ -996,7 +1077,29 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
         let _ = refresh.get();
         let oid = oid.clone();
         let wid = wid.clone();
-        api::list_jobs(oid, wid)
+        let live = filter_key();
+        // Only trust the cursor stack while it still belongs to the live filters;
+        // otherwise a filter just changed and we must restart from page 1. Read
+        // `applied_key` untracked so bookkeeping writes to it don't refetch.
+        let cursor = if live == applied_key.get_untracked() {
+            page_cursors.get().get(page_index.get()).cloned().flatten()
+        } else {
+            None
+        };
+        let (job_id, status, trigger, endpoint_type, endpoint, created_after, created_before) =
+            live;
+        let params = JobListQueryParams {
+            cursor,
+            limit: page_size.get(),
+            job_id: filter_opt(job_id),
+            status,
+            trigger,
+            endpoint: filter_opt(endpoint),
+            endpoint_type,
+            created_after: created_after.map(|d| d.to_rfc3339()),
+            created_before: created_before.map(|d| d.to_rfc3339()),
+        };
+        api::list_jobs(oid, wid, params)
     });
 
     let oid_render = org_id.clone();
@@ -1004,41 +1107,246 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
     let oid_form = org_id.clone();
     let wid_form = workspace_id.clone();
 
+    let any_filter = move || {
+        !job_id_filter.get().is_empty()
+            || !status_filter.get().is_empty()
+            || !trigger_filter.get().is_empty()
+            || !endpoint_type_filter.get().is_empty()
+            || !endpoint_filter.get().is_empty()
+            || created_after.get().is_some()
+            || created_before.get().is_some()
+    };
+
+    // Reset pagination whenever any filter changes, and record the snapshot the
+    // fresh page-1 cursor stack now belongs to. The `prev` guard skips the
+    // initial run. The cursor-stack writes are guarded so a filter change made
+    // while already on page 1 doesn't trigger a redundant refetch (the resource
+    // already fetches page 1 via the stale-snapshot guard above).
+    Effect::new(move |prev: Option<()>| {
+        let live = filter_key();
+        if prev.is_some() {
+            set_applied_key.set(live);
+            if page_index.get_untracked() != 0 {
+                set_page_index.set(0);
+            }
+            let cursors = page_cursors.get_untracked();
+            if cursors.len() != 1 || cursors[0].is_some() {
+                set_page_cursors.set(vec![None]);
+            }
+        }
+    });
+
+    // Capture the current scroll position just before any query change swaps the
+    // list content (filters, page navigation, page size).
+    Effect::new(move |prev: Option<()>| {
+        let _ = (
+            job_id_filter.get(),
+            status_filter.get(),
+            trigger_filter.get(),
+            endpoint_type_filter.get(),
+            endpoint_filter.get(),
+            created_after.get(),
+            created_before.get(),
+            page_index.get(),
+            page_size.get(),
+        );
+        if prev.is_some() {
+            if let Some(w) = web_sys::window() {
+                set_saved_scroll.set(w.scroll_y().ok());
+            }
+        }
+    });
+
+    // Once the refetched list has rendered, restore the saved scroll position so
+    // the viewport stays put instead of jumping to the top.
+    Effect::new(move |_| {
+        if jobs.get().is_some() {
+            if let Some(y) = saved_scroll.get_untracked() {
+                set_saved_scroll.set(None);
+                request_animation_frame(move || {
+                    if let Some(w) = web_sys::window() {
+                        w.scroll_to_with_x_and_y(0.0, y);
+                    }
+                });
+            }
+        }
+    });
+
     view! {
         <div class="space-y-4">
-            <div class="flex justify-end">
+            // Filter bar + actions
+            <div class="flex items-start justify-between gap-4">
+                <div class="space-y-3">
+                    // Row 1 — Job ID, Status, Trigger
+                    <div class="flex flex-wrap items-center gap-3">
+                        <input type="search" prop:value=move || job_id_filter.get()
+                            on:change=move |ev| set_job_id_filter.set(event_target_value(&ev))
+                            class="h-9 w-52 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                            placeholder="Exact job ID" />
+                        <MultiSelectFilter label="Status"
+                            options=vec![("ACTIVE", "Active"), ("RETIRED", "Retired")]
+                            selected=status_filter set_selected=set_status_filter />
+                        <MultiSelectFilter label="Trigger"
+                            options=vec![("IMMEDIATE", "Immediate"), ("DELAYED", "Delayed"), ("CRON", "CRON")]
+                            selected=trigger_filter set_selected=set_trigger_filter />
+                    </div>
+                    // Row 2 — Endpoint Type, Endpoint, Created
+                    <div class="flex flex-wrap items-center gap-3">
+                        <MultiSelectFilter label="Endpoint Type"
+                            options=vec![("HTTP", "HTTP"), ("KAFKA", "Kafka"), ("REDIS_STREAM", "Redis Stream"), ("INTERNAL", "Internal")]
+                            selected=endpoint_type_filter set_selected=set_endpoint_type_filter />
+                        <input type="search" prop:value=move || endpoint_filter.get()
+                            on:change=move |ev| set_endpoint_filter.set(event_target_value(&ev))
+                            class="h-9 w-52 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                            placeholder="Search endpoint\u{2026}" />
+                        <DateRangeFilter
+                            after=created_after set_after=set_created_after
+                            before=created_before set_before=set_created_before />
+                        <Show when=any_filter>
+                            <button
+                                on:click=move |_| {
+                                    set_job_id_filter.set(String::new());
+                                    set_status_filter.set(Vec::new());
+                                    set_trigger_filter.set(Vec::new());
+                                    set_endpoint_type_filter.set(Vec::new());
+                                    set_endpoint_filter.set(String::new());
+                                    set_created_after.set(None);
+                                    set_created_before.set(None);
+                                }
+                                class="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 font-medium"
+                            >"Clear filters"</button>
+                        </Show>
+                    </div>
+                </div>
+                // Primary action — distinct from the filters, pinned top-right.
                 <button
                     on:click=move |_| set_modal_open.set(true)
-                    class="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                    class="inline-flex shrink-0 items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
                 >
                     <PlusIcon />
                     "New Job"
                 </button>
             </div>
 
-            <Suspense fallback=move || view! { <LoadingSpinner /> }>
+            <Transition fallback=move || view! { <LoadingSpinner /> }>
                 {move || {
                     let oid = oid_render.clone();
                     let wid = wid_render.clone();
                     jobs.get().map(|r| (*r).clone()).map(move |result| {
                         match result {
-                            Ok(jobs) => {
-                                if jobs.is_empty() {
-                                    view! { <EmptyState message="No jobs in this workspace. Create an endpoint first, then add a job." /> }.into_any()
+                            Ok(page) => {
+                                let next_cursor = page.cursor.clone();
+                                if page.data.is_empty() {
+                                    let msg = if any_filter() {
+                                        "No jobs match the current filters."
+                                    } else {
+                                        "No jobs in this workspace. Create an endpoint first, then add a job."
+                                    };
+                                    view! {
+                                        <div class="space-y-3">
+                                            <EmptyState message=msg />
+                                            <JobsPagination
+                                                next_cursor=next_cursor
+                                                page_size=page_size
+                                                set_page_size=set_page_size
+                                                set_page_cursors=set_page_cursors
+                                                page_index=page_index
+                                                set_page_index=set_page_index
+                                            />
+                                        </div>
+                                    }.into_any()
                                 } else {
-                                    let jobs = jobs.clone();
-                                    view! { <JobsTable jobs=jobs org_id=oid.clone() workspace_id=wid.clone() set_refresh=set_refresh /> }.into_any()
+                                    let jobs = page.data.clone();
+                                    view! {
+                                        <div class="space-y-3">
+                                            <JobsTable jobs=jobs org_id=oid.clone() workspace_id=wid.clone() set_refresh=set_refresh />
+                                            <JobsPagination
+                                                next_cursor=next_cursor
+                                                page_size=page_size
+                                                set_page_size=set_page_size
+                                                set_page_cursors=set_page_cursors
+                                                page_index=page_index
+                                                set_page_index=set_page_index
+                                            />
+                                        </div>
+                                    }.into_any()
                                 }
                             }
                             Err(e) => view! { <ErrorAlert message=e.to_string() /> }.into_any(),
                         }
                     })
                 }}
-            </Suspense>
+            </Transition>
 
             <Modal title="Create Job" open=modal_open set_open=set_modal_open>
                 <CreateJobForm org_id=oid_form workspace_id=wid_form set_modal_open=set_modal_open set_refresh=set_refresh />
             </Modal>
+        </div>
+    }
+}
+
+#[component]
+fn JobsPagination(
+    next_cursor: Option<String>,
+    page_size: ReadSignal<i64>,
+    set_page_size: WriteSignal<i64>,
+    set_page_cursors: WriteSignal<Vec<Option<String>>>,
+    page_index: ReadSignal<usize>,
+    set_page_index: WriteSignal<usize>,
+) -> impl IntoView {
+    let has_next = next_cursor.is_some();
+    let has_prev = move || page_index.get() > 0;
+
+    let on_next = move |_| {
+        if let Some(nc) = next_cursor.clone() {
+            let idx = page_index.get_untracked();
+            set_page_cursors.update(|cursors| {
+                // Drop any forward history, then record the next page's cursor.
+                cursors.truncate(idx + 1);
+                cursors.push(Some(nc));
+            });
+            set_page_index.set(idx + 1);
+        }
+    };
+
+    let on_prev = move |_| {
+        let idx = page_index.get_untracked();
+        if idx > 0 {
+            set_page_index.set(idx - 1);
+        }
+    };
+
+    view! {
+        <div class="flex items-center justify-between text-sm text-gray-600">
+            <div class="flex items-center gap-2">
+                <span>"Per page:"</span>
+                <select prop:value=move || page_size.get().to_string()
+                    on:change=move |ev| {
+                        if let Ok(size) = event_target_value(&ev).parse::<i64>() {
+                            set_page_size.set(size);
+                            set_page_cursors.set(vec![None]);
+                            set_page_index.set(0);
+                        }
+                    }
+                    class="px-2 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                    <option value="25">"25"</option>
+                    <option value="50">"50"</option>
+                    <option value="100">"100"</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-3">
+                <span>"Page " {move || page_index.get() + 1}</span>
+                <button
+                    on:click=on_prev
+                    disabled=move || !has_prev()
+                    class="px-3 py-1.5 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >"Previous"</button>
+                <button
+                    on:click=on_next
+                    disabled=move || !has_next
+                    class="px-3 py-1.5 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >"Next"</button>
+            </div>
         </div>
     }
 }
@@ -1233,11 +1541,40 @@ fn CreateJobForm(
 }
 
 #[component]
-fn JobsTable(jobs: Vec<Job>, org_id: String, workspace_id: String, set_refresh: WriteSignal<u32>) -> impl IntoView {
+fn JobsTable(
+    jobs: Vec<Job>,
+    org_id: String,
+    workspace_id: String,
+    set_refresh: WriteSignal<u32>,
+) -> impl IntoView {
     let (selected_job, set_selected_job) = signal(Option::<String>::None);
     let (status_job, set_status_job) = signal(Option::<String>::None);
     let (versions_job, set_versions_job) = signal(Option::<String>::None);
     let (cancel_error, set_cancel_error) = signal(Option::<String>::None);
+
+    // Single table-level cancel confirmation. `cancel_target` holds the job_id
+    // pending cancellation; `confirm_open` drives the dialog visibility.
+    let (cancel_target, set_cancel_target) = signal(Option::<String>::None);
+    let (confirm_open, set_confirm_open) = signal(false);
+
+    let oid_cancel = org_id.clone();
+    let wid_cancel = workspace_id.clone();
+    let on_cancel_confirmed = Callback::new(move |_: ()| {
+        let jid = match cancel_target.get_untracked() {
+            Some(j) => j,
+            None => return,
+        };
+        let oid = oid_cancel.clone();
+        let wid = wid_cancel.clone();
+        set_cancel_error.set(None);
+        leptos::task::spawn_local(async move {
+            match api::cancel_job(oid, wid, jid).await {
+                Ok(_) => set_refresh.update(|r| *r += 1),
+                Err(e) => set_cancel_error.set(Some(e.to_string())),
+            }
+        });
+        set_cancel_target.set(None);
+    });
 
     view! {
         <div class="space-y-2">
@@ -1268,8 +1605,6 @@ fn JobsTable(jobs: Vec<Job>, org_id: String, workspace_id: String, set_refresh: 
                             let jid_cancel = job.job_id.clone();
                             let oid = org_id.clone();
                             let wid = workspace_id.clone();
-                            let oid_cancel = org_id.clone();
-                            let wid_cancel = workspace_id.clone();
                             let oid_status = org_id.clone();
                             let wid_status = workspace_id.clone();
                             let oid_versions = org_id.clone();
@@ -1279,6 +1614,7 @@ fn JobsTable(jobs: Vec<Job>, org_id: String, workspace_id: String, set_refresh: 
                             let jid_for_status = job.job_id.clone();
                             let jid_for_versions = job.job_id.clone();
                             let jid_for_execs = job.job_id.clone();
+
                             view! {
                                 <tr class="hover:bg-gray-50 cursor-pointer transition-colors"
                                     on:click=move |_| {
@@ -1289,32 +1625,14 @@ fn JobsTable(jobs: Vec<Job>, org_id: String, workspace_id: String, set_refresh: 
                                             set_selected_job.set(Some(jid_click.clone()));
                                         }
                                     }>
-                                    <td class="px-6 py-4 text-sm font-mono text-gray-900">{truncate_id(&jid)}</td>
+                                    <td class="px-6 py-4 text-sm text-gray-900"><CopyableId value=jid /></td>
                                     <td class="px-6 py-4 text-sm text-gray-600">{job.endpoint.clone()}</td>
                                     <td class="px-6 py-4 text-sm"><TriggerBadge trigger=job.trigger.clone() /></td>
                                     <td class="px-6 py-4"><StatusBadge status=job.status.clone() /></td>
-                                    <td class="px-6 py-4 text-sm text-gray-500">{format_date(&job.created_at)}</td>
+                                    <td class="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">{format_datetime(&job.created_at)}</td>
                                     <td class="px-6 py-4 text-right">
-                                        <div class="flex items-center justify-end gap-2" on:click=move |ev| ev.stop_propagation()>
-                                            {if is_active {
-                                                let oid_c = oid_cancel.clone();
-                                                let wid_c = wid_cancel.clone();
-                                                let jid_c = jid_cancel.clone();
-                                                Some(view! {
-                                                    <button on:click=move |_| {
-                                                        let oid = oid_c.clone();
-                                                        let wid = wid_c.clone();
-                                                        let jid = jid_c.clone();
-                                                        set_cancel_error.set(None);
-                                                        leptos::task::spawn_local(async move {
-                                                            match api::cancel_job(oid, wid, jid).await {
-                                                                Ok(_) => set_refresh.update(|c| *c += 1),
-                                                                Err(e) => set_cancel_error.set(Some(e.to_string())),
-                                                            }
-                                                        });
-                                                    } class="text-orange-600 hover:text-orange-800 text-xs font-medium">"Cancel"</button>
-                                                })
-                                            } else { None }}
+                                        <div class="flex items-center justify-end gap-3" on:click=move |ev| ev.stop_propagation()>
+                                            // Status + Versions on the left
                                             <button on:click=move |_| {
                                                 let current = status_job.get_untracked();
                                                 if current.as_deref() == Some(&jid_status) {
@@ -1336,6 +1654,20 @@ fn JobsTable(jobs: Vec<Job>, org_id: String, workspace_id: String, set_refresh: 
                                                     } class="text-teal-600 hover:text-teal-800 text-xs font-medium">"Versions"</button>
                                                 })
                                             } else { None }}
+                                            // Divider + Cancel on the right (ACTIVE jobs only)
+                                            <Show when=move || is_active>
+                                                <span class="text-gray-300">"|"</span>
+                                                <button on:click={
+                                                    let jid_c = jid_cancel.clone();
+                                                    move |_| {
+                                                        set_cancel_target.set(Some(jid_c.clone()));
+                                                        set_confirm_open.set(true);
+                                                    }
+                                                }
+                                                    class="px-2 py-1 border border-red-300 text-red-600 hover:bg-red-50 rounded text-xs font-medium">
+                                                    "Cancel"
+                                                </button>
+                                            </Show>
                                         </div>
                                     </td>
                                 </tr>
@@ -1377,6 +1709,17 @@ fn JobsTable(jobs: Vec<Job>, org_id: String, workspace_id: String, set_refresh: 
                     </tbody>
                 </table>
             </div>
+            // Single table-level cancel confirmation dialog, rendered outside the table.
+            <ConfirmDialog
+                title="Cancel job"
+                message="Cancel this job? It will be retired and stop running. This cannot be undone."
+                open=confirm_open
+                set_open=set_confirm_open
+                on_confirm=on_cancel_confirmed
+                confirm_label="Cancel job"
+                dismiss_label="Keep job"
+                amber=true
+            />
         </div>
     }
 }
@@ -1472,7 +1815,7 @@ fn JobVersionsPanel(org_id: String, workspace_id: String, job_id: String) -> imp
                                         {items.into_iter().map(|v| {
                                             view! {
                                                 <div class="flex items-center gap-4 bg-white rounded-lg border border-gray-200 px-4 py-2 text-xs">
-                                                    <span class="font-mono text-gray-600">{truncate_id(&v.job_id)}</span>
+                                                    <CopyableId value=v.job_id.clone() />
                                                     <span>"v" {v.version}</span>
                                                     <StatusBadge status=v.status.clone() />
                                                     {v.cron.as_ref().map(|c| view! { <span class="font-mono text-gray-500">{c.clone()}</span> })}
@@ -1537,7 +1880,12 @@ fn JobExecutions(org_id: String, workspace_id: String, job_id: String) -> impl I
 }
 
 #[component]
-fn ExecutionsList(executions: Vec<Execution>, org_id: String, workspace_id: String, set_refresh: WriteSignal<u32>) -> impl IntoView {
+fn ExecutionsList(
+    executions: Vec<Execution>,
+    org_id: String,
+    workspace_id: String,
+    set_refresh: WriteSignal<u32>,
+) -> impl IntoView {
     let (selected_exec, set_selected_exec) = signal(Option::<String>::None);
     let (cancel_error, set_cancel_error) = signal(Option::<String>::None);
 
@@ -1568,7 +1916,7 @@ fn ExecutionsList(executions: Vec<Execution>, org_id: String, workspace_id: Stri
                                 }
                             }>
                             <div class="flex items-center gap-4">
-                                <span class="text-xs font-mono text-gray-600">{truncate_id(&eid)}</span>
+                                <CopyableId value=eid.clone() />
                                 <StatusBadge status=exec.status.clone() />
                             </div>
                             <div class="flex items-center gap-4 text-xs text-gray-500">
@@ -1636,10 +1984,14 @@ fn ExecutionDetail(org_id: String, workspace_id: String, execution: Execution) -
         api::list_execution_logs(oid, wid, eid)
     });
 
-    let input_str = execution.input.as_ref()
+    let input_str = execution
+        .input
+        .as_ref()
         .map(|v| serde_json::to_string_pretty(v).unwrap_or_default())
         .unwrap_or_else(|| "null".to_string());
-    let output_str = execution.output.as_ref()
+    let output_str = execution
+        .output
+        .as_ref()
         .map(|v| serde_json::to_string_pretty(v).unwrap_or_default())
         .unwrap_or_else(|| "null".to_string());
 
@@ -1849,7 +2201,8 @@ fn CreateEndpointForm(
 ) -> impl IntoView {
     let (name, set_name) = signal(String::new());
     let (ep_type, set_ep_type) = signal("HTTP".to_string());
-    let (spec_json, set_spec_json) = signal(r#"{"url": "http://localhost:9999/webhook", "method": "POST"}"#.to_string());
+    let (spec_json, set_spec_json) =
+        signal(r#"{"url": "http://localhost:9999/webhook", "method": "POST"}"#.to_string());
     let (error, set_error) = signal(Option::<String>::None);
     let (submitting, set_submitting) = signal(false);
 
@@ -2010,7 +2363,12 @@ fn EditEndpointForm(
         }
     });
 
-    let ep_name = move || editing_ep.get().map(|ep| ep.name.clone()).unwrap_or_default();
+    let ep_name = move || {
+        editing_ep
+            .get()
+            .map(|ep| ep.name.clone())
+            .unwrap_or_default()
+    };
 
     let on_submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
@@ -2099,14 +2457,19 @@ fn PlusIcon() -> impl IntoView {
     }
 }
 
-fn truncate_id(id: &str) -> String {
-    if id.len() > 8 {
-        format!("{}...", &id[..8])
+fn format_date(s: &str) -> String {
+    if s.len() >= 10 {
+        s[..10].to_string()
     } else {
-        id.to_string()
+        s.to_string()
     }
 }
 
-fn format_date(s: &str) -> String {
-    if s.len() >= 10 { s[..10].to_string() } else { s.to_string() }
+/// RFC-3339 timestamp -> `"YYYY-MM-DD HH:MM:SS"` (UTC), e.g. `2026-07-03 12:34:56`.
+fn format_datetime(s: &str) -> String {
+    if s.len() >= 19 {
+        s[..19].replace('T', " ")
+    } else {
+        s.replace('T', " ")
+    }
 }

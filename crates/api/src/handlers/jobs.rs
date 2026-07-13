@@ -1,4 +1,4 @@
-use crate::extractors::{AuthenticatedRequest, Workspace};
+use crate::extractors::{AuthenticatedRequest, JobFilters, Workspace};
 use crate::router::AppState;
 use actix_web::{web, HttpResponse};
 use chrono::Utc;
@@ -63,9 +63,7 @@ pub async fn create(
     }
 
     if let Some(ref key) = body.idempotency_key {
-        if let Some(existing) =
-            db::jobs::get_by_idempotency(&mut db, &body.endpoint, key).await?
-        {
+        if let Some(existing) = db::jobs::get_by_idempotency(&mut db, &body.endpoint, key).await? {
             let exec = db::executions::get_for_job(&mut db, &existing.job_id).await?;
             return Ok(HttpResponse::Ok()
                 .json(serde_json::json!({ "data": job_response(&existing, exec.as_ref()) })));
@@ -271,6 +269,7 @@ pub async fn list(
     _auth: AuthenticatedRequest,
     ws: Workspace,
     params: web::Query<PaginationParams>,
+    filters: JobFilters,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
@@ -279,7 +278,7 @@ pub async fn list(
     let mut db = DbContext::new(&mut *conn, prefix);
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
-    let items = db::jobs::list(&mut db, cursor.as_deref(), limit + 1).await?;
+    let items = db::jobs::list(&mut db, cursor.as_deref(), limit + 1, &filters.0).await?;
 
     let has_more = items.len() as i64 > limit;
     let items: Vec<_> = items.into_iter().take(limit as usize).collect();
@@ -351,15 +350,13 @@ pub async fn update(
         ));
     }
 
-    let cron_expr = match body.cron.clone() {
-        Some(c) => c,
-        None => PgCronExpr::try_from(
-            old_job
-                .cron_expression
-                .clone()
-                .ok_or_else(|| AppError::InvalidCron("Existing job has no cron expression".into()))?,
-        )?,
-    };
+    let cron_expr =
+        match body.cron.clone() {
+            Some(c) => c,
+            None => PgCronExpr::try_from(old_job.cron_expression.clone().ok_or_else(|| {
+                AppError::InvalidCron("Existing job has no cron expression".into())
+            })?)?,
+        };
     let tz_str = body
         .timezone
         .as_deref()
@@ -399,9 +396,7 @@ pub async fn update(
     drop(db);
     tx.commit().await.map_err(AppError::from)?;
 
-    if let Err(e) =
-        db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await
-    {
+    if let Err(e) = db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await {
         tracing::error!(job_id = %job_id, "Failed to unregister old pg_cron job: {}", e);
     }
     if let Err(e) = db::jobs::register_pg_cron(
@@ -471,8 +466,7 @@ pub async fn cancel(
     drop(db);
 
     if job.trigger_type == "CRON" {
-        if let Err(e) =
-            db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await
+        if let Err(e) = db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await
         {
             tracing::error!(job_id = %job_id, "Failed to unregister pg_cron job: {}", e);
         }

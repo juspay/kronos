@@ -17,16 +17,20 @@ pub enum EndpointType {
 
 impl fmt::Display for EndpointType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::HTTP => write!(f, "HTTP"),
-            Self::KAFKA => write!(f, "KAFKA"),
-            Self::REDIS_STREAM => write!(f, "REDIS_STREAM"),
-            Self::INTERNAL => write!(f, "INTERNAL"),
-        }
+        f.write_str(self.as_str())
     }
 }
 
 impl EndpointType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::HTTP => "HTTP",
+            Self::KAFKA => "KAFKA",
+            Self::REDIS_STREAM => "REDIS_STREAM",
+            Self::INTERNAL => "INTERNAL",
+        }
+    }
+
     pub fn from_str_val(s: &str) -> Option<Self> {
         match s {
             "HTTP" => Some(Self::HTTP),

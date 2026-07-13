@@ -1,3 +1,9 @@
+// Leptos SSR renders the dashboard's deeply-nested `view!` trees, whose generated
+// generic types exceed rustc's default recursion limit (128) when this binary
+// monomorphizes the server-side render. Raise it so codegen can compute the
+// layout of the JobsTab view (multi-select + date-range filters add depth).
+#![recursion_limit = "512"]
+
 use actix_cors::Cors;
 use actix_web::{error::InternalError, web, App, HttpResponse, HttpServer};
 use kronos_common::config::{AppConfig, ServerMode};

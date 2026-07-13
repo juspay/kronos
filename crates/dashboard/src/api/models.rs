@@ -88,6 +88,39 @@ pub struct Job {
     pub created_at: String,
 }
 
+/// Query parameters for paginating and filtering the jobs list. Empty `Vec`s
+/// and `None` fields are omitted from the request, which the API treats as
+/// "no filter". Enum lists are serialized as comma-joined strings; date bounds
+/// are RFC-3339 strings.
+#[derive(Debug, Clone)]
+pub struct JobListQueryParams {
+    pub cursor: Option<String>,
+    pub limit: i64,
+    pub job_id: Option<String>,
+    pub status: Vec<String>,
+    pub trigger: Vec<String>,
+    pub endpoint: Option<String>,
+    pub endpoint_type: Vec<String>,
+    pub created_after: Option<String>,  // RFC-3339
+    pub created_before: Option<String>, // RFC-3339
+}
+
+impl Default for JobListQueryParams {
+    fn default() -> Self {
+        Self {
+            cursor: None,
+            limit: 50,
+            job_id: None,
+            status: Vec::new(),
+            trigger: Vec::new(),
+            endpoint: None,
+            endpoint_type: Vec::new(),
+            created_after: None,
+            created_before: None,
+        }
+    }
+}
+
 // -- Endpoint --
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -38,6 +38,7 @@ enum EndpointTypeEnum {
     HTTP
     KAFKA
     REDIS_STREAM
+    INTERNAL
 }
 
 enum TriggerTypeEnum {
@@ -50,6 +51,10 @@ enum JobStatusEnum {
     ACTIVE
     RETIRED
 }
+
+list JobStatusList { member: JobStatusEnum }
+list TriggerTypeList { member: TriggerTypeEnum }
+list EndpointTypeList { member: EndpointTypeEnum }
 
 enum ExecutionStatusEnum {
     PENDING
