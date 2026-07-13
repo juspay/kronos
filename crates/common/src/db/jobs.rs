@@ -515,8 +515,10 @@ mod tests {
     #[test]
     fn cron_command_applies_table_prefix() {
         // Library mode: a non-empty prefix produces prefixed table names within
-        // the schema (tbl(prefix, ..)), matching the rest of the DB layer.
-        let cmd = build_cron_command("sched", "ws_acme", "job-123");
+        // the schema (tbl(prefix, ..)), matching the rest of the DB layer. The
+        // prefix carries its own trailing separator (tbl is `{prefix}{name}`),
+        // so callers pass "sched_" to get "sched_jobs".
+        let cmd = build_cron_command("sched_", "ws_acme", "job-123");
         assert!(cmd.contains("\"ws_acme\".\"sched_executions\""));
         assert!(cmd.contains("\"ws_acme\".\"sched_jobs\" j"));
         assert!(cmd.contains("\"ws_acme\".\"sched_endpoints\" e"));
