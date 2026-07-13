@@ -15,11 +15,11 @@ pub struct ListJobsInput  {
     pub job_id: ::std::option::Option<::std::string::String>,
     #[allow(missing_docs)] // documentation missing in model
     pub endpoint: ::std::option::Option<::std::string::String>,
-    /// Trigger types to include (OR-ed). Sent as a repeated query param, e.g. `?trigger_type=CRON&amp;trigger_type=DELAYED`; the server also accepts a single comma-separated value.
+    #[allow(missing_docs)] // documentation missing in model
     pub trigger_type: ::std::option::Option<::std::vec::Vec::<crate::types::TriggerTypeEnum>>,
-    /// Job statuses to include (OR-ed). Sent as a repeated query param, e.g. `?status=ACTIVE&amp;status=RETIRED`; the server also accepts a single comma-separated value.
+    #[allow(missing_docs)] // documentation missing in model
     pub status: ::std::option::Option<::std::vec::Vec::<crate::types::JobStatusEnum>>,
-    /// Endpoint types to include (OR-ed). Sent as a repeated query param, e.g. `?endpoint_type=HTTP&amp;endpoint_type=INTERNAL`; the server also accepts a single comma-separated value.
+    #[allow(missing_docs)] // documentation missing in model
     pub endpoint_type: ::std::option::Option<::std::vec::Vec::<crate::types::EndpointTypeEnum>>,
     /// Inclusive lower bound on `created_at` (RFC-3339).
     pub created_after: ::std::option::Option<::aws_smithy_types::DateTime>,
@@ -51,21 +51,21 @@ impl  ListJobsInput  {
     pub fn endpoint(&self) -> ::std::option::Option<&str> {
         self.endpoint.as_deref()
     }
-    /// Trigger types to include (OR-ed). Sent as a repeated query param, e.g. `?trigger_type=CRON&amp;trigger_type=DELAYED`; the server also accepts a single comma-separated value.
+    #[allow(missing_docs)] // documentation missing in model
     /// 
     /// If no value was sent for this field, a default will be set. If you want to determine if no value was sent, use `.trigger_type.is_none()`.
     pub fn trigger_type(&self) -> &[crate::types::TriggerTypeEnum] {
         self.trigger_type.as_deref()
         .unwrap_or_default()
     }
-    /// Job statuses to include (OR-ed). Sent as a repeated query param, e.g. `?status=ACTIVE&amp;status=RETIRED`; the server also accepts a single comma-separated value.
+    #[allow(missing_docs)] // documentation missing in model
     /// 
     /// If no value was sent for this field, a default will be set. If you want to determine if no value was sent, use `.status.is_none()`.
     pub fn status(&self) -> &[crate::types::JobStatusEnum] {
         self.status.as_deref()
         .unwrap_or_default()
     }
-    /// Endpoint types to include (OR-ed). Sent as a repeated query param, e.g. `?endpoint_type=HTTP&amp;endpoint_type=INTERNAL`; the server also accepts a single comma-separated value.
+    #[allow(missing_docs)] // documentation missing in model
     /// 
     /// If no value was sent for this field, a default will be set. If you want to determine if no value was sent, use `.endpoint_type.is_none()`.
     pub fn endpoint_type(&self) -> &[crate::types::EndpointTypeEnum] {
@@ -189,18 +189,17 @@ impl ListJobsInputBuilder {
     ///
     /// To override the contents of this collection use [`set_trigger_type`](Self::set_trigger_type).
     ///
-    /// Trigger types to include (OR-ed). Sent as a repeated query param, e.g. `?trigger_type=CRON&amp;trigger_type=DELAYED`; the server also accepts a single comma-separated value.
     pub fn trigger_type(mut self, input: crate::types::TriggerTypeEnum) -> Self {
         let mut v = self.trigger_type.unwrap_or_default();
                         v.push(input);
                         self.trigger_type = ::std::option::Option::Some(v);
                         self
     }
-    /// Trigger types to include (OR-ed). Sent as a repeated query param, e.g. `?trigger_type=CRON&amp;trigger_type=DELAYED`; the server also accepts a single comma-separated value.
+    #[allow(missing_docs)] // documentation missing in model
     pub fn set_trigger_type(mut self, input: ::std::option::Option<::std::vec::Vec::<crate::types::TriggerTypeEnum>>) -> Self {
         self.trigger_type = input; self
     }
-    /// Trigger types to include (OR-ed). Sent as a repeated query param, e.g. `?trigger_type=CRON&amp;trigger_type=DELAYED`; the server also accepts a single comma-separated value.
+    #[allow(missing_docs)] // documentation missing in model
     pub fn get_trigger_type(&self) -> &::std::option::Option<::std::vec::Vec::<crate::types::TriggerTypeEnum>> {
         &self.trigger_type
     }
@@ -208,18 +207,17 @@ impl ListJobsInputBuilder {
     ///
     /// To override the contents of this collection use [`set_status`](Self::set_status).
     ///
-    /// Job statuses to include (OR-ed). Sent as a repeated query param, e.g. `?status=ACTIVE&amp;status=RETIRED`; the server also accepts a single comma-separated value.
     pub fn status(mut self, input: crate::types::JobStatusEnum) -> Self {
         let mut v = self.status.unwrap_or_default();
                         v.push(input);
                         self.status = ::std::option::Option::Some(v);
                         self
     }
-    /// Job statuses to include (OR-ed). Sent as a repeated query param, e.g. `?status=ACTIVE&amp;status=RETIRED`; the server also accepts a single comma-separated value.
+    #[allow(missing_docs)] // documentation missing in model
     pub fn set_status(mut self, input: ::std::option::Option<::std::vec::Vec::<crate::types::JobStatusEnum>>) -> Self {
         self.status = input; self
     }
-    /// Job statuses to include (OR-ed). Sent as a repeated query param, e.g. `?status=ACTIVE&amp;status=RETIRED`; the server also accepts a single comma-separated value.
+    #[allow(missing_docs)] // documentation missing in model
     pub fn get_status(&self) -> &::std::option::Option<::std::vec::Vec::<crate::types::JobStatusEnum>> {
         &self.status
     }
@@ -227,18 +225,17 @@ impl ListJobsInputBuilder {
     ///
     /// To override the contents of this collection use [`set_endpoint_type`](Self::set_endpoint_type).
     ///
-    /// Endpoint types to include (OR-ed). Sent as a repeated query param, e.g. `?endpoint_type=HTTP&amp;endpoint_type=INTERNAL`; the server also accepts a single comma-separated value.
     pub fn endpoint_type(mut self, input: crate::types::EndpointTypeEnum) -> Self {
         let mut v = self.endpoint_type.unwrap_or_default();
                         v.push(input);
                         self.endpoint_type = ::std::option::Option::Some(v);
                         self
     }
-    /// Endpoint types to include (OR-ed). Sent as a repeated query param, e.g. `?endpoint_type=HTTP&amp;endpoint_type=INTERNAL`; the server also accepts a single comma-separated value.
+    #[allow(missing_docs)] // documentation missing in model
     pub fn set_endpoint_type(mut self, input: ::std::option::Option<::std::vec::Vec::<crate::types::EndpointTypeEnum>>) -> Self {
         self.endpoint_type = input; self
     }
-    /// Endpoint types to include (OR-ed). Sent as a repeated query param, e.g. `?endpoint_type=HTTP&amp;endpoint_type=INTERNAL`; the server also accepts a single comma-separated value.
+    #[allow(missing_docs)] // documentation missing in model
     pub fn get_endpoint_type(&self) -> &::std::option::Option<::std::vec::Vec::<crate::types::EndpointTypeEnum>> {
         &self.endpoint_type
     }
