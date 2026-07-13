@@ -161,10 +161,8 @@ pub async fn get_by_idempotency(
     .await
 }
 
-/// Optional, server-side filters applied to [`list`]. All fields are ANDed
-/// together. Empty `Vec`s / `None` fields are unconstrained. `endpoint` is a
-/// case-insensitive substring; the enum lists match any of their values
-/// (`= ANY`); the date bounds are inclusive.
+/// Server-side filters for [`list`], all ANDed. Empty/`None` = unconstrained;
+/// `endpoint` is a substring; enum lists match any value (`= ANY`); dates inclusive.
 #[derive(Debug, Default, Clone)]
 pub struct JobFilters {
     pub job_id: Option<String>,
@@ -176,18 +174,16 @@ pub struct JobFilters {
     pub created_before: Option<DateTime<Utc>>,
 }
 
-/// One positional bind for the list query. `Scalar` is a single text value
-/// (cursor, endpoint substring, an RFC-3339 timestamp); `Array` is bound as a
-/// Postgres `text[]` for `= ANY($n)`.
+/// One positional bind: `Scalar` (a text value) or `Array` (Postgres `text[]`
+/// for `= ANY($n)`).
 #[derive(Debug, Clone, PartialEq)]
 enum BindValue {
     Scalar(String),
     Array(Vec<String>),
 }
 
-/// Escapes the LIKE/ILIKE metacharacters (`\`, `%`, `_`) in a user-supplied
-/// search term by prefixing each with a backslash. Pairs with an `ESCAPE '\'`
-/// clause so the term is matched as a literal substring rather than a pattern.
+/// Escapes LIKE metacharacters (`\`, `%`, `_`) so the term matches literally
+/// (pairs with an `ESCAPE '\'` clause).
 fn escape_like(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
@@ -199,9 +195,8 @@ fn escape_like(s: &str) -> String {
     out
 }
 
-/// Builds the `list` query and the ordered binds. Pure (no DB access) so the
-/// placeholder/bind bookkeeping is unit-tested. The final `LIMIT` placeholder is
-/// left for the caller to bind as an `i64`.
+/// Builds the `list` query and ordered binds. Pure, so it's unit-tested; the
+/// caller binds the final `LIMIT` as an `i64`.
 fn build_list_query(t: &str, cursor: Option<&str>, filters: &JobFilters) -> (String, Vec<BindValue>) {
     let mut conditions: Vec<String> = Vec::new();
     let mut binds: Vec<BindValue> = Vec::new();

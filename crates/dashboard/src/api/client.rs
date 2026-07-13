@@ -168,9 +168,7 @@ mod inner {
 
     // -- Jobs API (workspace-scoped) --
 
-    /// Percent-encodes a query-string value (RFC 3986 unreserved set passes
-    /// through, everything else is `%XX`). Keeps the endpoint search box safe
-    /// for spaces and other special characters without pulling in a URL crate.
+    /// Percent-encodes a query value (RFC 3986: unreserved pass through, else `%XX`).
     fn encode_query_value(value: &str) -> String {
         let mut out = String::with_capacity(value.len());
         for byte in value.bytes() {

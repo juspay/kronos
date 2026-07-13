@@ -1004,8 +1004,7 @@ fn UpdateSecretForm(
 // Jobs Tab (Enhanced)
 // ════════════════════════════════════════════════════════════
 
-/// Normalizes a raw filter string (from a select/input) into an optional value:
-/// blank means "no filter".
+/// Blank filter string → `None`, else `Some(trimmed)`.
 fn filter_opt(value: String) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -1015,9 +1014,8 @@ fn filter_opt(value: String) -> Option<String> {
     }
 }
 
-/// A snapshot of every jobs-list filter, in the same order as [`JobsTab`]'s
-/// `filter_key`. Used to detect when the active filters have changed out from
-/// under the cursor stack so pagination can fall back to page 1.
+/// Snapshot of every jobs-list filter; detects filter changes so pagination
+/// resets to page 1.
 type JobFilterKey = (
     String,
     Vec<String>,

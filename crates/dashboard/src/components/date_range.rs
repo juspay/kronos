@@ -56,8 +56,7 @@ pub(crate) fn combine(date: NaiveDate, time: NaiveTime) -> DateTime<Utc> {
     Utc.from_utc_datetime(&date.and_time(time))
 }
 
-/// Default start-/end-of-day times. Until the user edits the time fields the
-/// picker behaves exactly as the date-only version did (00:00:00 / 23:59:59 UTC).
+/// Default start-/end-of-day times (00:00:00 / 23:59:59 UTC).
 fn default_start_time() -> NaiveTime {
     NaiveTime::from_hms_opt(0, 0, 0).unwrap()
 }
@@ -65,8 +64,7 @@ fn default_end_time() -> NaiveTime {
     NaiveTime::from_hms_opt(23, 59, 59).unwrap()
 }
 
-/// Days of `month` laid out in a 7-col grid: leading `None` pad for the weekday
-/// offset (Sunday=0), then each day of the month.
+/// Days of `month` in a 7-col grid: leading `None` pad for the weekday offset (Sunday=0).
 pub(crate) fn month_cells(month: NaiveDate) -> Vec<Option<NaiveDate>> {
     let first = first_of_month(month);
     let lead = first.weekday().num_days_from_sunday() as usize;
@@ -94,9 +92,8 @@ pub(crate) fn add_months(d: NaiveDate, delta: i32) -> NaiveDate {
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 
-/// Month-grid range picker with preset shortcuts. Writes inclusive [after,
-/// before] UTC bounds; empty = no filter. Uses `Utc::now()` (wasmbind-enabled)
-/// to seed the view month on open and to apply presets.
+/// Month-grid range picker with presets; writes inclusive [after, before] UTC
+/// bounds (empty = no filter).
 #[component]
 pub fn DateRangeFilter(
     after: ReadSignal<Option<DateTime<Utc>>>,
@@ -107,11 +104,9 @@ pub fn DateRangeFilter(
     let (open, set_open) = signal(false);
     // Month currently displayed in the grid (first day of that month).
     let (view_month, set_view_month) = signal(first_of_month(Utc::now().date_naive()));
-    // Day currently hovered while picking the end of a range — drives the live
-    // preview highlight between the chosen start and the cursor.
+    // Hovered day while picking a range end; drives the live preview highlight.
     let (hover_day, set_hover_day) = signal(Option::<NaiveDate>::None);
-    // UTC time-of-day applied to the start/end dates (defaults preserve the
-    // original full-day behaviour).
+    // UTC time-of-day for the start/end dates (defaults = full day).
     let (start_time, set_start_time) = signal(default_start_time());
     let (end_time, set_end_time) = signal(default_end_time());
     let today = Utc::now().date_naive();
@@ -137,9 +132,7 @@ pub fn DateRangeFilter(
     });
     on_cleanup(move || handle.remove());
 
-    // Trigger is content-sized: small ("Created") when empty, expanding to show
-    // the selected date + time (with seconds). It's the last item in its row and
-    // left-aligned, so it grows rightward without disturbing the other filters.
+    // Trigger is content-sized: "Created" when empty, else the selected date + time.
     let button_text = move || match (after.get(), before.get()) {
         (Some(a), Some(b)) => {
             format!("{} \u{2013} {}", a.format("%b %d %H:%M:%S"), b.format("%b %d %H:%M:%S"))
@@ -160,8 +153,7 @@ pub fn DateRangeFilter(
         set_open.set(false);
     };
 
-    // Click a day: first click sets `after` at the start time and clears `before`;
-    // second click sets `before` at the end time, swapping if it lands earlier.
+    // First click sets `after` (clears `before`); second sets `before`, swapping if earlier.
     let pick_day = move |d: NaiveDate| {
         match (after.get(), before.get()) {
             // First click, or restarting after a complete range.
@@ -181,8 +173,7 @@ pub fn DateRangeFilter(
         }
     };
 
-    // Apply a new time-of-day to a bound, re-attaching it to the already-picked
-    // date. Handed to the time dropdowns.
+    // Re-attach a new time-of-day to an already-picked date; handed to the time dropdowns.
     let apply_start = Callback::new(move |t: NaiveTime| {
         set_start_time.set(t);
         if let Some(a) = after.get() {
@@ -196,8 +187,7 @@ pub fn DateRangeFilter(
         }
     });
 
-    // Build preset buttons eagerly to avoid FnOnce move issues inside view!
-    // Each highlights when the active range matches its (whole-day) bounds.
+    // Preset buttons built eagerly (avoids FnOnce in view!); highlight on match.
     let preset_buttons: Vec<_> = Preset::ALL
         .iter()
         .copied()
@@ -241,8 +231,7 @@ pub fn DateRangeFilter(
                     <span class="text-gray-400">"\u{25be}"</span>
                 </span>
             </button>
-            // Popover panel — always in DOM, toggled via display style (avoids
-            // FnOnce constraint on <Show> children from moved Vecs).
+            // Popover: kept in DOM, toggled via display style (avoids FnOnce on <Show>).
             <div class="absolute left-0 top-full z-50 mt-2 flex flex-col rounded-xl border border-gray-200 bg-white shadow-xl ring-1 ring-gray-900/5 overflow-hidden"
                 style=move || if open.get() { "" } else { "display:none" }>
                 <div class="flex">
@@ -284,8 +273,7 @@ pub fn DateRangeFilter(
                             .map(|d| view! { <span>{*d}</span> })
                             .collect_view()}
                     </div>
-                    // No horizontal gap so the range fill on adjacent cells
-                    // touches into one continuous band; vertical gap separates weeks.
+                    // No horizontal gap so the range fill forms one continuous band.
                     <div class="grid grid-cols-7 gap-y-1"
                         on:mouseleave=move |_| set_hover_day.set(None)>
                         {move || {
@@ -294,12 +282,8 @@ pub fn DateRangeFilter(
                                 .map(|cell| match cell {
                                     None => view! { <div></div> }.into_any(),
                                     Some(d) => {
-                                        // Wrapper paints the continuous range band
-                                        // (rounded only at the true ends); the inner
-                                        // button is the circular day target with a
-                                        // solid marker on each endpoint. One classifier
-                                        // drives both the committed range and the live
-                                        // hover preview.
+                                        // Wrapper paints the range band; inner button
+                                        // is the circular day target.
                                         let band_class = move || {
                                             let base = "h-9 flex items-center justify-center ";
                                             match day_highlight(d, after.get(), before.get(), hover_day.get()) {
@@ -318,7 +302,7 @@ pub fn DateRangeFilter(
                                                     format!("{base}bg-blue-600 text-white font-semibold")
                                                 }
                                                 DayHighlight::Span => format!("{base}text-blue-900"),
-                                                // "Today" gets a subtle ring when it isn't part of the selection.
+                                                // Today gets a subtle ring when not selected.
                                                 DayHighlight::None if d == today => format!(
                                                     "{base}text-blue-700 font-semibold ring-1 ring-inset ring-blue-300 hover:bg-gray-100"
                                                 ),
@@ -342,8 +326,7 @@ pub fn DateRangeFilter(
                     </div>
                     </div>
                 </div>
-                // FROM / TO band, full width below the calendar — clear label, the
-                // date (with year), and styled HH:MM:SS dropdowns on one line.
+                // FROM / TO band: label, date, and HH:MM:SS dropdowns per bound.
                 <div class="border-t border-gray-100 bg-gray-50/60 px-4 py-3 space-y-2.5">
                     <div class="flex items-center gap-3">
                         <span class="w-10 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-gray-400">"From"</span>
@@ -370,10 +353,8 @@ pub fn DateRangeFilter(
     }
 }
 
-/// `0..end` as zero-padded `<option>`s, marking the one matching `current()` as
-/// selected. We control selection via the option's `selected` (not a bare
-/// `prop:value` on the `<select>`, which doesn't apply on first render before
-/// the options exist — that left the dropdowns showing 00:00:00 by default).
+/// `0..end` as zero-padded `<option>`s. Selection is set via each option's
+/// `selected` (a `<select>` `prop:value` doesn't apply before options render).
 fn time_options(end: u32, current: impl Fn() -> u32 + Copy + Send + 'static) -> Vec<impl IntoView> {
     (0..end)
         .map(move |n| {
@@ -386,8 +367,7 @@ fn time_options(end: u32, current: impl Fn() -> u32 + Copy + Send + 'static) -> 
         .collect()
 }
 
-/// Styled HH:MM:SS dropdowns bound to a `NaiveTime`; emits the new time on any
-/// change. Uses the app's own select styling so it matches the rest of the UI.
+/// Styled HH:MM:SS dropdowns bound to a `NaiveTime`; emits the new time on change.
 #[component]
 fn TimeSelect(
     time: ReadSignal<NaiveTime>,
@@ -437,10 +417,8 @@ fn TimeSelect(
     }
 }
 
-/// Where a calendar day sits relative to the selection, unifying the committed
-/// range (`after`/`before`) and the live hover preview (`after`/`hover`). Drives
-/// the continuous band: `Start`/`End` round the band's ends, `Span` fills
-/// between, `Only` is a lone selected day, `None` is outside.
+/// A day's position in the selection band: `Start`/`End` cap the ends, `Span`
+/// fills between, `Only` is a lone day, `None` is outside.
 #[derive(Debug, PartialEq)]
 pub(crate) enum DayHighlight {
     None,

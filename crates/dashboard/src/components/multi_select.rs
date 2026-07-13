@@ -1,8 +1,7 @@
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 
-/// Multi-select dropdown. Empty selection means "no filter". Selecting "All"
-/// clears the selection; each option toggles. Closes on outside click.
+/// Multi-select dropdown: empty = no filter, "All" clears, closes on outside click.
 #[component]
 pub fn MultiSelectFilter(
     #[prop(into)] label: String,
@@ -99,8 +98,7 @@ pub fn MultiSelectFilter(
                     <span class="text-gray-400">"\u{25be}"</span>
                 </span>
             </button>
-            // Popover panel — always in DOM, toggled via display style (avoids
-            // FnOnce constraint on <Show> children from moved option_buttons).
+            // Popover: kept in DOM, toggled via display style (avoids FnOnce on <Show>).
             <div class="absolute left-0 top-full z-50 mt-1 w-full min-w-[200px] rounded-lg border border-gray-200 bg-white p-1 shadow-lg"
                 style=move || if open.get() { "" } else { "display:none" }>
                 <button type="button"

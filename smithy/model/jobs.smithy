@@ -158,21 +158,12 @@ structure ListJobsInput with [WorkspaceHeaders, PaginationQuery] {
     @httpQuery("endpoint")
     endpoint: String
 
-    /// Trigger types to include (OR-ed). Sent as a repeated query param, e.g.
-    /// `?trigger_type=CRON&trigger_type=DELAYED`; the server also accepts a
-    /// single comma-separated value.
     @httpQuery("trigger_type")
     trigger_type: TriggerTypeList
 
-    /// Job statuses to include (OR-ed). Sent as a repeated query param, e.g.
-    /// `?status=ACTIVE&status=RETIRED`; the server also accepts a single
-    /// comma-separated value.
     @httpQuery("status")
     status: JobStatusList
 
-    /// Endpoint types to include (OR-ed). Sent as a repeated query param, e.g.
-    /// `?endpoint_type=HTTP&endpoint_type=INTERNAL`; the server also accepts a
-    /// single comma-separated value.
     @httpQuery("endpoint_type")
     endpoint_type: EndpointTypeList
 

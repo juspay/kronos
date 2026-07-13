@@ -1,8 +1,6 @@
 use leptos::prelude::*;
 
-/// Truncates an id to `head…tail` (UUID-style: `prefix…suffix`). `head == 0`
-/// returns the full value; a value already within the `head + tail` budget is
-/// returned unchanged. Char-based so multi-byte values never split a codepoint.
+/// Truncates an id to `head…tail` (char-based); `head == 0` returns it unchanged.
 pub(crate) fn format_id(value: &str, head: usize, tail: usize) -> String {
     if head == 0 {
         return value.to_string();
@@ -20,12 +18,9 @@ pub(crate) fn format_id(value: &str, head: usize, tail: usize) -> String {
     }
 }
 
-/// A monospaced id with a click-to-copy button (writes the full value to the
-/// clipboard). `truncate = 0` (the default) shows the entire value; set it to a
-/// positive number for `prefix…suffix` display. Mirrors the aarokya `CopyableId`.
-///
-/// The copy button calls `stop_propagation`, so it is safe to embed inside a
-/// clickable row without triggering the row's own handler.
+/// Monospaced id with a click-to-copy button. `truncate = 0` shows the full
+/// value, positive shows `prefix…suffix`. The button stops propagation, so it's
+/// safe inside a clickable row.
 #[component]
 pub fn CopyableId(
     #[prop(into)] value: String,

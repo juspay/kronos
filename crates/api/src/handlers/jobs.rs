@@ -270,9 +270,7 @@ fn blank_to_none(value: Option<String>) -> Option<String> {
     })
 }
 
-/// The last non-blank value for `key` across the raw query pairs. Scalar filters
-/// (`job_id`, `endpoint`, the date bounds) are single-valued, so a repeated key
-/// keeps the final occurrence; blanks (e.g. `?job_id=`) are treated as absent.
+/// Last non-blank value for `key`; a repeated scalar key keeps the final one.
 fn last_scalar(pairs: &[(String, String)], key: &str) -> Option<String> {
     pairs
         .iter()
@@ -281,13 +279,9 @@ fn last_scalar(pairs: &[(String, String)], key: &str) -> Option<String> {
         .last()
 }
 
-/// Collects a validated, de-duplicated enum list from the query pairs for `key`.
-///
-/// Liberal in what it accepts: both repeated params (`?status=A&status=B`, which
-/// the generated Smithy SDK emits for a list-typed `@httpQuery`) and a single
-/// comma-separated value (`?status=A,B`, which the dashboard emits). Blank tokens
-/// are skipped; an invalid token fails the whole request with a 400 rather than
-/// silently dropping rows.
+/// Validated, de-duplicated enum list for `key`. Accepts repeated params
+/// (`?status=A&status=B`, from the SDK) or comma-separated (`?status=A,B`, from
+/// the dashboard); an invalid token is a 400.
 fn parse_filter_list<T: PartialEq>(
     pairs: &[(String, String)],
     key: &str,
@@ -323,14 +317,8 @@ fn parse_datetime(value: Option<String>, label: &str) -> Result<Option<DateTime<
     }
 }
 
-/// Parses and validates the server-side jobs-list filters from the raw query
-/// pairs (parsed alongside [`PaginationParams`]). Enum filters are validated up
-/// front so a typo surfaces as a 400 rather than silently returning zero rows;
-/// `endpoint` is a free-text substring search, so it needs no validation.
-///
-/// Taking the raw pairs (rather than a `serde`-derived struct) is deliberate:
-/// the multi-value filters must accept a key appearing more than once, which
-/// `serde_urlencoded` cannot fold into a `Vec` for an `Option<String>` field.
+/// Parses and validates the jobs-list filters from the raw query pairs. Enum
+/// filters are validated up front (a typo is a 400, not silently zero rows).
 fn parse_job_filters(pairs: &[(String, String)]) -> Result<db::jobs::JobFilters, AppError> {
     let created_after = parse_datetime(last_scalar(pairs, "created_after"), "created_after")?;
     let created_before = parse_datetime(last_scalar(pairs, "created_before"), "created_before")?;
@@ -362,9 +350,8 @@ pub async fn list(
     _auth: AuthenticatedRequest,
     ws: Workspace,
     params: web::Query<PaginationParams>,
-    // Raw pairs rather than a typed struct: multi-value filters may repeat a key
-    // (`?status=A&status=B`), which the SDK emits and `serde_urlencoded` cannot
-    // fold into a `Vec`. `parse_job_filters` also still accepts `?status=A,B`.
+    // Raw pairs: repeated keys (`?status=A&status=B`, from the SDK) can't be
+    // folded into a `Vec` by `serde_urlencoded`.
     raw_query: web::Query<Vec<(String, String)>>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
