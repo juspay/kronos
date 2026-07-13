@@ -159,15 +159,16 @@ impl FromRequest for JobFilters {
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
         // Raw pairs: a repeated key can't be folded into a `Vec` by the
-        // struct-based `Query` deserializer.
-        let pairs = web::Query::<Vec<(String, String)>>::from_query(req.query_string())
+        // struct-based `Query` deserializer. An unparseable query is a client
+        // error (400) — never fall back to "no filters", which would quietly
+        // return an unfiltered list the caller never asked for.
+        let filters = web::Query::<Vec<(String, String)>>::from_query(req.query_string())
             .map(web::Query::into_inner)
-            .unwrap_or_default();
-        future::ready(
-            parse_job_filters(&pairs)
-                .map(JobFilters)
-                .map_err(Into::into),
-        )
+            .map_err(|e| AppError::InvalidRequest(format!("Invalid query string: {e}")))
+            .and_then(|pairs| parse_job_filters(&pairs))
+            .map(JobFilters)
+            .map_err(Into::into);
+        future::ready(filters)
     }
 }
 
@@ -393,5 +394,36 @@ mod tests {
             ("created_after", "2026-06-24T00:00:00Z"),
             ("created_before", "2026-06-18T00:00:00Z"),
         ])));
+    }
+
+    /// Parse a raw query string exactly as the extractor does.
+    fn from_query(q: &str) -> Vec<(String, String)> {
+        web::Query::<Vec<(String, String)>>::from_query(q)
+            .map(web::Query::into_inner)
+            .expect("query must parse")
+    }
+
+    /// No query string at all means "no filters" — never an error. Guards the
+    /// 400-on-unparseable path from regressing into rejecting plain requests.
+    #[test]
+    fn empty_query_string_yields_no_filters() {
+        let f = parse_job_filters(&from_query("")).unwrap();
+        assert!(f.status.is_empty());
+        assert!(f.trigger.is_empty());
+        assert!(f.endpoint_type.is_empty());
+        assert_eq!(f.job_id, None);
+        assert_eq!(f.endpoint, None);
+    }
+
+    /// A trailing (or doubled) `&` leaves an empty segment that the parser
+    /// drops; the real filters must still resolve.
+    #[test]
+    fn stray_ampersands_do_not_drop_filters() {
+        let f = parse_job_filters(&from_query("limit=50&status=ACTIVE&endpoint_type=KAFKA&")).unwrap();
+        assert_eq!(f.status, vec![JobStatus::ACTIVE]);
+        assert_eq!(f.endpoint_type, vec![EndpointType::KAFKA]);
+
+        let f = parse_job_filters(&from_query("limit=50&&status=ACTIVE")).unwrap();
+        assert_eq!(f.status, vec![JobStatus::ACTIVE]);
     }
 }
