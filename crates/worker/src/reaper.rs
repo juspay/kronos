@@ -43,7 +43,7 @@ pub async fn reap_schema(
     let retired = db::jobs::retire_expired_cron_jobs(conn, prefix).await?;
 
     for job_id in &retired {
-        db::jobs::unschedule_pg_cron_conn(conn, schema_name, job_id).await?;
+        db::jobs::unregister_pg_cron_conn(conn, schema_name, job_id).await?;
     }
 
     if !retired.is_empty() {

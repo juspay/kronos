@@ -207,11 +207,11 @@ pub async fn create(
                 AppError::InvalidCron("No upcoming run for this cron schedule".into())
             })?;
 
-            let mut conn =
-                kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+            let mut tx =
+                kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
                     .await
                     .map_err(AppError::from)?;
-            let mut db = DbContext::new(&mut *conn, prefix);
+            let mut db = DbContext::new(&mut *tx, prefix);
 
             let job = db::jobs::create_cron(
                 &mut db,
@@ -226,17 +226,22 @@ pub async fn create(
             )
             .await?;
 
-            if let Err(e) = db::jobs::register_pg_cron(
-                &state.pool,
+            drop(db);
+
+            // Register with pg_cron for automatic execution materialization.
+            // Run it on the same tx as the row write so the persisted job and
+            // the pg_cron schedule commit (or roll back) together. If pg_cron is
+            // unhealthy the whole create fails and the client can retry.
+            db::jobs::register_pg_cron_conn(
+                &mut *tx,
                 prefix,
                 &ws.0.schema_name,
                 &job.job_id,
                 cron_expr.as_str(),
             )
-            .await
-            {
-                tracing::error!(job_id = %job.job_id, "Failed to register pg_cron job: {}", e);
-            }
+            .await?;
+
+            tx.commit().await.map_err(AppError::from)?;
 
             metrics::counter!(m::JOBS_CREATED_TOTAL,
                 "trigger_type" => "CRON",
@@ -394,22 +399,21 @@ pub async fn update(
     let created = db::jobs::retire_and_replace(&mut db, &job_id, &new_job).await?;
 
     drop(db);
-    tx.commit().await.map_err(AppError::from)?;
 
-    if let Err(e) = db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await {
-        tracing::error!(job_id = %job_id, "Failed to unregister old pg_cron job: {}", e);
-    }
-    if let Err(e) = db::jobs::register_pg_cron(
-        &state.pool,
+    // Unschedule the old pg_cron job and register the new one on the same tx as
+    // the version flip, so the retire/replace and the schedule swap commit (or
+    // roll back) atomically.
+    db::jobs::unregister_pg_cron_conn(&mut *tx, &ws.0.schema_name, &job_id).await?;
+    db::jobs::register_pg_cron_conn(
+        &mut *tx,
         prefix,
         &ws.0.schema_name,
         &created.job_id,
         cron_expr.as_str(),
     )
-    .await
-    {
-        tracing::error!(job_id = %created.job_id, "Failed to register new pg_cron job: {}", e);
-    }
+    .await?;
+
+    tx.commit().await.map_err(AppError::from)?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "job_id": created.job_id,
@@ -434,10 +438,10 @@ pub async fn cancel(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut tx = kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut *tx, prefix);
     let job_id = path.into_inner();
     let job = db::jobs::get(&mut db, &job_id)
         .await?
@@ -465,12 +469,14 @@ pub async fn cancel(
 
     drop(db);
 
+    // Unregister from pg_cron if this was a CRON job. Run it on the same tx as
+    // the status flip so the cancel and the pg_cron unschedule commit (or roll
+    // back) atomically — no more RETIRED rows left with a live pg_cron entry.
     if job.trigger_type == "CRON" {
-        if let Err(e) = db::jobs::unregister_pg_cron(&state.pool, &ws.0.schema_name, &job_id).await
-        {
-            tracing::error!(job_id = %job_id, "Failed to unregister pg_cron job: {}", e);
-        }
+        db::jobs::unregister_pg_cron_conn(&mut *tx, &ws.0.schema_name, &job_id).await?;
     }
+
+    tx.commit().await.map_err(AppError::from)?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": job_summary(&cancelled) })))
 }
