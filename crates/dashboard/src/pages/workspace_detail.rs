@@ -1663,18 +1663,21 @@ fn JobsTable(
                                                     } class="text-teal-600 hover:text-teal-800 text-xs font-medium">"Versions"</button>
                                                 })
                                             } else { None }}
-                                            // Ad-hoc invoke — active, non-INTERNAL jobs only.
-                                            {if can_invoke {
-                                                Some(view! {
-                                                    <button on:click=move |_| {
-                                                        set_invoke_job.set(Some(job_invoke.clone()));
-                                                        set_invoke_open.set(true);
-                                                    } class="text-green-600 hover:text-green-800 text-xs font-medium">"Invoke"</button>
-                                                })
-                                            } else { None }}
-                                            // Divider + Cancel on the right (ACTIVE jobs only)
+                                            // Divider + actions on the right (ACTIVE jobs only):
+                                            // Invoke (also excludes INTERNAL) then Cancel, both
+                                            // bordered so the two actions read apart from the
+                                            // Status/Versions links.
                                             <Show when=move || is_active>
                                                 <span class="text-gray-300">"|"</span>
+                                                {if can_invoke {
+                                                    let job_invoke = job_invoke.clone();
+                                                    Some(view! {
+                                                        <button on:click=move |_| {
+                                                            set_invoke_job.set(Some(job_invoke.clone()));
+                                                            set_invoke_open.set(true);
+                                                        } class="px-2 py-1 border border-blue-300 text-blue-600 hover:bg-blue-50 rounded text-xs font-medium">"Invoke"</button>
+                                                    })
+                                                } else { None }}
                                                 <button on:click={
                                                     let jid_c = jid_cancel.clone();
                                                     move |_| {
@@ -1776,9 +1779,24 @@ fn InvokeJobForm(
         }
     });
 
-    let endpoint = move || invoke_job.get().map(|j| j.endpoint.clone()).unwrap_or_default();
-    let job_id = move || invoke_job.get().map(|j| j.job_id.clone()).unwrap_or_default();
-    let source_trigger = move || invoke_job.get().map(|j| j.trigger.clone()).unwrap_or_default();
+    let endpoint = move || {
+        invoke_job
+            .get()
+            .map(|j| j.endpoint.clone())
+            .unwrap_or_default()
+    };
+    let job_id = move || {
+        invoke_job
+            .get()
+            .map(|j| j.job_id.clone())
+            .unwrap_or_default()
+    };
+    let source_trigger = move || {
+        invoke_job
+            .get()
+            .map(|j| j.trigger.clone())
+            .unwrap_or_default()
+    };
 
     let on_submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
@@ -2637,11 +2655,18 @@ fn format_date(s: &str) -> String {
 }
 
 /// RFC-3339 timestamp -> `"YYYY-MM-DD HH:MM:SS"` (UTC), e.g. `2026-07-03 12:34:56`.
+/// RFC-3339 UTC timestamp -> local wall-clock `YYYY-MM-DD HH:MM:SS` in the
+/// viewer's own timezone. `Local` is wasmbind-backed, so in the browser it
+/// reflects the user's timezone; falls back to the raw (UTC) string if the
+/// value can't be parsed.
 fn format_datetime(s: &str) -> String {
-    if s.len() >= 19 {
-        s[..19].replace('T', " ")
-    } else {
-        s.replace('T', " ")
+    match chrono::DateTime::parse_from_rfc3339(s) {
+        Ok(dt) => dt
+            .with_timezone(&chrono::Local)
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string(),
+        Err(_) if s.len() >= 19 => s[..19].replace('T', " "),
+        Err(_) => s.replace('T', " "),
     }
 }
 
