@@ -121,7 +121,11 @@ worker:
 mock-server:
     cargo run -p invokr-mock-server
 
-# Run all services in parallel (API + worker + mock-server)
+# Run the library-mode example (requires `just setup` + `just mock-server`)
+example-library-mode:
+    cargo run -p library-mode-example
+
+# Run all services in parallel (API + worker + scheduler + mock-server)
 dev:
     #!/usr/bin/env bash
     set -e

@@ -145,6 +145,7 @@ const sidebars: SidebarsConfig = {
       collapsed: true,
       items: [
         'deployment/docker',
+        'deployment/library-mode',
         'deployment/production',
         'deployment/kms',
         'deployment/dashboard',

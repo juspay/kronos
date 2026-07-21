@@ -5,7 +5,11 @@ title: Dual Deployment Modes
 
 # Dual Deployment Modes
 
-Kronos supports two deployment modes: **library mode** (embedded in-process) and **service mode** (standalone REST API). Both modes expose the same API through the `KronosClient` trait, so call sites are transparent to the deployment mode — switching requires only environment variable changes, no code changes.
+Kronos supports two deployment modes: **library mode** (embedded in-process, also called "embedded mode") and **service mode** (standalone REST API). Both modes expose the same API through the `KronosClient` trait, so call sites are transparent to the deployment mode — switching requires a change only at the construction site; call sites that use the `KronosClient` trait are unchanged.
+
+:::tip
+For a step-by-step setup guide for library mode, see [Library Mode Setup](../deployment/library-mode). For service mode setup, see [Quickstart](../quickstart) and [Docker](../deployment/docker).
+:::
 
 ## KronosClient Trait
 
@@ -68,7 +72,7 @@ use kronos_worker::KronosLibraryClient;
 
 let client = KronosLibraryClient::new(
     pool,                    // caller-owned sqlx PgPool
-    "sched",                 // table prefix (e.g. "sched" → sched_jobs)
+    "sched_",                // table prefix (e.g. "sched_" → sched_jobs); "" for no prefix
     "64_hex_chars...",       // AES encryption key for secrets
     Some(http_client),       // optional reqwest client to reuse
 )?;
@@ -77,43 +81,54 @@ let client = KronosLibraryClient::new(
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `pool` | `PgPool` | Caller-owned connection pool pointing at the same PostgreSQL instance |
-| `table_prefix` | `&str` | Prefix for all Kronos tables (e.g. `"sched"` → `sched_jobs`). Empty string means no prefix |
+| `table_prefix` | `&str` | Prefix for all Kronos tables. Pass the full prefix including trailing underscore (e.g. `"sched_"` → `sched_jobs`). `""` means no prefix. Only alphanumeric and underscore allowed. |
 | `encryption_key` | `&str` | 64 hex-char AES-256 key for secrets; pass zeros if not using secrets |
 | `http_client` | `Option<Client>` | Optional reqwest client to reuse the caller's connection pool |
 
 ### Provisioning a Workspace
 
-In library mode, `provision_workspace()` applies the `workspace_v1.sql` template directly to the database, creating all workspace-scoped tables:
+In library mode, `provision_workspace()` applies the `workspace_v1.sql` template directly to the database, creating all workspace-scoped tables. The `{p}` placeholder in the template is replaced by `table_prefix` verbatim:
 
 ```rust
-async fn provision_workspace(&self, schema_name: &str) -> anyhow::Result<()> {
-    const TEMPLATE: &str = include_str!("../../../migrations/workspace_v1.sql");
-    let p = if prefix.is_empty() { String::new() }
-            else { format!("{}_", prefix) };
-    let ddl = TEMPLATE.replace("{p}", &p);
-    // Execute each statement...
+pub async fn provision_workspace(&self, schema_name: &str) -> anyhow::Result<()> {
+    Ok(db::workspaces::provision_schema(&self.pool, schema_name, &self.ctx.table_prefix).await?)
 }
 ```
 
+:::info
+In library mode, `provision_workspace()` only creates the tenant schema and tables. It does **not** insert into `public.organizations` or `public.workspaces` — those are managed by the caller. See [Library Mode Setup](../deployment/library-mode) for the full provisioning flow.
+:::
+
 ### Starting the Worker
 
-The library client can start a background worker directly via `start_worker()`:
+The library client can start a background worker directly via `start_worker()`, which returns a `WorkerHandle`:
 
 ```rust
 use kronos_worker::{KronosLibraryClient, WorkerConfig};
 use kronos_common::tenant::SchemaRegistry;
-use tokio_util::sync::CancellationToken;
 
-let client = KronosLibraryClient::new(pool, "sched", &key, None)?;
+let client = KronosLibraryClient::new(pool, "sched_", &key, None)?;
 
-let schema_provider = SchemaRegistry::new(pool.clone(), 30);
-let cancel = CancellationToken::new();
+let schema_provider = SchemaRegistry::new(client.pool().clone(), 30);
 
-let handle = client.start_worker(schema_provider, cancel, WorkerConfig::default());
-// Worker runs as a tokio task — await handle on shutdown
+let handle = client.start_worker(schema_provider, WorkerConfig::default());
+// Worker runs as a tokio task — call handle.shutdown() then handle.join().await on shutdown
 ```
 
-`start_worker()` returns a `tokio::task::JoinHandle` that the caller should await or drop on shutdown.
+`start_worker()` returns a `WorkerHandle` that owns its own `CancellationToken` and task handle:
+
+```rust
+impl WorkerHandle {
+    /// Signal the worker to stop. Returns immediately.
+    pub fn shutdown(&self);
+    /// Wait for the worker task to finish.
+    pub async fn join(self) -> anyhow::Result<()>;
+}
+```
+
+:::note
+In library mode, `provision_workspace()` does not insert into `public.workspaces`, so `SchemaRegistry` (which queries that table) won't find your workspace. Use a custom `SchemaProvider` that returns schemas from your own configuration. See [Library Mode Setup](../deployment/library-mode#schemaprovider) for details.
+:::
 
 ### WorkerConfig
 
@@ -172,6 +187,10 @@ async fn provision_workspace(&self, schema_name: &str) -> anyhow::Result<()> {
     // ...
 }
 ```
+
+:::tip
+For service-mode setup guides, see [Quickstart](../quickstart), [Docker](../deployment/docker), and [Production Deployment](../deployment/production).
+:::
 
 ## When to Use Which Mode
 
@@ -256,22 +275,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_{p}jobs_idempotency
     WHERE idempotency_key IS NOT NULL;
 ```
 
-At provisioning time, `{p}` is replaced with either:
+At provisioning time, `{p}` is replaced with the `table_prefix` verbatim:
 - Empty string (no prefix → `jobs`, `idx_jobs_idempotency`)
-- `{prefix}_` (e.g. `sched_` → `sched_jobs`, `idx_sched_jobs_idempotency`)
+- `"sched_"` (e.g. → `sched_jobs`, `idx_sched_jobs_idempotency`)
 
 ```rust
-let p = if prefix.is_empty() { String::new() }
-        else { format!("{}_", prefix) };
-let ddl = TEMPLATE.replace("{p}", &p);
+// From db/workspaces.rs — provision_schema():
+let ddl = WORKSPACE_SCHEMA_V1.replace("{p}", table_prefix);
 ```
 
 :::info
-The table prefix is validated to contain only alphanumeric characters and underscores. An empty prefix is valid and means no prefix is applied.
+The table prefix is validated to contain only alphanumeric characters and underscores. An empty prefix is valid and means no prefix is applied. Pass the full prefix including trailing underscore (e.g. `"sched_"`, not `"sched"`) to get `sched_jobs` instead of `schedjobs`.
 :::
 
 ## Related Pages
 
+- [Library Mode Setup](../deployment/library-mode) — Step-by-step guide for embedding Kronos
 - [Architecture Overview](./overview) — System architecture and process topology
 - [Worker Pipeline](./worker-pipeline) — How the worker poller operates (used by `start_worker()`)
 - [Database Schema](./database-schema) — Full schema layout including the table prefix system
+- [Docker](../deployment/docker) — Service-mode PostgreSQL and Docker setup
+- [Production Deployment](../deployment/production) — Service-mode production deployment

@@ -5,7 +5,7 @@ title: Quickstart
 
 # Quickstart
 
-This guide walks you through setting up Kronos locally and firing your first job end-to-end.
+This guide walks you through setting up Kronos locally and firing your first job end-to-end. It uses **service mode** (Kronos as a standalone REST API). To embed Kronos directly in a Rust application, see [Library Mode Setup](./deployment/library-mode).
 
 ---
 

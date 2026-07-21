@@ -121,6 +121,19 @@ The schema-per-tenant model means each workspace has complete isolation — jobs
 
 ---
 
+## Deployment modes
+
+Kronos runs in two deployment modes:
+
+| Mode | Description | Use case |
+|------|-------------|----------|
+| **Library mode** (embedded) | Kronos embedded directly in your Rust application process. No HTTP overhead, no separate server. | Single Rust app that needs durable scheduling |
+| **Service mode** (standalone) | Kronos runs as a standalone REST API. Multiple apps share one deployment. | Multiple apps, or decoupled operational lifecycle |
+
+Both modes expose the same API through the `KronosClient` trait. The [Quickstart](./quickstart) uses service mode. For library mode setup, see [Library Mode Setup](./deployment/library-mode). For the conceptual comparison, see [Dual Deployment Modes](./architecture/dual-deployment).
+
+---
+
 ## Next steps
 
 - [Quickstart](./quickstart) — get a job firing in under 5 minutes
