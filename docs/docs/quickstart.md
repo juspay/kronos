@@ -168,7 +168,10 @@ Save the `org_id` and `workspace_id` from these responses — you'll need them f
 For all subsequent requests, include tenant headers:
 
 ```bash
-HEADERS='-H "Authorization: Bearer dev-api-key" -H "X-Org-Id: <org_id>" -H "X-Workspace-Id: <workspace_id>" -H "Content-Type: application/json"'
+-H "Authorization: Bearer dev-api-key"
+-H "X-Org-Id: <org_id>"
+-H "X-Workspace-Id: <workspace_id>"
+-H "Content-Type: application/json"
 ```
 
 **Create a payload spec** (JSON Schema for input validation):

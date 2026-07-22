@@ -174,7 +174,7 @@ Add the Rust handler in `crates/api/src/handlers/` and register the route in `cr
 Commit the Smithy model changes, generated SDK code, and API handler implementation in the same PR:
 
 ```bash
-git add smithy/model/ crates/client/ smithy/build/ crates/api/
+git add smithy/model/ crates/client/ crates/api/
 git commit -m "Add CreateMyResource operation"
 ```
 

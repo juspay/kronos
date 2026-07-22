@@ -118,7 +118,7 @@ When scaling workers horizontally, keep `TE_WORKER_MAX_CONCURRENT` per instance 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TE_REAPER_CRON_EXPRESSION` | `*/15 * * * *` | 5-field pg_cron expression controlling how often Kronos's own dogfooded reaper fires per workspace. Baked into each workspace's pg_cron entry at creation time, so changing this only affects workspaces created afterwards. |
+| `TE_REAPER_CRON_EXPRESSION` | `*/15 * * * *` | 5-field pg_cron expression controlling how often Kronos's own dogfooded reaper fires per workspace. Baked into each workspace's pg_cron entry at creation time, so changing this only affects workspaces created afterward. |
 
 :::info
 The reaper is Kronos's own CRON sweep that retires expired CRON jobs and unschedules their pg_cron entries. The expression is validated at startup as a 5-field `PgCronExpr` — a typo will cause the server to fail fast rather than breaking the first `POST /workspaces` call.

@@ -18,7 +18,7 @@ Kronos has a two-level tenant hierarchy:
 | **Organization** | `public` | Top-level tenant entity. Contains one or more workspaces. |
 | **Workspace** | `public` | A unit of isolation within an organization. Each workspace gets its own database schema. |
 
-```
+```text
 Organization: "My Company" (org_id: 550e8400-...)
   ├── Workspace: "Production" (workspace_id: 660e8400-... → schema: my_company_production)
   ├── Workspace: "Staging"    (workspace_id: 770e8400-... → schema: my_company_staging)
@@ -33,7 +33,7 @@ Organizations and workspaces are stored in the `public` schema and are accessibl
 
 Each workspace gets its own PostgreSQL schema containing all tenant-scoped tables:
 
-```
+```text
 public schema:        organizations, workspaces
 tenant schema:        payload_specs, configs, secrets, endpoints,
 (org_workspace):      jobs, executions, attempts, execution_logs
@@ -142,7 +142,7 @@ The worker does not receive tenant headers — instead, it iterates all active w
 3. Within each schema, it claims executions via `SELECT FOR UPDATE SKIP LOCKED`
 4. Each claimed execution is processed in the context of its workspace's schema
 
-```
+```text
 Worker Poll Cycle:
   ├── Acquire semaphore permit
   ├── For each active workspace schema:
@@ -176,7 +176,7 @@ curl -X POST http://localhost:8080/v1/orgs/{org_id}/workspaces \
 ```
 
 :::note
-The reaper is Kronos's own dogfooded CRON sweep that retires expired CRON jobs and unschedules their pg_cron entries. The reaper's schedule is controlled by `TE_REAPER_CRON_EXPRESSION` (default: `*/15 * * * *` — every 15 minutes). This expression is baked into each workspace's pg_cron entry at creation time, so changing it only affects workspaces created afterwards.
+The reaper is Kronos's own dogfooded CRON sweep that retires expired CRON jobs and unschedules their pg_cron entries. The reaper's schedule is controlled by `TE_REAPER_CRON_EXPRESSION` (default: `*/15 * * * *` — every 15 minutes). This expression is baked into each workspace's pg_cron entry at creation time, so changing it only affects workspaces created afterward.
 :::
 
 ---

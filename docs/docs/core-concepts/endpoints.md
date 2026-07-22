@@ -224,7 +224,7 @@ curl -X POST http://localhost:8080/v1/endpoints \
         "title": "{{input.title}}",
         "body": "{{input.body}}"
       },
-      "max_len": "{{config.max_stream_length}}",
+      "max_len": 1000,
       "approximate_trimming": true,
       "timeout_ms": 3000
     },

@@ -29,7 +29,7 @@ When a workspace is created, Kronos:
 2. Runs the `workspace_v1.sql` migration to create all tenant-scoped tables in that schema
 3. Installs a pg_cron entry for the reaper — a dogfooded CRON sweep that retires expired CRON jobs and unschedules their pg_cron entries
 
-The reaper's cron expression is read from `TE_REAPER_CRON_EXPRESSION` at workspace creation time and baked into the workspace's pg_cron entry. Changing the env var only affects workspaces created afterwards.
+The reaper's cron expression is read from `TE_REAPER_CRON_EXPRESSION` at workspace creation time and baked into the workspace's pg_cron entry. Changing the env var only affects workspaces created afterward.
 
 :::info
 All tenant-scoped operations (payload specs, configs, secrets, endpoints, jobs, executions) require both `X-Org-Id` and `X-Workspace-Id` headers. The API uses these to resolve the correct PostgreSQL schema for the request.
