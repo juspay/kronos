@@ -260,6 +260,6 @@ See [Workspaces](./workspaces) for the full workspace API.
 ## See also
 
 - [Workspaces](./workspaces) — create and manage workspaces within organizations
-- [Configs](./configs-api) — static configuration variables
-- [Secrets](./secrets-api) — encrypted secret management
+- [Configs](./configs) — static configuration variables
+- [Secrets](./secrets) — encrypted secret management
 - [Multi-tenancy](../../core-concepts/multi-tenancy) — how schema-per-tenant isolation works

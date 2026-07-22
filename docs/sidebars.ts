@@ -59,8 +59,8 @@ const sidebars: SidebarsConfig = {
           items: [
             'api/management/organizations',
             'api/management/workspaces',
-            'api/management/configs-api',
-            'api/management/secrets-api',
+            'api/management/configs',
+            'api/management/secrets',
           ],
         },
         {
@@ -182,8 +182,8 @@ const sidebars: SidebarsConfig = {
       items: [
         'api/management/organizations',
         'api/management/workspaces',
-        'api/management/configs-api',
-        'api/management/secrets-api',
+        'api/management/configs',
+        'api/management/secrets',
       ],
     },
     {

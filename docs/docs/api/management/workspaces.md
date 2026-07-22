@@ -243,6 +243,6 @@ curl -X POST http://localhost:8080/v1/configs \
 ## See also
 
 - [Organizations](./organizations) — create and manage organizations
-- [Configs](./configs-api) — static configuration variables
-- [Secrets](./secrets-api) — encrypted secret management
+- [Configs](./configs) — static configuration variables
+- [Secrets](./secrets) — encrypted secret management
 - [Multi-tenancy](../../core-concepts/multi-tenancy) — how schema-per-tenant isolation works

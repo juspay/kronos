@@ -1,5 +1,5 @@
 ---
-id: secrets-api
+id: secrets
 title: Secrets
 title_meta: Secrets API
 ---
@@ -355,7 +355,7 @@ For defense in depth, enable [AWS KMS integration](../../deployment/kms) to encr
 
 ## See also
 
-- [Configs](./configs-api) — static variables referenced via `{{config.*}}`
+- [Configs](./configs) — static variables referenced via `{{config.*}}`
 - [Organizations](./organizations) — top-level tenant entity
 - [Workspaces](./workspaces) — workspace creation and schema provisioning
 - [Template resolution](../../core-concepts/templates) — how `{{secret.*}}` templates are resolved

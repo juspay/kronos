@@ -1,5 +1,5 @@
 ---
-id: configs-api
+id: configs
 title: Configs
 title_meta: Configs API
 ---
@@ -328,7 +328,7 @@ You cannot delete a config that is referenced by any endpoint. First update or d
 
 ## See also
 
-- [Secrets](./secrets-api) — encrypted variables referenced via `{{secret.*}}`
+- [Secrets](./secrets) — encrypted variables referenced via `{{secret.*}}`
 - [Organizations](./organizations) — top-level tenant entity
 - [Workspaces](./workspaces) — workspace creation and schema provisioning
 - [Template resolution](../../core-concepts/templates) — how `{{config.*}}` templates are resolved
