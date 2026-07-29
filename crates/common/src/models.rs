@@ -7,10 +7,12 @@ pub mod job;
 pub mod organization;
 pub mod payload_spec;
 pub mod pg_cron_expr;
+pub mod poll;
 pub mod secret;
 pub mod workspace;
 
 pub use attempt::{Attempt, AttemptStatus};
+pub use poll::{Poll, PollClassification};
 pub use config::Config;
 pub use endpoint::{Endpoint, EndpointType, RetryPolicy};
 pub use execution::{Execution, ExecutionStatus};

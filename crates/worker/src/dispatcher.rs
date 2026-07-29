@@ -6,9 +6,10 @@ pub mod kafka;
 pub mod redis_stream;
 
 use serde_json::Value;
+use std::collections::HashMap;
 
 pub enum DispatchResult {
-    Success { output: Value },
+    Success { output: Value, headers: HashMap<String, String>, status_code: u16 },
     Failure { error: Value },
 }
 
