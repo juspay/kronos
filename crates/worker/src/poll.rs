@@ -151,6 +151,7 @@ mod tests {
 }
 
 use chrono::{Duration, Utc};
+use kronos_common::models::endpoint::PollConfig;
 use kronos_common::{db, db::DbContext, metrics as m, secrets};
 use std::collections::HashMap;
 
@@ -217,7 +218,10 @@ pub async fn process_poll(
         Err(e) => {
             tracing::error!(execution_id, "Secret resolution failed for poll: {}", e);
             // Treat as transient
-            let next = std::cmp::min(deadline, Utc::now() + Duration::milliseconds(poll_cfg.initial_delay_ms));
+            let next = std::cmp::min(
+                deadline,
+                Utc::now() + Duration::milliseconds(poll_backoff(&poll_cfg, exec.poll_count)),
+            );
             let _ = db::executions::transition_back_to_waiting(db, execution_id, next).await;
             return;
         }
@@ -296,7 +300,10 @@ pub async fn process_poll(
                         &format!("Poll #{poll_number} → {status_code} terminal failure; re-dispatch in {backoff_ms}ms")).await;
                 }
                 PollClassification::PENDING | PollClassification::TRANSIENT_ERROR => {
-                    let delay_ms = retry_after_ms.unwrap_or(poll_cfg.initial_delay_ms);
+                    // Retry-After from the destination wins; otherwise back off
+                    // per the endpoint's poll spec.
+                    let delay_ms =
+                        retry_after_ms.unwrap_or_else(|| poll_backoff(&poll_cfg, poll_number));
                     let next = std::cmp::min(deadline, Utc::now() + Duration::milliseconds(delay_ms));
                     let _ = db::executions::transition_back_to_waiting(db, execution_id, next).await;
                     log_execution(db, execution_id, attempt_count, "INFO",
@@ -313,13 +320,28 @@ pub async fn process_poll(
             metrics::counter!(m::POLLS_TOTAL, "classification" => "TRANSIENT_ERROR").increment(1);
             metrics::histogram!(kronos_common::metrics::POLL_DURATION_SECONDS)
                 .record(duration_ms as f64 / 1000.0);
-            let delay_ms = poll_cfg.initial_delay_ms;
+            let delay_ms = poll_backoff(&poll_cfg, poll_number);
             let next = std::cmp::min(deadline, Utc::now() + Duration::milliseconds(delay_ms));
             let _ = db::executions::transition_back_to_waiting(db, execution_id, next).await;
             log_execution(db, execution_id, attempt_count, "WARN",
                 &format!("Poll #{poll_number} transport error; next poll in {delay_ms}ms")).await;
         }
     }
+}
+
+/// Delay before the next poll, from the endpoint's `async.poll` spec.
+///
+/// `poll_number` is 1-based (the claim increments `poll_count` before handing the
+/// execution over), so the first wait is exactly `initial_delay_ms` and it grows
+/// from there, capped at `max_delay_ms`. Callers apply `Retry-After` in
+/// preference to this when the destination sent one.
+fn poll_backoff(poll_cfg: &PollConfig, poll_number: i32) -> i64 {
+    kronos_common::backoff::compute_backoff_ms(
+        &poll_cfg.backoff,
+        poll_cfg.initial_delay_ms,
+        poll_cfg.max_delay_ms,
+        poll_number as i64,
+    )
 }
 
 fn substitute_secrets(s: &str, secrets: &HashMap<String, String>) -> String {

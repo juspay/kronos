@@ -110,7 +110,7 @@ pub async fn create(
                 &ep.endpoint_type,
                 key,
                 body.input.as_ref(),
-                retry_policy.max_attempts,
+                max_attempts,
                 async_max_wait_ms,
                 async_max_polls,
             )
@@ -170,7 +170,7 @@ pub async fn create(
                 key,
                 body.input.as_ref(),
                 run_at,
-                retry_policy.max_attempts,
+                max_attempts,
                 async_max_wait_ms,
                 async_max_polls,
             )

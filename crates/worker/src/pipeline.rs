@@ -155,9 +155,24 @@ pub async fn process_execution(
     log_execution(db, execution_id, attempt_count, "INFO",
         &format!("Dispatching {} to {}", endpoint_type, endpoint_name)).await;
 
+    // Resolved once and reused below: the dispatcher needs the async status codes
+    // to classify an "accepted, still working" response as a successful dispatch,
+    // and the Success arm needs the rest of the config to set up polling.
+    let async_cfg = endpoint.get_async_config();
+    let async_status_codes: &[u16] = async_cfg
+        .as_ref()
+        .map(|c| c.status_codes.as_slice())
+        .unwrap_or(&[]);
+
     let result = match endpoint_type {
         "HTTP" => {
-            dispatcher::http::dispatch(&ctx.http_client, &dispatch_spec, idempotency_key).await
+            dispatcher::http::dispatch(
+                &ctx.http_client,
+                &dispatch_spec,
+                idempotency_key,
+                async_status_codes,
+            )
+            .await
         }
         "INTERNAL" => {
             dispatcher::internal::dispatch(&mut *db.conn, db.prefix, schema_name, &dispatch_spec)
@@ -182,7 +197,7 @@ pub async fn process_execution(
     // 5. Record attempt + finalize
     match result {
         DispatchResult::Success { output, headers, status_code } => {
-            if let Some(async_cfg) = endpoint.get_async_config() {
+            if let Some(async_cfg) = &async_cfg {
                 if async_cfg.status_codes.contains(&status_code) {
                     // Long-running mode: extract Location, transition to WAITING.
                     // Use per-job overrides (async_max_wait_ms / async_max_polls) when provided,

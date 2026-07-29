@@ -63,10 +63,15 @@ pub fn build_schema_name(org_id: &str, workspace_slug: &str) -> String {
 /// returned future is usable inside the spawned worker task; implementors
 /// can simply write `async fn get_active_schemas(&self)`.
 pub trait SchemaProvider: Send + Sync + 'static {
-    async fn get_active_schemas(&self) -> Result<Vec<String>, sqlx::Error>;
+    fn get_active_schemas(
+        &self,
+    ) -> impl Future<Output = Result<Vec<String>, sqlx::Error>> + Send;
     /// Returns the `(org_id, workspace_id)` pair for the given schema name,
     /// or `None` if the schema is not known to this provider.
-    async fn get_org_ws(&self, schema_name: &str) -> Option<(String, String)>;
+    fn get_org_ws(
+        &self,
+        schema_name: &str,
+    ) -> impl Future<Output = Option<(String, String)>> + Send;
 }
 
 /// Cached registry of active workspace schemas.
@@ -212,7 +217,6 @@ impl SchemaProvider for SchemaRegistry {
 
 /// Blanket impl so `Arc<S>` can be used wherever `S: SchemaProvider` is expected.
 /// This lets the poller pass its `Arc<S>` directly into spawned tasks.
-#[async_trait]
 impl<S: SchemaProvider> SchemaProvider for Arc<S> {
     async fn get_active_schemas(&self) -> Result<Vec<String>, sqlx::Error> {
         (**self).get_active_schemas().await
