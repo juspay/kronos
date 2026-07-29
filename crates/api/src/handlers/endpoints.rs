@@ -15,6 +15,10 @@ pub async fn create(
     ws: Workspace,
     body: web::Json<CreateEndpoint>,
 ) -> Result<HttpResponse, AppError> {
+    if let Err(msg) = kronos_common::models::endpoint::validate_async_block(&body.spec) {
+        return Err(AppError::InvalidRequest(msg));
+    }
+
     // INTERNAL endpoints exist for kronos-driven internal tasks (e.g. the
     // dogfooded reaper) and are provisioned at workspace-creation time —
     // never through the public API. Reject them explicitly so the constraint
@@ -126,6 +130,12 @@ pub async fn update(
     path: web::Path<String>,
     body: web::Json<UpdateEndpoint>,
 ) -> Result<HttpResponse, AppError> {
+    if let Some(spec) = &body.spec {
+        if let Err(msg) = kronos_common::models::endpoint::validate_async_block(spec) {
+            return Err(AppError::InvalidRequest(msg));
+        }
+    }
+
     let prefix = state.prefix();
     let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await

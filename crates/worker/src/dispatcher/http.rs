@@ -2,6 +2,7 @@ use super::DispatchResult;
 use kronos_common::metrics as m;
 use reqwest::Client;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::time::Duration;
 
 pub async fn dispatch(client: &Client, spec: &Value, idempotency_key: &str) -> DispatchResult {
@@ -59,6 +60,13 @@ pub async fn dispatch(client: &Client, spec: &Value, idempotency_key: &str) -> D
         Ok(response) => {
             let elapsed = start.elapsed().as_secs_f64();
             let status = response.status().as_u16();
+            let resp_headers: HashMap<String, String> = response
+                .headers()
+                .iter()
+                .filter_map(|(k, v)| {
+                    v.to_str().ok().map(|s| (k.as_str().to_ascii_lowercase(), s.to_string()))
+                })
+                .collect();
             let body = response.text().await.unwrap_or_default();
 
             if expected_statuses.contains(&status) {
@@ -78,6 +86,8 @@ pub async fn dispatch(client: &Client, spec: &Value, idempotency_key: &str) -> D
                         "status_code": status,
                         "body": body,
                     }),
+                    headers: resp_headers,
+                    status_code: status,
                 }
             } else {
                 metrics::counter!(m::DISPATCH_TOTAL,
@@ -148,7 +158,7 @@ mod tests {
 
         let result = dispatch(&client, &spec, "test-http-dispatch-success").await;
         assert!(result.is_success(), "expected success from /success");
-        if let DispatchResult::Success { output } = result {
+        if let DispatchResult::Success { output, .. } = result {
             assert_eq!(output["status_code"].as_u64().unwrap(), 200);
         }
     }
