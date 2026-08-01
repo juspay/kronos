@@ -1179,7 +1179,24 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
                 <div class="space-y-3">
                     // Row 1 — Job ID, Status, Trigger
                     <div class="flex flex-wrap items-center gap-3">
+                        // Commit on Enter via `keydown`, not `change`: `change`
+                        // only fires when the value differs from the browser's
+                        // last-committed baseline, so clearing the box and
+                        // retyping the *same* id would never fire it again.
+                        // `input` clears the filter the moment the box empties;
+                        // `change` still covers commit-on-blur. Typing itself
+                        // doesn't refetch, so a long id costs one request.
                         <input type="search" prop:value=move || job_id_filter.get()
+                            on:input=move |ev| {
+                                if event_target_value(&ev).is_empty() {
+                                    set_job_id_filter.set(String::new());
+                                }
+                            }
+                            on:keydown=move |ev| {
+                                if ev.key() == "Enter" {
+                                    set_job_id_filter.set(event_target_value(&ev));
+                                }
+                            }
                             on:change=move |ev| set_job_id_filter.set(event_target_value(&ev))
                             class="h-9 w-52 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                             placeholder="Exact job ID" />
@@ -1195,7 +1212,20 @@ fn JobsTab(org_id: String, workspace_id: String) -> impl IntoView {
                         <MultiSelectFilter label="Endpoint Type"
                             options=vec![("HTTP", "HTTP"), ("KAFKA", "Kafka"), ("REDIS_STREAM", "Redis Stream"), ("INTERNAL", "Internal")]
                             selected=endpoint_type_filter set_selected=set_endpoint_type_filter />
+                        // Same as the job-id box: clear applies immediately, Enter
+                        // commits via `keydown` (see the comment there for why not
+                        // `change`), and `change` still covers blur.
                         <input type="search" prop:value=move || endpoint_filter.get()
+                            on:input=move |ev| {
+                                if event_target_value(&ev).is_empty() {
+                                    set_endpoint_filter.set(String::new());
+                                }
+                            }
+                            on:keydown=move |ev| {
+                                if ev.key() == "Enter" {
+                                    set_endpoint_filter.set(event_target_value(&ev));
+                                }
+                            }
                             on:change=move |ev| set_endpoint_filter.set(event_target_value(&ev))
                             class="h-9 w-52 rounded-lg border border-gray-300 px-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                             placeholder="Search endpoint\u{2026}" />
