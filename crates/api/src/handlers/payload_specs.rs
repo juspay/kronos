@@ -22,10 +22,8 @@ pub async fn create(
     }
 
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
 
     let spec = db::payload_specs::create(&mut db, &body.name, &body.schema)
         .await
@@ -51,10 +49,8 @@ pub async fn list(
     params: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
     let items = db::payload_specs::list(&mut db, cursor.as_deref(), limit + 1).await?;
@@ -90,10 +86,8 @@ pub async fn get(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
     let name = path.into_inner();
     let spec = db::payload_specs::get(&mut db, &name)
         .await?
@@ -119,10 +113,8 @@ pub async fn update(
     }
 
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
     let name = path.into_inner();
 
     let spec = db::payload_specs::update(&mut db, &name, &body.schema)
@@ -142,10 +134,8 @@ pub async fn delete(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
     let name = path.into_inner();
     if db::payload_specs::has_dependent_endpoints(&mut db, &name).await? {
         return Err(AppError::Conflict(format!(

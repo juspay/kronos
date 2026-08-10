@@ -10,10 +10,8 @@ pub async fn get(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
     let execution_id = path.into_inner();
     let exec = db::executions::get(&mut db, &execution_id)
         .await?
@@ -45,10 +43,8 @@ pub async fn cancel(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
     let execution_id = path.into_inner();
     let exec = db::executions::get(&mut db, &execution_id)
         .await?
@@ -78,10 +74,8 @@ pub async fn list_attempts(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
     let execution_id = path.into_inner();
     let _ = db::executions::get(&mut db, &execution_id)
         .await?
@@ -114,10 +108,8 @@ pub async fn list_logs(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
     let execution_id = path.into_inner();
     let _ = db::executions::get(&mut db, &execution_id)
         .await?

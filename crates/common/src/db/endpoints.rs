@@ -1,4 +1,4 @@
-use crate::{db::{tbl, DbContext}, models::Endpoint};
+use crate::{db::DbContext, models::Endpoint};
 
 pub async fn create(
     db: &mut DbContext<'_>,
@@ -9,7 +9,7 @@ pub async fn create(
     spec: &serde_json::Value,
     retry_policy: Option<&serde_json::Value>,
 ) -> Result<Endpoint, sqlx::Error> {
-    let t = tbl(db.prefix, "endpoints");
+    let t = db.tbl("endpoints");
     sqlx::query_as::<_, Endpoint>(&format!(
         "INSERT INTO {t} (name, endpoint_type, payload_spec_ref, config_ref, spec, retry_policy)
          VALUES ($1, $2, $3, $4, $5, $6)
@@ -29,7 +29,7 @@ pub async fn get(
     db: &mut DbContext<'_>,
     name: &str,
 ) -> Result<Option<Endpoint>, sqlx::Error> {
-    let t = tbl(db.prefix, "endpoints");
+    let t = db.tbl("endpoints");
     sqlx::query_as::<_, Endpoint>(&format!(
         "SELECT name, endpoint_type, payload_spec_ref, config_ref, spec, retry_policy, created_at, updated_at
          FROM {t} WHERE name = $1"
@@ -44,7 +44,7 @@ pub async fn list(
     cursor: Option<&str>,
     limit: i64,
 ) -> Result<Vec<Endpoint>, sqlx::Error> {
-    let t = tbl(db.prefix, "endpoints");
+    let t = db.tbl("endpoints");
     match cursor {
         Some(c) => {
             sqlx::query_as::<_, Endpoint>(&format!(
@@ -76,7 +76,7 @@ pub async fn update(
     payload_spec_ref: Option<&str>,
     retry_policy: Option<&serde_json::Value>,
 ) -> Result<Option<Endpoint>, sqlx::Error> {
-    let t = tbl(db.prefix, "endpoints");
+    let t = db.tbl("endpoints");
     sqlx::query_as::<_, Endpoint>(&format!(
         "UPDATE {t} SET
             spec = COALESCE($2, spec),
@@ -100,7 +100,7 @@ pub async fn delete(
     db: &mut DbContext<'_>,
     name: &str,
 ) -> Result<bool, sqlx::Error> {
-    let t = tbl(db.prefix, "endpoints");
+    let t = db.tbl("endpoints");
     let result = sqlx::query(&format!("DELETE FROM {t} WHERE name = $1"))
         .bind(name)
         .execute(&mut *db.conn)
@@ -112,7 +112,7 @@ pub async fn has_active_jobs(
     db: &mut DbContext<'_>,
     name: &str,
 ) -> Result<bool, sqlx::Error> {
-    let tj = tbl(db.prefix, "jobs");
+    let tj = db.tbl("jobs");
     let row: (i64,) =
         sqlx::query_as(&format!("SELECT COUNT(*) FROM {tj} WHERE endpoint = $1 AND status = 'ACTIVE'"))
             .bind(name)

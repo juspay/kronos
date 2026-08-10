@@ -1,4 +1,4 @@
-use crate::{db::{tbl, DbContext}, models::Attempt};
+use crate::{db::DbContext, models::Attempt};
 use chrono::{DateTime, Utc};
 
 pub async fn insert(
@@ -12,7 +12,7 @@ pub async fn insert(
     output: Option<&serde_json::Value>,
     error: Option<&serde_json::Value>,
 ) -> Result<Attempt, sqlx::Error> {
-    let t = tbl(db.prefix, "attempts");
+    let t = db.tbl("attempts");
     sqlx::query_as::<_, Attempt>(&format!(
         "INSERT INTO {t} (execution_id, attempt_number, status, started_at, completed_at, duration_ms, output, error)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -34,7 +34,7 @@ pub async fn list_for_execution(
     db: &mut DbContext<'_>,
     execution_id: &str,
 ) -> Result<Vec<Attempt>, sqlx::Error> {
-    let t = tbl(db.prefix, "attempts");
+    let t = db.tbl("attempts");
     sqlx::query_as::<_, Attempt>(&format!(
         "SELECT * FROM {t} WHERE execution_id = $1 ORDER BY attempt_number ASC"
     ))

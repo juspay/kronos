@@ -1,11 +1,11 @@
-use crate::{db::{tbl, DbContext}, models::PayloadSpec};
+use crate::{db::DbContext, models::PayloadSpec};
 
 pub async fn create(
     db: &mut DbContext<'_>,
     name: &str,
     schema: &serde_json::Value,
 ) -> Result<PayloadSpec, sqlx::Error> {
-    let t = tbl(db.prefix, "payload_specs");
+    let t = db.tbl("payload_specs");
     sqlx::query_as::<_, PayloadSpec>(&format!(
         "INSERT INTO {t} (name, schema_json) VALUES ($1, $2)
          RETURNING name, schema_json, created_at, updated_at"
@@ -20,7 +20,7 @@ pub async fn get(
     db: &mut DbContext<'_>,
     name: &str,
 ) -> Result<Option<PayloadSpec>, sqlx::Error> {
-    let t = tbl(db.prefix, "payload_specs");
+    let t = db.tbl("payload_specs");
     sqlx::query_as::<_, PayloadSpec>(&format!(
         "SELECT name, schema_json, created_at, updated_at FROM {t} WHERE name = $1"
     ))
@@ -34,7 +34,7 @@ pub async fn list(
     cursor: Option<&str>,
     limit: i64,
 ) -> Result<Vec<PayloadSpec>, sqlx::Error> {
-    let t = tbl(db.prefix, "payload_specs");
+    let t = db.tbl("payload_specs");
     match cursor {
         Some(c) => {
             sqlx::query_as::<_, PayloadSpec>(&format!(
@@ -63,7 +63,7 @@ pub async fn update(
     name: &str,
     schema: &serde_json::Value,
 ) -> Result<Option<PayloadSpec>, sqlx::Error> {
-    let t = tbl(db.prefix, "payload_specs");
+    let t = db.tbl("payload_specs");
     sqlx::query_as::<_, PayloadSpec>(&format!(
         "UPDATE {t} SET schema_json = $2, updated_at = now()
          WHERE name = $1
@@ -79,7 +79,7 @@ pub async fn delete(
     db: &mut DbContext<'_>,
     name: &str,
 ) -> Result<bool, sqlx::Error> {
-    let t = tbl(db.prefix, "payload_specs");
+    let t = db.tbl("payload_specs");
     let result = sqlx::query(&format!("DELETE FROM {t} WHERE name = $1"))
         .bind(name)
         .execute(&mut *db.conn)
@@ -91,7 +91,7 @@ pub async fn has_dependent_endpoints(
     db: &mut DbContext<'_>,
     name: &str,
 ) -> Result<bool, sqlx::Error> {
-    let te = tbl(db.prefix, "endpoints");
+    let te = db.tbl("endpoints");
     let row: (i64,) =
         sqlx::query_as(&format!("SELECT COUNT(*) FROM {te} WHERE payload_spec_ref = $1"))
             .bind(name)

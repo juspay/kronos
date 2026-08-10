@@ -20,7 +20,7 @@ use crate::reaper;
 
 /// Dispatch an `INTERNAL` execution. `spec` is the endpoint spec after template
 /// resolution; the `task` field selects which in-process routine to run. The
-/// connection is the same scoped transaction the rest of the pipeline writes
+/// connection is the same transaction the rest of the pipeline writes
 /// to, so the task's effects commit atomically with the execution's outcome.
 pub async fn dispatch(
     conn: &mut PgConnection,

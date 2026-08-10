@@ -1,11 +1,11 @@
-use crate::{db::{tbl, DbContext}, models::secret::Secret};
+use crate::{db::DbContext, models::secret::Secret};
 
 pub async fn create(
     db: &mut DbContext<'_>,
     name: &str,
     encrypted_value: &[u8],
 ) -> Result<Secret, sqlx::Error> {
-    let t = tbl(db.prefix, "secrets");
+    let t = db.tbl("secrets");
     sqlx::query_as::<_, Secret>(&format!(
         "INSERT INTO {t} (name, encrypted_value) VALUES ($1, $2)
          RETURNING name, encrypted_value, created_at, updated_at"
@@ -20,7 +20,7 @@ pub async fn get(
     db: &mut DbContext<'_>,
     name: &str,
 ) -> Result<Option<Secret>, sqlx::Error> {
-    let t = tbl(db.prefix, "secrets");
+    let t = db.tbl("secrets");
     sqlx::query_as::<_, Secret>(&format!(
         "SELECT name, encrypted_value, created_at, updated_at FROM {t} WHERE name = $1"
     ))
@@ -34,7 +34,7 @@ pub async fn list(
     cursor: Option<&str>,
     limit: i64,
 ) -> Result<Vec<Secret>, sqlx::Error> {
-    let t = tbl(db.prefix, "secrets");
+    let t = db.tbl("secrets");
     match cursor {
         Some(c) => {
             sqlx::query_as::<_, Secret>(&format!(
@@ -63,7 +63,7 @@ pub async fn update(
     name: &str,
     encrypted_value: &[u8],
 ) -> Result<Option<Secret>, sqlx::Error> {
-    let t = tbl(db.prefix, "secrets");
+    let t = db.tbl("secrets");
     sqlx::query_as::<_, Secret>(&format!(
         "UPDATE {t} SET encrypted_value = $2, updated_at = now()
          WHERE name = $1
@@ -79,7 +79,7 @@ pub async fn delete(
     db: &mut DbContext<'_>,
     name: &str,
 ) -> Result<bool, sqlx::Error> {
-    let t = tbl(db.prefix, "secrets");
+    let t = db.tbl("secrets");
     let result = sqlx::query(&format!("DELETE FROM {t} WHERE name = $1"))
         .bind(name)
         .execute(&mut *db.conn)
@@ -91,7 +91,7 @@ pub async fn has_dependent_endpoints(
     db: &mut DbContext<'_>,
     name: &str,
 ) -> Result<bool, sqlx::Error> {
-    let te = tbl(db.prefix, "endpoints");
+    let te = db.tbl("endpoints");
     let row: (i64,) = sqlx::query_as(&format!(
         "SELECT COUNT(*) FROM {te} WHERE spec::TEXT LIKE '%{{{{secret.' || $1 || '}}}}%'"
     ))
