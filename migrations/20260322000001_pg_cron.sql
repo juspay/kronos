@@ -1,5 +1,11 @@
 -- Migration: Replace CRON materializer with pg_cron
 -- pg_cron handles scheduling natively, eliminating the need for the CRON materializer loop.
+--
+-- The per-tick command below is a hand-maintained copy of
+-- `kronos_common::db::jobs::build_cron_command` -- keep the two in sync. `cron.schedule` upserts
+-- by job name, so re-running this migration replaces the stored command in place.
+--
+-- Standalone deployment only (unprefixed tables); library-mode embeds own their schema.
 
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 
@@ -27,6 +33,8 @@ BEGIN
                 'FROM %I.jobs j '
                 'JOIN %I.endpoints e ON e.name = j.endpoint '
                 'WHERE j.job_id = %L AND j.status = ''ACTIVE'' '
+                    'AND (j.cron_starts_at IS NULL OR j.cron_starts_at <= now()) '
+                    'AND (j.cron_ends_at IS NULL OR j.cron_ends_at > now()) '
                 'ON CONFLICT (job_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING',
                 ws.schema_name, ws.schema_name, ws.schema_name, job.job_id
             );
