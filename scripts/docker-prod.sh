@@ -37,8 +37,7 @@ $DC exec -T postgres sh -c '
     PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor -f /migrations/20260317000000_initial.sql &&
     PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor -f /migrations/20260318000000_multi_tenancy.sql &&
     PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor -f /migrations/20260322000000_txn_based_pickup.sql &&
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor -f /migrations/20260322000001_pg_cron.sql &&
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor -f /migrations/20260713000000_pg_cron_window_guard_backfill.sql
+    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor -f /migrations/20260322000001_pg_cron.sql
 '
 echo "    Migrations applied."
 
