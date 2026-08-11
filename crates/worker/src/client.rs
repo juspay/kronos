@@ -5,6 +5,10 @@ use kronos_common::{
     db,
     db::DbContext,
     models::Execution,
+    models::pg_cron_expr::PgCronExpr,
+    service,
+    service::jobs::{CreateJobRequest, CreateOutcome, TriggerSpec},
+    service::WorkspaceRef,
     tenant::{SchemaProvider, validate_table_prefix},
 };
 use reqwest::Client;
@@ -46,6 +50,10 @@ pub trait KronosClient: Send + Sync {
 
     async fn delete_secret(&self, schema_name: &str, name: &str) -> anyhow::Result<()>;
 
+    /// Register (upsert) an endpoint with no payload-spec or config reference.
+    ///
+    /// Defined in terms of [`Self::register_endpoint_with_refs`] so an
+    /// implementor only has to write the one method.
     async fn register_endpoint(
         &self,
         schema_name: &str,
@@ -53,6 +61,32 @@ pub trait KronosClient: Send + Sync {
         endpoint_type: &str,
         spec: serde_json::Value,
         retry_policy: Option<serde_json::Value>,
+    ) -> anyhow::Result<()> {
+        self.register_endpoint_with_refs(
+            schema_name,
+            name,
+            endpoint_type,
+            spec,
+            retry_policy,
+            None,
+            None,
+        )
+        .await
+    }
+
+    /// Register (upsert) an endpoint, attaching a payload spec and/or a config
+    /// by name. An endpoint without a config cannot use `{{config.*}}`
+    /// templating, and one without a payload spec gets no input validation —
+    /// neither was reachable from this trait before.
+    async fn register_endpoint_with_refs(
+        &self,
+        schema_name: &str,
+        name: &str,
+        endpoint_type: &str,
+        spec: serde_json::Value,
+        retry_policy: Option<serde_json::Value>,
+        payload_spec_ref: Option<&str>,
+        config_ref: Option<&str>,
     ) -> anyhow::Result<()>;
 
     async fn delete_endpoint(&self, schema_name: &str, name: &str) -> anyhow::Result<()>;
@@ -112,7 +146,14 @@ impl Default for WorkerConfig {
 pub struct KronosLibraryClient {
     pool: PgPool,
     ctx: Arc<PipelineContext>,
+    /// Schedule for the per-workspace reaper installed by
+    /// [`KronosLibraryClient::provision_workspace`].
+    reaper_cron: String,
 }
+
+/// Default reaper sweep schedule — every 15 minutes, matching the API
+/// deployment's `TE_REAPER_CRON_EXPRESSION` default.
+pub const DEFAULT_REAPER_CRON: &str = "*/15 * * * *";
 
 impl KronosLibraryClient {
     /// `table_prefix` must include the trailing underscore (e.g. `"sched_"`); use `""` for no prefix.
@@ -138,7 +179,11 @@ impl KronosLibraryClient {
             table_prefix: table_prefix.to_string(),
         });
 
-        Ok(Self { pool, ctx })
+        Ok(Self {
+            pool,
+            ctx,
+            reaper_cron: DEFAULT_REAPER_CRON.to_string(),
+        })
     }
 
     /// Convenience constructor for callers that don't manage their own `PgPool`:
@@ -162,7 +207,45 @@ impl KronosLibraryClient {
         &self.pool
     }
 
-    /// Create a job in the given workspace schema and return the execution_id.
+    /// Override the reaper's CRON schedule for workspaces provisioned by this
+    /// client. Defaults to [`DEFAULT_REAPER_CRON`].
+    pub fn with_reaper_schedule(mut self, cron_expression: &str) -> Self {
+        self.reaper_cron = cron_expression.to_string();
+        self
+    }
+
+    /// Create this workspace's schema, apply the v1 DDL, and install kronos's
+    /// dogfooded reaper.
+    ///
+    /// The reaper is what retires CRON jobs whose `cron_ends_at` has passed and
+    /// unschedules their pg_cron entries. Library workspaces used to get only
+    /// the schema, which was harmless only while library CRON jobs never
+    /// reached pg_cron at all — now that they do, a bounded CRON job without a
+    /// reaper would stay ACTIVE and leak its pg_cron entry forever.
+    ///
+    /// Idempotent: safe to call on every boot.
+    pub async fn provision_workspace(&self, schema_name: &str) -> anyhow::Result<()> {
+        let prefix = self.ctx.table_prefix.as_str();
+        db::workspaces::provision_schema(&self.pool, schema_name, prefix).await?;
+        db::workspaces::provision_reaper(&self.pool, schema_name, prefix, &self.reaper_cron).await?;
+        Ok(())
+    }
+
+    /// The workspace this client addresses within `schema_name`.
+    fn workspace<'a>(&'a self, schema_name: &'a str) -> WorkspaceRef<'a> {
+        WorkspaceRef::new(&self.pool, schema_name, self.ctx.table_prefix.as_str())
+    }
+
+    /// Create a job in the given workspace schema.
+    ///
+    /// Returns the `execution_id` for IMMEDIATE and DELAYED jobs, and the
+    /// `job_id` for CRON jobs (which have no execution until pg_cron ticks).
+    /// Reusing an `idempotency_key` returns the original job's id rather than
+    /// erroring.
+    ///
+    /// Runs the same [`service::jobs::create_job`] core the REST handler runs,
+    /// so guards, validation, transaction boundaries and pg_cron registration
+    /// are identical in both modes.
     pub async fn create_job(
         &self,
         schema_name: &str,
@@ -172,69 +255,57 @@ impl KronosLibraryClient {
         trigger: JobTrigger,
         idempotency_key: Option<&str>,
     ) -> anyhow::Result<String> {
-        let prefix = self.ctx.table_prefix.as_str();
-        let ikey = idempotency_key.unwrap_or("");
-
-        let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        let mut db = DbContext::new(&mut *conn, prefix);
-
-        let ep = db::endpoints::get(&mut db, endpoint)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("Endpoint '{}' not found in schema '{}'", endpoint, schema_name))?;
-
-        let execution_id = match trigger {
-            JobTrigger::Immediate => {
-                let result = db::jobs::create_immediate(
-                    &mut db,
-                    endpoint,
-                    ep.endpoint_type.as_str(),
-                    ikey,
-                    Some(&input),
-                    max_attempts,
-                )
-                .await?;
-                result.execution_id
-            }
-            JobTrigger::Delayed { run_at } => {
-                let result = db::jobs::create_delayed(
-                    &mut db,
-                    endpoint,
-                    ep.endpoint_type.as_str(),
-                    ikey,
-                    Some(&input),
-                    run_at,
-                    max_attempts,
-                )
-                .await?;
-                result.execution_id
-            }
+        let trigger = match trigger {
+            JobTrigger::Immediate => TriggerSpec::Immediate,
+            JobTrigger::Delayed { run_at } => TriggerSpec::Delayed {
+                run_at: Some(run_at),
+            },
             JobTrigger::Cron {
                 expression,
                 timezone,
                 starts_at,
                 ends_at,
                 first_run_at,
-            } => {
-                let job = db::jobs::create_cron(
-                    &mut db,
-                    endpoint,
-                    ep.endpoint_type.as_str(),
-                    Some(&input),
-                    &expression,
-                    &timezone,
-                    starts_at,
-                    ends_at,
-                    first_run_at,
-                )
-                .await?;
-                job.job_id
-            }
+            } => TriggerSpec::Cron {
+                // Validated here rather than at `cron.schedule` time, so a typo
+                // is a clear error from `create_job` instead of a scheduling
+                // failure buried in the transaction.
+                expression: Some(PgCronExpr::try_from(expression)?),
+                timezone: Some(timezone),
+                starts_at,
+                ends_at,
+                next_run_at: Some(first_run_at),
+            },
         };
 
-        Ok(execution_id)
+        let outcome = service::jobs::create_job(
+            self.workspace(schema_name),
+            CreateJobRequest {
+                endpoint,
+                trigger,
+                input: Some(&input),
+                idempotency_key,
+                max_attempts: Some(max_attempts),
+                // A keyless DELAYED job has always been allowed in library mode.
+                require_idempotency_key: false,
+            },
+        )
+        .await?;
+
+        Ok(match outcome {
+            CreateOutcome::Created { job, execution } => {
+                execution.map(|e| e.execution_id).unwrap_or(job.job_id)
+            }
+            CreateOutcome::AlreadyExists { job, execution } => {
+                execution.map(|e| e.execution_id).unwrap_or(job.job_id)
+            }
+        })
     }
 
     /// Register (upsert) an endpoint in the given workspace schema.
+    ///
+    /// Use [`Self::register_endpoint_with_refs`] to attach a payload spec or a
+    /// config.
     pub async fn register_endpoint(
         &self,
         schema_name: &str,
@@ -243,15 +314,64 @@ impl KronosLibraryClient {
         spec: serde_json::Value,
         retry_policy: Option<serde_json::Value>,
     ) -> anyhow::Result<()> {
+        self.register_endpoint_with_refs(
+            schema_name,
+            name,
+            endpoint_type,
+            spec,
+            retry_policy,
+            None,
+            None,
+        )
+        .await
+    }
+
+    /// Register (upsert) an endpoint, attaching a payload spec (input
+    /// validation) and/or a config (`{{config.*}}` templating) by name.
+    ///
+    /// Both refs are FK-checked against `payload_specs` / `configs` in the same
+    /// schema, so an unknown name is a constraint error rather than a dangling
+    /// reference.
+    pub async fn register_endpoint_with_refs(
+        &self,
+        schema_name: &str,
+        name: &str,
+        endpoint_type: &str,
+        spec: serde_json::Value,
+        retry_policy: Option<serde_json::Value>,
+        payload_spec_ref: Option<&str>,
+        config_ref: Option<&str>,
+    ) -> anyhow::Result<()> {
         let prefix = self.ctx.table_prefix.as_str();
         let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
         let mut db = DbContext::new(&mut *conn, prefix);
 
         let existing = db::endpoints::get(&mut db, name).await?;
         if existing.is_none() {
-            db::endpoints::create(&mut db, name, endpoint_type, None, None, &spec, retry_policy.as_ref()).await?;
+            // NOTE: `create` takes (payload_spec_ref, config_ref)...
+            db::endpoints::create(
+                &mut db,
+                name,
+                endpoint_type,
+                payload_spec_ref,
+                config_ref,
+                &spec,
+                retry_policy.as_ref(),
+            )
+            .await?;
         } else {
-            db::endpoints::update(&mut db, name, Some(&spec), None, None, retry_policy.as_ref()).await?;
+            // ...while `update` takes them the other way round. Swapping these
+            // stores each ref in the other's column, which the FKs only catch
+            // when the two names happen not to exist in both tables.
+            db::endpoints::update(
+                &mut db,
+                name,
+                Some(&spec),
+                config_ref,
+                payload_spec_ref,
+                retry_policy.as_ref(),
+            )
+            .await?;
         }
 
         Ok(())
@@ -304,23 +424,13 @@ impl KronosLibraryClient {
     }
 
     /// Cancel a job and its pending executions.
+    ///
+    /// For CRON jobs the pg_cron entry is unscheduled on the same transaction as
+    /// the retire, so a failure can never leave a RETIRED job with a live
+    /// schedule. Cancelling an already-retired or INTERNAL job is an error, as
+    /// it is over REST.
     pub async fn cancel_job(&self, schema_name: &str, job_id: &str) -> anyhow::Result<()> {
-        let prefix = self.ctx.table_prefix.as_str();
-        let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        let mut db = DbContext::new(&mut *conn, prefix);
-
-        let job = db::jobs::get(&mut db, job_id)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("Job '{}' not found", job_id))?;
-
-        if job.trigger_type != "CRON" {
-            db::executions::cancel_pending_for_job(&mut db, job_id).await?;
-        }
-        db::jobs::cancel(&mut db, job_id).await?;
-        drop(db);
-        if job.trigger_type == "CRON" {
-            db::jobs::unregister_pg_cron(&self.pool, schema_name, job_id).await?;
-        }
+        service::jobs::cancel_job(self.workspace(schema_name), job_id).await?;
         Ok(())
     }
 
@@ -436,16 +546,27 @@ impl KronosClient for KronosLibraryClient {
         KronosLibraryClient::delete_secret(self, schema_name, name).await
     }
 
-    async fn register_endpoint(
+    async fn register_endpoint_with_refs(
         &self,
         schema_name: &str,
         name: &str,
         endpoint_type: &str,
         spec: serde_json::Value,
         retry_policy: Option<serde_json::Value>,
+        payload_spec_ref: Option<&str>,
+        config_ref: Option<&str>,
     ) -> anyhow::Result<()> {
-        KronosLibraryClient::register_endpoint(self, schema_name, name, endpoint_type, spec, retry_policy)
-            .await
+        KronosLibraryClient::register_endpoint_with_refs(
+            self,
+            schema_name,
+            name,
+            endpoint_type,
+            spec,
+            retry_policy,
+            payload_spec_ref,
+            config_ref,
+        )
+        .await
     }
 
     async fn delete_endpoint(&self, schema_name: &str, name: &str) -> anyhow::Result<()> {
@@ -474,7 +595,7 @@ impl KronosClient for KronosLibraryClient {
     }
 
     async fn provision_workspace(&self, schema_name: &str) -> anyhow::Result<()> {
-        Ok(db::workspaces::provision_schema(&self.pool, schema_name, &self.ctx.table_prefix).await?)
+        KronosLibraryClient::provision_workspace(self, schema_name).await
     }
 
     async fn cancel_job(&self, schema_name: &str, job_id: &str) -> anyhow::Result<()> {
@@ -488,6 +609,43 @@ impl KronosClient for KronosLibraryClient {
     ) -> anyhow::Result<Option<Execution>> {
         KronosLibraryClient::get_execution(self, schema_name, execution_id).await
     }
+}
+
+/// Body for `POST /v1/endpoints`. Field names are the REST wire names
+/// (`type`, `payload_spec`, `config`), which differ from the DB column names.
+/// Pure, so the wire shape is unit-tested without a server.
+fn endpoint_create_body(
+    name: &str,
+    endpoint_type: &str,
+    spec: &serde_json::Value,
+    retry_policy: Option<&serde_json::Value>,
+    payload_spec_ref: Option<&str>,
+    config_ref: Option<&str>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "name": name,
+        "type": endpoint_type,
+        "spec": spec,
+        "retry_policy": retry_policy,
+        "payload_spec": payload_spec_ref,
+        "config": config_ref,
+    })
+}
+
+/// Body for `PUT /v1/endpoints/{name}`. The handler `COALESCE`s each field, so
+/// a `null` leaves the stored value untouched rather than clearing it.
+fn endpoint_update_body(
+    spec: &serde_json::Value,
+    retry_policy: Option<&serde_json::Value>,
+    payload_spec_ref: Option<&str>,
+    config_ref: Option<&str>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "spec": spec,
+        "retry_policy": retry_policy,
+        "payload_spec": payload_spec_ref,
+        "config": config_ref,
+    })
 }
 
 /// HTTP client for Kronos-as-a-service mode. Implements `KronosClient` identically
@@ -580,13 +738,15 @@ impl KronosClient for KronosHttpClient {
         Ok(())
     }
 
-    async fn register_endpoint(
+    async fn register_endpoint_with_refs(
         &self,
         schema_name: &str,
         name: &str,
         endpoint_type: &str,
         spec: serde_json::Value,
         retry_policy: Option<serde_json::Value>,
+        payload_spec_ref: Option<&str>,
+        config_ref: Option<&str>,
     ) -> anyhow::Result<()> {
         // Try update first; on 404 (doesn't exist yet) fall through to create.
         let resp = self
@@ -594,7 +754,12 @@ impl KronosClient for KronosHttpClient {
                 self.http_client.put(self.url(&format!("/endpoints/{name}"))),
                 schema_name,
             ))
-            .json(&serde_json::json!({ "spec": spec, "retry_policy": retry_policy }))
+            .json(&endpoint_update_body(
+                &spec,
+                retry_policy.as_ref(),
+                payload_spec_ref,
+                config_ref,
+            ))
             .send()
             .await?;
         let status = resp.status();
@@ -611,12 +776,14 @@ impl KronosClient for KronosHttpClient {
                 self.http_client.post(self.url("/endpoints")),
                 schema_name,
             ))
-            .json(&serde_json::json!({
-                "name": name,
-                "type": endpoint_type,
-                "spec": spec,
-                "retry_policy": retry_policy,
-            }))
+            .json(&endpoint_create_body(
+                name,
+                endpoint_type,
+                &spec,
+                retry_policy.as_ref(),
+                payload_spec_ref,
+                config_ref,
+            ))
             .send()
             .await?;
         Self::check(resp, "register_endpoint create").await?;
@@ -755,5 +922,94 @@ impl KronosClient for KronosHttpClient {
         let json: serde_json::Value = resp.json().await?;
         let execution: Execution = serde_json::from_value(json["data"].clone())?;
         Ok(Some(execution))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// Gap 4, HTTP side: the create body must carry both refs under the REST
+    /// wire names, and must not transpose them.
+    #[test]
+    fn http_endpoint_create_body_carries_both_refs() {
+        let body = endpoint_create_body(
+            "notify",
+            "HTTP",
+            &json!({ "url": "https://x" }),
+            Some(&json!({ "max_attempts": 3 })),
+            Some("order-spec"),
+            Some("notify-config"),
+        );
+        assert_eq!(body["name"], "notify");
+        assert_eq!(body["type"], "HTTP");
+        assert_eq!(body["payload_spec"], "order-spec");
+        assert_eq!(body["config"], "notify-config");
+        assert_eq!(body["retry_policy"]["max_attempts"], 3);
+    }
+
+    #[test]
+    fn http_endpoint_update_body_carries_both_refs() {
+        let body = endpoint_update_body(
+            &json!({ "url": "https://x" }),
+            None,
+            Some("order-spec"),
+            Some("notify-config"),
+        );
+        assert_eq!(body["payload_spec"], "order-spec");
+        assert_eq!(body["config"], "notify-config");
+        assert_eq!(body["spec"]["url"], "https://x");
+    }
+
+    /// Absent refs serialize as JSON null, which the update handler `COALESCE`s
+    /// — so a plain `register_endpoint` never clears refs set earlier.
+    #[test]
+    fn http_endpoint_bodies_send_null_for_absent_refs() {
+        let create = endpoint_create_body("notify", "HTTP", &json!({}), None, None, None);
+        assert!(create["payload_spec"].is_null());
+        assert!(create["config"].is_null());
+
+        let update = endpoint_update_body(&json!({}), None, None, None);
+        assert!(update["payload_spec"].is_null());
+        assert!(update["config"].is_null());
+    }
+
+    /// The HTTP client used to omit `payload_spec` / `config` from its request
+    /// bodies entirely; it now always sends them, as `null` when absent. Both
+    /// shapes must deserialize to the same server-side request, or every
+    /// existing `register_endpoint` call silently changes meaning on the wire.
+    #[test]
+    fn absent_and_explicit_null_endpoint_refs_deserialize_identically() {
+        use kronos_common::models::endpoint::{CreateEndpoint, UpdateEndpoint};
+
+        let spec = json!({ "url": "https://x", "method": "POST" });
+
+        // Pre-change create body: the two ref keys simply were not there.
+        let old: CreateEndpoint = serde_json::from_value(json!({
+            "name": "notify", "type": "HTTP", "spec": spec, "retry_policy": null,
+        }))
+        .expect("the pre-change create body must still deserialize");
+        let new: CreateEndpoint =
+            serde_json::from_value(endpoint_create_body("notify", "HTTP", &spec, None, None, None))
+                .expect("the post-change create body must deserialize");
+        assert_eq!(old.name, new.name);
+        assert_eq!(old.endpoint_type, new.endpoint_type);
+        assert_eq!(old.payload_spec, new.payload_spec);
+        assert_eq!(old.config, new.config);
+        assert_eq!(new.payload_spec, None);
+        assert_eq!(new.config, None);
+
+        // Pre-change update body: likewise only `spec` and `retry_policy`.
+        let old: UpdateEndpoint =
+            serde_json::from_value(json!({ "spec": spec, "retry_policy": null }))
+                .expect("the pre-change update body must still deserialize");
+        let new: UpdateEndpoint =
+            serde_json::from_value(endpoint_update_body(&spec, None, None, None))
+                .expect("the post-change update body must deserialize");
+        assert_eq!(old.payload_spec, new.payload_spec);
+        assert_eq!(old.config, new.config);
+        assert_eq!(new.payload_spec, None);
+        assert_eq!(new.config, None);
     }
 }

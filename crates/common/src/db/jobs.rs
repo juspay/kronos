@@ -13,11 +13,20 @@ pub struct CreateJobResult {
     pub execution_created_at: DateTime<Utc>,
 }
 
+/// Create an IMMEDIATE job plus its QUEUED execution.
+///
+/// `idempotency_key` is `Option` rather than `&str` on purpose: the uniqueness
+/// index is partial (`WHERE idempotency_key IS NOT NULL`), so a real `NULL` is
+/// exempt from it while an empty string is not. Collapsing "no key" to `''`
+/// makes every keyless job on an endpoint collide with the previous one.
+///
+/// Both INSERTs must run on the same transaction — a crash between them would
+/// otherwise leave an ACTIVE job with no execution, which lists but never runs.
 pub async fn create_immediate(
     db: &mut DbContext<'_>,
     endpoint: &str,
     endpoint_type: &str,
-    idempotency_key: &str,
+    idempotency_key: Option<&str>,
     input: Option<&serde_json::Value>,
     max_attempts: i64,
 ) -> Result<CreateJobResult, sqlx::Error> {
@@ -58,11 +67,14 @@ pub async fn create_immediate(
     })
 }
 
+/// Create a DELAYED job plus its PENDING execution. See [`create_immediate`]
+/// for why `idempotency_key` is an `Option` and why both INSERTs need one
+/// transaction.
 pub async fn create_delayed(
     db: &mut DbContext<'_>,
     endpoint: &str,
     endpoint_type: &str,
-    idempotency_key: &str,
+    idempotency_key: Option<&str>,
     input: Option<&serde_json::Value>,
     run_at: DateTime<Utc>,
     max_attempts: i64,

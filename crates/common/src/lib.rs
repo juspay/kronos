@@ -14,5 +14,8 @@ pub mod kms;
 pub mod metrics;
 pub mod models;
 pub mod pagination;
+/// Shared workspace-mutation logic invoked by both the REST handler and the
+/// library client, so the two cannot drift.
+pub mod service;
 pub mod template;
 pub mod tenant;
