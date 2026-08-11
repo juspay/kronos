@@ -19,6 +19,11 @@ use tokio_util::sync::CancellationToken;
 use crate::pipeline::PipelineContext;
 use crate::poller;
 
+/// Reaper cadence installed into library-mode workspaces (mirrors the API's
+/// default; see [`build_app_config`]). Each tick retires expired CRON jobs and
+/// unschedules their pg_cron entries, so bounded CRON jobs don't leak schedules.
+const LIBRARY_REAPER_CRON: &str = "*/15 * * * *";
+
 /// How a job should be triggered.
 #[derive(Serialize, Deserialize)]
 pub enum JobTrigger {
@@ -540,7 +545,19 @@ impl KronosClient for KronosLibraryClient {
     }
 
     async fn provision_workspace(&self, schema_name: &str) -> anyhow::Result<()> {
-        Ok(db::workspaces::provision_schema(&self.pool, schema_name, &self.ctx.table_prefix).await?)
+        db::workspaces::provision_schema(&self.pool, schema_name, &self.ctx.table_prefix).await?;
+        // Install the dogfooded reaper (INTERNAL CRON job + pg_cron entry) so
+        // expired CRON jobs are retired and their schedules removed — parity with
+        // the API's `workspaces::create`. Without it, bounded library CRON jobs
+        // would leak their pg_cron entry once they pass `ends_at`.
+        db::workspaces::provision_reaper(
+            &self.pool,
+            schema_name,
+            &self.ctx.table_prefix,
+            LIBRARY_REAPER_CRON,
+        )
+        .await?;
+        Ok(())
     }
 
     async fn cancel_job(&self, schema_name: &str, job_id: &str) -> anyhow::Result<()> {
