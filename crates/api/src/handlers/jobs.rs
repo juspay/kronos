@@ -11,6 +11,9 @@ use kronos_common::{
     models::job::{CreateJob, TriggerType, UpdateJob},
     models::pg_cron_expr::PgCronExpr,
     pagination::{encode_cursor, PaginatedResponse, PaginationParams},
+    service,
+    service::jobs::TriggerSpec,
+    service::WorkspaceRef,
 };
 use uuid::Uuid;
 
@@ -20,253 +23,124 @@ pub async fn create(
     ws: Workspace,
     body: web::Json<CreateJob>,
 ) -> Result<HttpResponse, AppError> {
-    let prefix = state.prefix();
-
     let trigger = TriggerType::from_str_val(&body.trigger)
         .ok_or_else(|| AppError::InvalidRequest(format!("Invalid trigger: {}", body.trigger)))?;
 
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
-
-    let ep = db::endpoints::get(&mut db, &body.endpoint)
-        .await?
-        .ok_or_else(|| AppError::EndpointNotFound(body.endpoint.clone()))?;
-
-    // INTERNAL endpoints back kronos-driven jobs (today: the dogfooded reaper)
-    // and are not user-creatable — see `handlers::endpoints::create`. The same
-    // invariant has to hold on the job side, or a user could stack their own
-    // jobs against an internal endpoint (extra reaper sweeps, or one-off
-    // IMMEDIATE/DELAYED reaper invocations).
-    if EndpointType::from_str_val(&ep.endpoint_type) == Some(EndpointType::INTERNAL) {
-        return Err(AppError::InvalidRequest(format!(
-            "Endpoint '{}' is internal and cannot be used for user-created jobs",
-            body.endpoint
-        )));
-    }
-
-    let retry_policy = ep.get_retry_policy();
-    // Per-job override wins when provided and positive; otherwise the endpoint's policy.
-    let max_attempts = body
-        .max_attempts
-        .filter(|&n| n > 0)
-        .unwrap_or(retry_policy.max_attempts);
-
-    if let Some(ref ps_name) = ep.payload_spec_ref {
-        if let Some(ref input) = body.input {
-            let spec = db::payload_specs::get(&mut db, ps_name)
-                .await?
-                .ok_or_else(|| AppError::InvalidPayloadSpecRef(ps_name.clone()))?;
-            validate_input(input, &spec.schema_json)?;
+    // REST's own contract, applied before handing off to the shared core: a
+    // keyless IMMEDIATE job gets a generated key so it is addressable, and a
+    // DELAYED job must carry one (`require_idempotency_key`). Everything else —
+    // guards, validation, transactions, pg_cron — belongs to the service.
+    let generated_key;
+    let idempotency_key = match (&trigger, body.idempotency_key.as_deref()) {
+        (TriggerType::IMMEDIATE, None) => {
+            generated_key = Uuid::new_v4().to_string();
+            Some(generated_key.as_str())
         }
-    }
+        (_, key) => key,
+    };
 
-    if let Some(ref key) = body.idempotency_key {
-        if let Some(existing) = db::jobs::get_by_idempotency(&mut db, &body.endpoint, key).await? {
-            let exec = db::executions::get_for_job(&mut db, &existing.job_id).await?;
+    let trigger_spec = match trigger {
+        TriggerType::IMMEDIATE => TriggerSpec::Immediate,
+        TriggerType::DELAYED => TriggerSpec::Delayed { run_at: body.run_at },
+        TriggerType::CRON => TriggerSpec::Cron {
+            expression: body.cron.clone(),
+            timezone: body.timezone.clone(),
+            starts_at: body.starts_at,
+            ends_at: body.ends_at,
+            // REST computes the first run from the schedule.
+            next_run_at: None,
+        },
+    };
+
+    let outcome = service::jobs::create_job(
+        WorkspaceRef::new(&state.pool, &ws.0.schema_name, state.prefix()),
+        service::jobs::CreateJobRequest {
+            endpoint: &body.endpoint,
+            trigger: trigger_spec,
+            input: body.input.as_ref(),
+            idempotency_key,
+            max_attempts: body.max_attempts,
+            require_idempotency_key: matches!(trigger, TriggerType::DELAYED),
+        },
+    )
+    .await?;
+
+    let (job, execution) = match outcome {
+        // Idempotent replay: the key was already used, nothing was written.
+        service::jobs::CreateOutcome::AlreadyExists { job, execution } => {
             return Ok(HttpResponse::Ok()
-                .json(serde_json::json!({ "data": job_response(&existing, exec.as_ref()) })));
+                .json(serde_json::json!({ "data": job_response(&job, execution.as_deref()) })));
         }
-    }
+        service::jobs::CreateOutcome::Created { job, execution } => (job, execution),
+    };
 
-    // Drop the scoped connection (and its DbContext) before starting transactions
-    drop(db);
-    drop(conn);
+    metrics::counter!(m::JOBS_CREATED_TOTAL,
+        "trigger_type" => job.trigger_type.clone(),
+        "endpoint" => body.endpoint.clone(),
+        "schema" => ws.0.schema_name.clone(),
+    )
+    .increment(1);
 
-    match trigger {
+    // Response shapes are per-trigger and predate the service layer; kept
+    // field-for-field so the wire format does not move.
+    let data = match trigger {
         TriggerType::IMMEDIATE => {
-            let generated_key;
-            let key = match body.idempotency_key.as_deref() {
-                Some(k) => k,
-                None => {
-                    generated_key = Uuid::new_v4().to_string();
-                    &generated_key
-                }
-            };
-
-            let mut tx =
-                kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
-                    .await
-                    .map_err(AppError::from)?;
-            let mut db = DbContext::new(&mut *tx, prefix);
-
-            let result = db::jobs::create_immediate(
-                &mut db,
-                &body.endpoint,
-                &ep.endpoint_type,
-                key,
-                body.input.as_ref(),
-                max_attempts,
-            )
-            .await
-            .map_err(|e| match e {
-                sqlx::Error::Database(ref db_err) if db_err.constraint().is_some() => {
-                    AppError::Conflict("Job with this idempotency key already exists".into())
-                }
-                _ => AppError::from(e),
-            })?;
-
-            drop(db);
-            tx.commit().await.map_err(AppError::from)?;
-
-            metrics::counter!(m::JOBS_CREATED_TOTAL,
-                "trigger_type" => "IMMEDIATE",
-                "endpoint" => body.endpoint.clone(),
-                "schema" => ws.0.schema_name.clone(),
-            )
-            .increment(1);
-
-            Ok(HttpResponse::Created().json(serde_json::json!({ "data": {
-                "job_id": result.job.job_id,
-                "endpoint": result.job.endpoint,
-                "endpoint_type": result.job.endpoint_type,
-                "trigger": result.job.trigger_type,
-                "status": result.job.status,
-                "version": result.job.version,
-                "idempotency_key": result.job.idempotency_key,
-                "input": result.job.input,
-                "execution": {
-                    "execution_id": result.execution_id,
-                    "status": result.execution_status,
-                    "created_at": result.execution_created_at,
-                },
-                "created_at": result.job.created_at,
-            }})))
-        }
-        TriggerType::DELAYED => {
-            let key = body.idempotency_key.as_deref().ok_or_else(|| {
-                AppError::InvalidRequest("idempotency_key required for DELAYED jobs".into())
-            })?;
-            let run_at = body.run_at.ok_or_else(|| {
-                AppError::InvalidRequest("run_at required for DELAYED jobs".into())
-            })?;
-
-            let mut tx =
-                kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
-                    .await
-                    .map_err(AppError::from)?;
-            let mut db = DbContext::new(&mut *tx, prefix);
-
-            let result = db::jobs::create_delayed(
-                &mut db,
-                &body.endpoint,
-                &ep.endpoint_type,
-                key,
-                body.input.as_ref(),
-                run_at,
-                max_attempts,
-            )
-            .await?;
-
-            drop(db);
-            tx.commit().await.map_err(AppError::from)?;
-
-            metrics::counter!(m::JOBS_CREATED_TOTAL,
-                "trigger_type" => "DELAYED",
-                "endpoint" => body.endpoint.clone(),
-                "schema" => ws.0.schema_name.clone(),
-            )
-            .increment(1);
-
-            Ok(HttpResponse::Created().json(serde_json::json!({ "data": {
-                "job_id": result.job.job_id,
-                "endpoint": result.job.endpoint,
-                "endpoint_type": result.job.endpoint_type,
-                "trigger": result.job.trigger_type,
-                "status": result.job.status,
-                "version": result.job.version,
-                "idempotency_key": result.job.idempotency_key,
-                "input": result.job.input,
-                "run_at": result.job.run_at,
-                "execution": {
-                    "execution_id": result.execution_id,
-                    "status": result.execution_status,
-                    "created_at": result.execution_created_at,
-                },
-                "created_at": result.job.created_at,
-            }})))
-        }
-        TriggerType::CRON => {
-            let cron_expr = body
-                .cron
-                .as_ref()
-                .ok_or_else(|| AppError::InvalidRequest("cron required for CRON jobs".into()))?;
-            let tz_str = body.timezone.as_deref().ok_or_else(|| {
-                AppError::InvalidRequest("timezone required for CRON jobs".into())
-            })?;
-
-            let schedule = cron_expr.to_schedule();
-
-            let tz: chrono_tz::Tz = tz_str
-                .parse()
-                .map_err(|_| AppError::InvalidRequest(format!("Invalid timezone: {}", tz_str)))?;
-
-            let starts_at = body.starts_at.unwrap_or_else(Utc::now);
-            let next_run = compute_next_cron(&schedule, &tz, starts_at).ok_or_else(|| {
-                AppError::InvalidCron("No upcoming run for this cron schedule".into())
-            })?;
-
-            let mut tx =
-                kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
-                    .await
-                    .map_err(AppError::from)?;
-            let mut db = DbContext::new(&mut *tx, prefix);
-
-            let job = db::jobs::create_cron(
-                &mut db,
-                &body.endpoint,
-                &ep.endpoint_type,
-                body.input.as_ref(),
-                cron_expr.as_str(),
-                tz_str,
-                Some(starts_at),
-                body.ends_at,
-                next_run,
-            )
-            .await?;
-
-            drop(db);
-
-            // Register with pg_cron for automatic execution materialization.
-            // Run it on the same tx as the row write so the persisted job and
-            // the pg_cron schedule commit (or roll back) together. If pg_cron is
-            // unhealthy the whole create fails and the client can retry.
-            db::jobs::register_pg_cron_conn(
-                &mut *tx,
-                prefix,
-                &ws.0.schema_name,
-                &job.job_id,
-                cron_expr.as_str(),
-            )
-            .await?;
-
-            tx.commit().await.map_err(AppError::from)?;
-
-            metrics::counter!(m::JOBS_CREATED_TOTAL,
-                "trigger_type" => "CRON",
-                "endpoint" => body.endpoint.clone(),
-                "schema" => ws.0.schema_name.clone(),
-            )
-            .increment(1);
-
-            Ok(HttpResponse::Created().json(serde_json::json!({ "data": {
+            let execution = execution.expect("IMMEDIATE jobs always create an execution");
+            serde_json::json!({
                 "job_id": job.job_id,
                 "endpoint": job.endpoint,
                 "endpoint_type": job.endpoint_type,
                 "trigger": job.trigger_type,
                 "status": job.status,
                 "version": job.version,
-                "cron": job.cron_expression,
-                "timezone": job.cron_timezone,
-                "starts_at": job.cron_starts_at,
-                "ends_at": job.cron_ends_at,
-                "next_run_at": job.cron_next_run_at,
+                "idempotency_key": job.idempotency_key,
                 "input": job.input,
+                "execution": {
+                    "execution_id": execution.execution_id,
+                    "status": execution.status,
+                    "created_at": execution.created_at,
+                },
                 "created_at": job.created_at,
-            }})))
+            })
         }
-    }
+        TriggerType::DELAYED => {
+            let execution = execution.expect("DELAYED jobs always create an execution");
+            serde_json::json!({
+                "job_id": job.job_id,
+                "endpoint": job.endpoint,
+                "endpoint_type": job.endpoint_type,
+                "trigger": job.trigger_type,
+                "status": job.status,
+                "version": job.version,
+                "idempotency_key": job.idempotency_key,
+                "input": job.input,
+                "run_at": job.run_at,
+                "execution": {
+                    "execution_id": execution.execution_id,
+                    "status": execution.status,
+                    "created_at": execution.created_at,
+                },
+                "created_at": job.created_at,
+            })
+        }
+        TriggerType::CRON => serde_json::json!({
+            "job_id": job.job_id,
+            "endpoint": job.endpoint,
+            "endpoint_type": job.endpoint_type,
+            "trigger": job.trigger_type,
+            "status": job.status,
+            "version": job.version,
+            "cron": job.cron_expression,
+            "timezone": job.cron_timezone,
+            "starts_at": job.cron_starts_at,
+            "ends_at": job.cron_ends_at,
+            "next_run_at": job.cron_next_run_at,
+            "input": job.input,
+            "created_at": job.created_at,
+        }),
+    };
+
+    Ok(HttpResponse::Created().json(serde_json::json!({ "data": data })))
 }
 
 pub async fn list(
@@ -372,7 +246,7 @@ pub async fn update(
         .parse()
         .map_err(|_| AppError::InvalidRequest(format!("Invalid timezone: {}", tz_str)))?;
 
-    let next_run = compute_next_cron(&schedule, &tz, Utc::now())
+    let next_run = service::jobs::compute_next_cron(&schedule, &tz, Utc::now())
         .ok_or_else(|| AppError::InvalidCron("No upcoming run".into()))?;
 
     let mut new_job = old_job.clone();
@@ -437,46 +311,11 @@ pub async fn cancel(
     ws: Workspace,
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
-    let prefix = state.prefix();
-    let mut tx = kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *tx, prefix);
-    let job_id = path.into_inner();
-    let job = db::jobs::get(&mut db, &job_id)
-        .await?
-        .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?;
-
-    if job.status == "RETIRED" {
-        return Err(AppError::Conflict("Job is already retired".into()));
-    }
-    // INTERNAL jobs are kronos-managed (today: the dogfooded reaper). Cancelling
-    // one would stop the reaper from sweeping this workspace, with no surviving
-    // bootstrap path to bring it back.
-    if EndpointType::from_str_val(&job.endpoint_type) == Some(EndpointType::INTERNAL) {
-        return Err(AppError::Conflict(
-            "Internal kronos jobs cannot be cancelled through the API".into(),
-        ));
-    }
-
-    if job.trigger_type != "CRON" {
-        db::executions::cancel_pending_for_job(&mut db, &job_id).await?;
-    }
-
-    let cancelled = db::jobs::cancel(&mut db, &job_id)
-        .await?
-        .ok_or_else(|| AppError::Conflict("Job could not be cancelled".into()))?;
-
-    drop(db);
-
-    // Unregister from pg_cron if this was a CRON job. Run it on the same tx as
-    // the status flip so the cancel and the pg_cron unschedule commit (or roll
-    // back) atomically — no more RETIRED rows left with a live pg_cron entry.
-    if job.trigger_type == "CRON" {
-        db::jobs::unregister_pg_cron_conn(&mut *tx, &ws.0.schema_name, &job_id).await?;
-    }
-
-    tx.commit().await.map_err(AppError::from)?;
+    let cancelled = service::jobs::cancel_job(
+        WorkspaceRef::new(&state.pool, &ws.0.schema_name, state.prefix()),
+        &path.into_inner(),
+    )
+    .await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": job_summary(&cancelled) })))
 }
@@ -627,29 +466,6 @@ pub async fn list_executions(
         data,
         cursor: next_cursor,
     }))
-}
-
-fn validate_input(input: &serde_json::Value, schema: &serde_json::Value) -> Result<(), AppError> {
-    let compiled = jsonschema::JSONSchema::compile(schema)
-        .map_err(|e| AppError::InvalidSchema(format!("{}", e)))?;
-
-    if let Err(errors) = compiled.validate(input) {
-        let msgs: Vec<String> = errors.map(|e| e.to_string()).collect();
-        return Err(AppError::InputValidationFailed(msgs.join("; ")));
-    }
-    Ok(())
-}
-
-fn compute_next_cron(
-    schedule: &cron::Schedule,
-    tz: &chrono_tz::Tz,
-    after: chrono::DateTime<Utc>,
-) -> Option<chrono::DateTime<Utc>> {
-    let after_tz = after.with_timezone(tz);
-    schedule
-        .after(&after_tz)
-        .next()
-        .map(|dt| dt.with_timezone(&Utc))
 }
 
 fn job_response(

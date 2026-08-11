@@ -47,7 +47,8 @@ pub async fn create(
     // workspace has its reaper job ready by the time `create` returns. If this
     // fails the workspace row exists but schema_version stays unset, marking
     // it as half-provisioned for the operator to investigate.
-    provision_reaper(pool, schema_name, reaper_cron_expression).await?;
+    // The API deployment runs schema-per-workspace with unprefixed tables.
+    provision_reaper(pool, schema_name, "", reaper_cron_expression).await?;
 
     // Update schema_version
     sqlx::query(
@@ -173,45 +174,70 @@ pub async fn provision_schema(
 /// whole provisioning back — we never commit a job row without its pg_cron
 /// schedule (which would leave a phantom row that never fires).
 ///
+/// The reaper is what gives `cron_ends_at` any effect on a job's *lifecycle*:
+/// pg_cron has no concept of an end date, so the guard in the pg_cron command
+/// stops new executions past the window while the entry keeps ticking and the
+/// job stays ACTIVE forever. Each sweep retires expired CRON jobs and removes
+/// their pg_cron entries. A workspace without one leaks a pg_cron entry per
+/// expired job, permanently.
+///
+/// `table_prefix` is used as-is (see [`provision_schema`]): the API deployment
+/// passes `""`, library mode passes its configured prefix. Getting this wrong
+/// writes the reaper into tables nothing reads.
+///
+/// Idempotent — an embedder may call `provision_workspace` on every boot, so
+/// re-running must not stack a second reaper or fail on the endpoint's primary
+/// key.
+///
 /// `cron_expression` is the caller-supplied schedule (typically from
 /// `AppConfig::reaper::cron_expression`); it is validated as a 5-field
 /// PgCronExpr at config-load time, so this function trusts it as a literal.
-async fn provision_reaper(
+pub async fn provision_reaper(
     pool: &PgPool,
     schema_name: &str,
+    table_prefix: &str,
     cron_expression: &str,
 ) -> Result<(), sqlx::Error> {
+    let te = crate::db::tbl(table_prefix, "endpoints");
+    let tj = crate::db::tbl(table_prefix, "jobs");
+
     let mut tx = scoped_transaction(pool, schema_name).await?;
 
     let reaper_spec = serde_json::json!({ "task": "reaper" });
 
-    sqlx::query(
-        "INSERT INTO endpoints (name, endpoint_type, spec) \
-         VALUES ($1, $2, $3)",
-    )
+    sqlx::query(&format!(
+        "INSERT INTO {te} (name, endpoint_type, spec) \
+         VALUES ($1, $2, $3) \
+         ON CONFLICT (name) DO NOTHING"
+    ))
     .bind(REAPER_ENDPOINT_NAME)
     .bind(EndpointType::INTERNAL.to_string())
     .bind(&reaper_spec)
     .execute(&mut *tx)
     .await?;
 
-    let (job_id,): (String,) = sqlx::query_as(
-        "INSERT INTO jobs ( \
+    // `WHERE NOT EXISTS` rather than a blind INSERT: a second call must not add
+    // a second sweep. Returns no row when one is already installed.
+    let existing: Option<(String,)> = sqlx::query_as(&format!(
+        "INSERT INTO {tj} ( \
             endpoint, endpoint_type, trigger_type, \
             cron_expression, cron_timezone, cron_next_run_at \
-         ) VALUES ($1, $2, $3, $4, 'UTC', now()) \
-         RETURNING job_id",
-    )
+         ) SELECT $1, $2, $3, $4, 'UTC', now() \
+         WHERE NOT EXISTS ( \
+            SELECT 1 FROM {tj} WHERE endpoint = $1 AND status = 'ACTIVE' \
+         ) \
+         RETURNING job_id"
+    ))
     .bind(REAPER_ENDPOINT_NAME)
     .bind(EndpointType::INTERNAL.to_string())
     .bind(TriggerType::CRON.as_str())
     .bind(cron_expression)
-    .fetch_one(&mut *tx)
+    .fetch_optional(&mut *tx)
     .await?;
 
-    // Provisioning runs in schema-per-workspace mode with unprefixed tables, so
-    // the table prefix is empty here.
-    register_pg_cron_conn(&mut *tx, "", schema_name, &job_id, cron_expression).await?;
+    if let Some((job_id,)) = existing {
+        register_pg_cron_conn(&mut tx, table_prefix, schema_name, &job_id, cron_expression).await?;
+    }
 
     tx.commit().await?;
 
