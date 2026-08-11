@@ -58,6 +58,24 @@ pub trait KronosClient: Send + Sync {
         retry_policy: Option<serde_json::Value>,
     ) -> anyhow::Result<()>;
 
+    /// Register (upsert) an endpoint, additionally setting its payload-spec /
+    /// config references. The default impl drops the refs and delegates to
+    /// [`KronosClient::register_endpoint`], so existing implementors keep
+    /// compiling; modes that support refs (library, HTTP) override it.
+    async fn register_endpoint_with_refs(
+        &self,
+        schema_name: &str,
+        name: &str,
+        endpoint_type: &str,
+        spec: serde_json::Value,
+        retry_policy: Option<serde_json::Value>,
+        _payload_spec_ref: Option<&str>,
+        _config_ref: Option<&str>,
+    ) -> anyhow::Result<()> {
+        self.register_endpoint(schema_name, name, endpoint_type, spec, retry_policy)
+            .await
+    }
+
     async fn delete_endpoint(&self, schema_name: &str, name: &str) -> anyhow::Result<()>;
 
     async fn create_job(
@@ -233,15 +251,62 @@ impl KronosLibraryClient {
         spec: serde_json::Value,
         retry_policy: Option<serde_json::Value>,
     ) -> anyhow::Result<()> {
+        self.register_endpoint_with_refs(
+            schema_name,
+            name,
+            endpoint_type,
+            spec,
+            retry_policy,
+            None,
+            None,
+        )
+        .await
+    }
+
+    /// Register (upsert) an endpoint, additionally setting its payload-spec and
+    /// config references — needed for input validation and `{{config.*}}`
+    /// templating. On update, `None` preserves the existing ref (the DB layer
+    /// `COALESCE`s), matching the no-refs [`register_endpoint`].
+    pub async fn register_endpoint_with_refs(
+        &self,
+        schema_name: &str,
+        name: &str,
+        endpoint_type: &str,
+        spec: serde_json::Value,
+        retry_policy: Option<serde_json::Value>,
+        payload_spec_ref: Option<&str>,
+        config_ref: Option<&str>,
+    ) -> anyhow::Result<()> {
         let prefix = self.ctx.table_prefix.as_str();
         let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
         let mut db = DbContext::new(&mut *conn, prefix);
 
         let existing = db::endpoints::get(&mut db, name).await?;
         if existing.is_none() {
-            db::endpoints::create(&mut db, name, endpoint_type, None, None, &spec, retry_policy.as_ref()).await?;
+            // create(name, type, payload_spec_ref, config_ref, spec, retry)
+            db::endpoints::create(
+                &mut db,
+                name,
+                endpoint_type,
+                payload_spec_ref,
+                config_ref,
+                &spec,
+                retry_policy.as_ref(),
+            )
+            .await?;
         } else {
-            db::endpoints::update(&mut db, name, Some(&spec), None, None, retry_policy.as_ref()).await?;
+            // NOTE: update() takes (config_ref, payload_spec_ref) — the OPPOSITE
+            // order to create(). Mirror the REST handler exactly, or the two refs
+            // get cross-wired.
+            db::endpoints::update(
+                &mut db,
+                name,
+                Some(&spec),
+                config_ref,
+                payload_spec_ref,
+                retry_policy.as_ref(),
+            )
+            .await?;
         }
 
         Ok(())
@@ -426,6 +491,29 @@ impl KronosClient for KronosLibraryClient {
             .await
     }
 
+    async fn register_endpoint_with_refs(
+        &self,
+        schema_name: &str,
+        name: &str,
+        endpoint_type: &str,
+        spec: serde_json::Value,
+        retry_policy: Option<serde_json::Value>,
+        payload_spec_ref: Option<&str>,
+        config_ref: Option<&str>,
+    ) -> anyhow::Result<()> {
+        KronosLibraryClient::register_endpoint_with_refs(
+            self,
+            schema_name,
+            name,
+            endpoint_type,
+            spec,
+            retry_policy,
+            payload_spec_ref,
+            config_ref,
+        )
+        .await
+    }
+
     async fn delete_endpoint(&self, schema_name: &str, name: &str) -> anyhow::Result<()> {
         KronosLibraryClient::delete_endpoint(self, schema_name, name).await
     }
@@ -566,13 +654,40 @@ impl KronosClient for KronosHttpClient {
         spec: serde_json::Value,
         retry_policy: Option<serde_json::Value>,
     ) -> anyhow::Result<()> {
+        self.register_endpoint_with_refs(
+            schema_name,
+            name,
+            endpoint_type,
+            spec,
+            retry_policy,
+            None,
+            None,
+        )
+        .await
+    }
+
+    async fn register_endpoint_with_refs(
+        &self,
+        schema_name: &str,
+        name: &str,
+        endpoint_type: &str,
+        spec: serde_json::Value,
+        retry_policy: Option<serde_json::Value>,
+        payload_spec_ref: Option<&str>,
+        config_ref: Option<&str>,
+    ) -> anyhow::Result<()> {
         // Try update first; on 404 (doesn't exist yet) fall through to create.
         let resp = self
             .authed(self.with_workspace(
                 self.http_client.put(self.url(&format!("/endpoints/{name}"))),
                 schema_name,
             ))
-            .json(&serde_json::json!({ "spec": spec, "retry_policy": retry_policy }))
+            .json(&serde_json::json!({
+                "spec": spec,
+                "retry_policy": retry_policy,
+                "payload_spec": payload_spec_ref,
+                "config": config_ref,
+            }))
             .send()
             .await?;
         let status = resp.status();
@@ -594,6 +709,8 @@ impl KronosClient for KronosHttpClient {
                 "type": endpoint_type,
                 "spec": spec,
                 "retry_policy": retry_policy,
+                "payload_spec": payload_spec_ref,
+                "config": config_ref,
             }))
             .send()
             .await?;
