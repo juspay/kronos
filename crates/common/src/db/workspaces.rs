@@ -1,5 +1,6 @@
 use crate::db::jobs::register_pg_cron_conn;
 use crate::db::scoped::scoped_transaction;
+use crate::db::tbl;
 use crate::models::endpoint::EndpointType;
 use crate::models::job::TriggerType;
 use crate::models::workspace::Workspace;
@@ -47,7 +48,7 @@ pub async fn create(
     // workspace has its reaper job ready by the time `create` returns. If this
     // fails the workspace row exists but schema_version stays unset, marking
     // it as half-provisioned for the operator to investigate.
-    provision_reaper(pool, schema_name, reaper_cron_expression).await?;
+    provision_reaper(pool, schema_name, "", reaper_cron_expression).await?;
 
     // Update schema_version
     sqlx::query(
@@ -176,32 +177,38 @@ pub async fn provision_schema(
 /// `cron_expression` is the caller-supplied schedule (typically from
 /// `AppConfig::reaper::cron_expression`); it is validated as a 5-field
 /// PgCronExpr at config-load time, so this function trusts it as a literal.
-async fn provision_reaper(
+/// `table_prefix` is the workspace's table prefix (`""` for the API's
+/// schema-per-workspace deployment, a real prefix like `"sched_"` for library
+/// mode); it must match how the tables were provisioned, or the endpoint/job
+/// inserts and the pg_cron command would target the wrong tables.
+pub async fn provision_reaper(
     pool: &PgPool,
     schema_name: &str,
+    table_prefix: &str,
     cron_expression: &str,
 ) -> Result<(), sqlx::Error> {
     let mut tx = scoped_transaction(pool, schema_name).await?;
 
+    let te = tbl(table_prefix, "endpoints");
+    let tj = tbl(table_prefix, "jobs");
     let reaper_spec = serde_json::json!({ "task": "reaper" });
 
-    sqlx::query(
-        "INSERT INTO endpoints (name, endpoint_type, spec) \
-         VALUES ($1, $2, $3)",
-    )
+    sqlx::query(&format!(
+        "INSERT INTO {te} (name, endpoint_type, spec) VALUES ($1, $2, $3)"
+    ))
     .bind(REAPER_ENDPOINT_NAME)
     .bind(EndpointType::INTERNAL.to_string())
     .bind(&reaper_spec)
     .execute(&mut *tx)
     .await?;
 
-    let (job_id,): (String,) = sqlx::query_as(
-        "INSERT INTO jobs ( \
+    let (job_id,): (String,) = sqlx::query_as(&format!(
+        "INSERT INTO {tj} ( \
             endpoint, endpoint_type, trigger_type, \
             cron_expression, cron_timezone, cron_next_run_at \
          ) VALUES ($1, $2, $3, $4, 'UTC', now()) \
-         RETURNING job_id",
-    )
+         RETURNING job_id"
+    ))
     .bind(REAPER_ENDPOINT_NAME)
     .bind(EndpointType::INTERNAL.to_string())
     .bind(TriggerType::CRON.as_str())
@@ -209,9 +216,7 @@ async fn provision_reaper(
     .fetch_one(&mut *tx)
     .await?;
 
-    // Provisioning runs in schema-per-workspace mode with unprefixed tables, so
-    // the table prefix is empty here.
-    register_pg_cron_conn(&mut *tx, "", schema_name, &job_id, cron_expression).await?;
+    register_pg_cron_conn(&mut *tx, table_prefix, schema_name, &job_id, cron_expression).await?;
 
     tx.commit().await?;
 
