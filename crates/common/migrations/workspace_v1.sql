@@ -143,7 +143,7 @@ CREATE TABLE IF NOT EXISTS {p}attempts (
     CONSTRAINT pk_{p}attempts PRIMARY KEY (attempt_id),
     CONSTRAINT fk_{p}attempts_execution FOREIGN KEY (execution_id) REFERENCES {p}executions (execution_id),
     CONSTRAINT uq_{p}attempts_exec_number UNIQUE (execution_id, attempt_number),
-    CONSTRAINT chk_{p}attempt_status CHECK (status IN ('SUCCESS', 'FAILED'))
+    CONSTRAINT chk_{p}attempt_status CHECK (status IN ('SUCCESS', 'FAILED', 'WAITING'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_{p}attempts_by_execution

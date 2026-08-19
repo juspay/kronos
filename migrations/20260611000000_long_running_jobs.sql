@@ -9,6 +9,12 @@ ALTER TABLE {p}executions ADD CONSTRAINT chk_{p}exec_status CHECK (status IN (
     'WAITING', 'POLLING'
 ));
 
+-- A dispatch that parks the execution records its attempt as WAITING
+ALTER TABLE {p}attempts DROP CONSTRAINT chk_{p}attempt_status;
+ALTER TABLE {p}attempts ADD CONSTRAINT chk_{p}attempt_status CHECK (status IN (
+    'SUCCESS', 'FAILED', 'WAITING'
+));
+
 -- Long-running columns on executions (snapshot of effective values + runtime state)
 ALTER TABLE {p}executions
     ADD COLUMN poll_url            TEXT,

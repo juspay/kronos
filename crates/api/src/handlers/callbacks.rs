@@ -9,6 +9,21 @@ use serde_json::Value;
 use crate::extractors::AuthenticatedRequest;
 use crate::router::AppState;
 
+/// Callbacks are only honoured when the endpoint's `async.callback.enabled` is
+/// true. A missing endpoint or async block counts as disabled.
+async fn callback_enabled(db: &mut DbContext<'_>, endpoint: &str) -> bool {
+    match db::endpoints::get(db, endpoint).await {
+        Ok(Some(ep)) => ep
+            .get_async_config()
+            .is_some_and(|c| c.callback),
+        _ => false,
+    }
+}
+
+fn callback_disabled_response() -> HttpResponse {
+    HttpResponse::Forbidden().json(serde_json::json!({ "code": "CALLBACK_DISABLED" }))
+}
+
 #[derive(Deserialize)]
 pub struct CompleteBody {
     pub output: Value,
@@ -38,6 +53,15 @@ pub async fn complete(
         Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
     };
     let mut db = DbContext::new(&mut *tx, state.prefix());
+
+    match db::executions::get(&mut db, &execution_id).await {
+        Ok(Some(e)) if !callback_enabled(&mut db, &e.endpoint).await => {
+            return callback_disabled_response();
+        }
+        Ok(None) => return HttpResponse::NotFound().finish(),
+        Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
+        _ => {}
+    }
 
     let rows_affected =
         match db::executions::complete_success_from_long_running(&mut db, &execution_id, &body.output)
@@ -132,6 +156,9 @@ pub async fn fail(
             "code": "ALREADY_TERMINAL",
             "current_status": exec.status,
         }));
+    }
+    if !callback_enabled(&mut db, &exec.endpoint).await {
+        return callback_disabled_response();
     }
     if !matches!(exec.status.as_str(), "WAITING" | "POLLING") {
         return HttpResponse::Conflict().json(serde_json::json!({

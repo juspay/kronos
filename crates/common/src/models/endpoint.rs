@@ -126,9 +126,11 @@ pub struct UpdateEndpoint {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AsyncConfig {
+    #[serde(default = "default_async_status_codes")]
     pub status_codes: Vec<u16>,
     pub poll: Option<PollConfig>,
-    pub callback: Option<CallbackConfig>,
+    #[serde(default)]
+    pub callback: bool,
     #[serde(default = "default_max_wait_ms")]
     pub max_wait_ms: i64,
     #[serde(default = "default_max_polls")]
@@ -137,8 +139,11 @@ pub struct AsyncConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PollConfig {
+    #[serde(default = "default_success_statuses")]
     pub success_statuses: Vec<u16>,
+    #[serde(default = "default_pending_statuses")]
     pub pending_statuses: Vec<u16>,
+    #[serde(default = "default_failure_statuses")]
     pub failure_statuses: Vec<u16>,
     #[serde(default = "default_poll_initial_delay")]
     pub initial_delay_ms: i64,
@@ -146,13 +151,27 @@ pub struct PollConfig {
     pub max_delay_ms: i64,
     #[serde(default = "default_poll_backoff")]
     pub backoff: String,
+    /// Re-dispatch after this many consecutive TRANSIENT_ERROR polls. Any other
+    /// outcome resets the run. Explicit `null` disables the cap and polls until
+    /// the wait/poll budget runs out.
+    #[serde(default = "default_max_consecutive_errors")]
+    pub max_consecutive_errors: Option<i32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CallbackConfig {
-    pub enabled: bool,
+fn default_async_status_codes() -> Vec<u16> {
+    vec![202]
 }
-
+fn default_success_statuses() -> Vec<u16> {
+    vec![200]
+}
+fn default_pending_statuses() -> Vec<u16> {
+    vec![202]
+}
+/// Codes that will not resolve themselves on a retry. Anything else — 429, 408,
+/// 503 — stays transient so rate limiting and restarts are tolerated.
+fn default_failure_statuses() -> Vec<u16> {
+    vec![400, 401, 403, 404, 410]
+}
 fn default_max_wait_ms() -> i64 {
     3_600_000
 }
@@ -168,6 +187,9 @@ fn default_poll_max_delay() -> i64 {
 fn default_poll_backoff() -> String {
     "exponential".into()
 }
+fn default_max_consecutive_errors() -> Option<i32> {
+    Some(10)
+}
 
 pub fn validate_async_block(spec: &serde_json::Value) -> Result<(), String> {
     let Some(async_val) = spec.get("async") else {
@@ -177,7 +199,7 @@ pub fn validate_async_block(spec: &serde_json::Value) -> Result<(), String> {
     let cfg: AsyncConfig = serde_json::from_value(async_val.clone())
         .map_err(|e| format!("invalid async config: {e}"))?;
 
-    if cfg.poll.is_none() && cfg.callback.is_none() {
+    if cfg.poll.is_none() && !cfg.callback {
         return Err("async block must enable at least one of poll or callback".into());
     }
 
@@ -218,6 +240,9 @@ pub fn validate_async_block(spec: &serde_json::Value) -> Result<(), String> {
         }
         if p.initial_delay_ms < 1 || p.max_delay_ms < p.initial_delay_ms {
             return Err("async.poll initial_delay_ms / max_delay_ms invalid".into());
+        }
+        if p.max_consecutive_errors.is_some_and(|n| n < 1) {
+            return Err("async.poll.max_consecutive_errors must be >= 1".into());
         }
     }
 
@@ -288,7 +313,7 @@ mod async_validation_tests {
             "expected_status_codes": [200],
             "async": {
                 "status_codes": [202],
-                "callback": {"enabled": true},
+                "callback": true,
                 "max_wait_ms": 60000,
                 "max_polls": 10
             }

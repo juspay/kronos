@@ -182,11 +182,8 @@ pub async fn process_poll(
 
     // Bound check — pre-network
     if exec.poll_count > max_polls || Utc::now() > deadline {
-        let err = serde_json::json!({"type":"TIMEOUT","reason":
-            if exec.poll_count > max_polls { "max_polls" } else { "max_wait_ms" }});
-        let _ = db::executions::complete_failed_timeout(db, execution_id, &err).await;
-        log_execution(db, execution_id, attempt_count, "WARN",
-            "Polling budget exhausted; marking FAILED with TIMEOUT").await;
+        let reason = if exec.poll_count > max_polls { "max_polls" } else { "max_wait_ms" };
+        finish_timeout(ctx, db, exec, &poll_url, reason).await;
         return;
     }
 
@@ -299,6 +296,12 @@ pub async fn process_poll(
                     log_execution(db, execution_id, attempt_count, "WARN",
                         &format!("Poll #{poll_number} → {status_code} terminal failure; re-dispatch in {backoff_ms}ms")).await;
                 }
+                PollClassification::TRANSIENT_ERROR
+                    if transient_cap_reached(db, &poll_cfg, execution_id).await =>
+                {
+                    redispatch(db, &endpoint, execution_id, attempt_count,
+                        &format!("Poll #{poll_number} → {status_code}")).await;
+                }
                 PollClassification::PENDING | PollClassification::TRANSIENT_ERROR => {
                     // Retry-After from the destination wins; otherwise back off
                     // per the endpoint's poll spec.
@@ -320,6 +323,11 @@ pub async fn process_poll(
             metrics::counter!(m::POLLS_TOTAL, "classification" => "TRANSIENT_ERROR").increment(1);
             metrics::histogram!(kronos_common::metrics::POLL_DURATION_SECONDS)
                 .record(duration_ms as f64 / 1000.0);
+            if transient_cap_reached(db, &poll_cfg, execution_id).await {
+                redispatch(db, &endpoint, execution_id, attempt_count,
+                    &format!("Poll #{poll_number} transport error")).await;
+                return;
+            }
             let delay_ms = poll_backoff(&poll_cfg, poll_number);
             let next = std::cmp::min(deadline, Utc::now() + Duration::milliseconds(delay_ms));
             let _ = db::executions::transition_back_to_waiting(db, execution_id, next).await;
@@ -327,6 +335,102 @@ pub async fn process_poll(
                 &format!("Poll #{poll_number} transport error; next poll in {delay_ms}ms")).await;
         }
     }
+}
+
+/// End a poll cycle whose wait or poll budget ran out. Re-dispatches while
+/// attempts remain; on the last one tells the destination to stop and fails.
+///
+/// The DELETE is deliberately skipped when a retry follows: the re-dispatch
+/// carries the same idempotency key, so the destination can resume the work
+/// this would otherwise have thrown away.
+async fn finish_timeout(
+    ctx: &PipelineContext,
+    db: &mut DbContext<'_>,
+    exec: &kronos_common::db::executions::ClaimedExecution,
+    poll_url: &str,
+    reason: &str,
+) {
+    let execution_id = &exec.execution_id;
+    let endpoint = db::endpoints::get(db, &exec.endpoint).await.ok().flatten();
+    let last_attempt = exec.attempt_count >= exec.max_attempts;
+
+    if last_attempt {
+        if let Some(ep) = &endpoint {
+            send_stop_delete(ctx, db, ep, poll_url, execution_id).await;
+        }
+    }
+
+    let backoff_ms = endpoint
+        .as_ref()
+        .map(|ep| backoff::compute_backoff(&ep.get_retry_policy(), exec.attempt_count))
+        .unwrap_or(0);
+    let err = serde_json::json!({"type": "TIMEOUT", "reason": reason});
+    let _ = db::executions::retry_from_long_running(db, execution_id, backoff_ms, &err).await;
+
+    let msg = if last_attempt {
+        format!("Polling budget exhausted ({reason}); no attempts left, marking FAILED")
+    } else {
+        format!("Polling budget exhausted ({reason}); re-dispatching in {backoff_ms}ms")
+    };
+    log_execution(db, execution_id, exec.attempt_count, "WARN", &msg).await;
+}
+
+/// Best-effort "stop working" to the poll URL. The destination may not implement
+/// DELETE, so the outcome is only recorded on the execution.
+async fn send_stop_delete(
+    ctx: &PipelineContext,
+    db: &mut DbContext<'_>,
+    endpoint: &kronos_common::models::Endpoint,
+    poll_url: &str,
+    execution_id: &str,
+) {
+    let secret_values =
+        secrets::load(db, &ctx.encryption_key, &endpoint.spec, Some(&ctx.secret_cache))
+            .await
+            .unwrap_or_default();
+    let mut req = ctx.http_client.delete(poll_url).timeout(std::time::Duration::from_secs(5));
+    if let Some(headers) = endpoint.spec.get("headers").and_then(|v| v.as_object()) {
+        for (k, v) in headers {
+            if let Some(s) = v.as_str() {
+                req = req.header(k.as_str(), substitute_secrets(s, &secret_values));
+            }
+        }
+    }
+    let line = match req.send().await {
+        Ok(r) => format!("Timeout DELETE to {poll_url} → {}", r.status().as_u16()),
+        Err(e) => format!("Timeout DELETE to {poll_url} → error: {e}"),
+    };
+    log_execution(db, execution_id, 0, "INFO", &line).await;
+}
+
+/// True once `max_consecutive_errors` transient polls have landed back to back.
+async fn transient_cap_reached(
+    db: &mut DbContext<'_>,
+    poll_cfg: &PollConfig,
+    execution_id: &str,
+) -> bool {
+    let Some(cap) = poll_cfg.max_consecutive_errors else {
+        return false;
+    };
+    db::polls::consecutive_transient_errors(db, execution_id)
+        .await
+        .unwrap_or(0)
+        >= cap as i64
+}
+
+/// Treat the current attempt as failed and hand it back to the retry path,
+/// which re-dispatches or fails depending on `max_attempts`.
+async fn redispatch(
+    db: &mut DbContext<'_>,
+    endpoint: &kronos_common::models::Endpoint,
+    execution_id: &str,
+    attempt_count: i64,
+    context: &str,
+) {
+    let backoff_ms = backoff::compute_backoff(&endpoint.get_retry_policy(), attempt_count);
+    let _ = db::executions::retry_from_poll(db, execution_id, backoff_ms).await;
+    log_execution(db, execution_id, attempt_count, "WARN",
+        &format!("{context}; too many consecutive errors, re-dispatch in {backoff_ms}ms")).await;
 }
 
 /// Delay before the next poll, from the endpoint's `async.poll` spec.

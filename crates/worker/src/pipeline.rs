@@ -224,7 +224,7 @@ pub async fn process_execution(
                             let deadline = now + chrono::Duration::milliseconds(effective_max_wait_ms);
                             // For callback-only endpoints (no poll config), skip wakeup until
                             // deadline to avoid claiming every second and finding nothing to do.
-                            let next_run_at = if async_cfg.poll.is_none() {
+                            let next_run_at = if async_cfg.poll.as_ref().is_none() {
                                 deadline
                             } else {
                                 let initial_delay = crate::poll::parse_retry_after(
