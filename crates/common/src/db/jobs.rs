@@ -110,6 +110,7 @@ pub async fn create_cron(
     db: &mut DbContext<'_>,
     endpoint: &str,
     endpoint_type: &str,
+    idempotency_key: Option<&str>,
     input: Option<&serde_json::Value>,
     cron_expression: &str,
     cron_timezone: &str,
@@ -119,12 +120,13 @@ pub async fn create_cron(
 ) -> Result<Job, sqlx::Error> {
     let tj = tbl(db.prefix, "jobs");
     sqlx::query_as::<_, Job>(&format!(
-        "INSERT INTO {tj} (endpoint, endpoint_type, trigger_type, input, cron_expression, cron_timezone, cron_starts_at, cron_ends_at, cron_next_run_at)
-         VALUES ($1, $2, 'CRON', $3, $4, $5, $6, $7, $8)
+        "INSERT INTO {tj} (endpoint, endpoint_type, trigger_type, idempotency_key, input, cron_expression, cron_timezone, cron_starts_at, cron_ends_at, cron_next_run_at)
+         VALUES ($1, $2, 'CRON', $3, $4, $5, $6, $7, $8, $9)
          RETURNING *"
     ))
     .bind(endpoint)
     .bind(endpoint_type)
+    .bind(idempotency_key)
     .bind(input)
     .bind(cron_expression)
     .bind(cron_timezone)

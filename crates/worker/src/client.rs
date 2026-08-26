@@ -219,6 +219,7 @@ impl KronosLibraryClient {
                     &mut db,
                     endpoint,
                     ep.endpoint_type.as_str(),
+                    idempotency_key,
                     Some(&input),
                     &expression,
                     &timezone,

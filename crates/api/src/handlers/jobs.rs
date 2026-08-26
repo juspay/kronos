@@ -217,6 +217,7 @@ pub async fn create(
                 &mut db,
                 &body.endpoint,
                 &ep.endpoint_type,
+                body.idempotency_key.as_deref(),
                 body.input.as_ref(),
                 cron_expr.as_str(),
                 tz_str,
@@ -224,7 +225,20 @@ pub async fn create(
                 body.ends_at,
                 next_run,
             )
-            .await?;
+            .await
+            .map_err(|e| match e {
+                sqlx::Error::Database(ref db_err)
+                    if db_err.kind() == sqlx::error::ErrorKind::UniqueViolation =>
+                {
+                    AppError::Conflict("Job with this idempotency key already exists".into())
+                }
+                sqlx::Error::Database(ref db_err)
+                    if db_err.kind() == sqlx::error::ErrorKind::ForeignKeyViolation =>
+                {
+                    AppError::EndpointNotFound(body.endpoint.clone())
+                }
+                _ => AppError::from(e),
+            })?;
 
             drop(db);
 
@@ -257,6 +271,7 @@ pub async fn create(
                 "trigger": job.trigger_type,
                 "status": job.status,
                 "version": job.version,
+                "idempotency_key": job.idempotency_key,
                 "cron": job.cron_expression,
                 "timezone": job.cron_timezone,
                 "starts_at": job.cron_starts_at,
