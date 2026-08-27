@@ -1,4 +1,4 @@
-use crate::{db::{tbl, DbContext}, models::Execution};
+use crate::{db::DbContext, models::Execution};
 use sqlx::prelude::FromRow;
 
 #[derive(FromRow)]
@@ -16,7 +16,7 @@ pub async fn claim(
     db: &mut DbContext<'_>,
     worker_id: &str,
 ) -> Result<Option<ClaimedExecution>, sqlx::Error> {
-    let t = tbl(db.prefix, "executions");
+    let t = db.tbl("executions");
     let row: Option<ClaimedExecution> = sqlx::query_as(&format!(
         "UPDATE {t}
          SET status = 'RUNNING',
@@ -46,7 +46,7 @@ pub async fn complete_success(
     execution_id: &str,
     output: &serde_json::Value,
 ) -> Result<(), sqlx::Error> {
-    let t = tbl(db.prefix, "executions");
+    let t = db.tbl("executions");
     sqlx::query(&format!(
         "UPDATE {t}
          SET status = 'SUCCESS', output = $2, completed_at = now(),
@@ -65,7 +65,7 @@ pub async fn complete_retry(
     execution_id: &str,
     backoff_ms: i64,
 ) -> Result<(), sqlx::Error> {
-    let t = tbl(db.prefix, "executions");
+    let t = db.tbl("executions");
     sqlx::query(&format!(
         "UPDATE {t}
          SET status = CASE WHEN attempt_count >= max_attempts THEN 'FAILED' ELSE 'RETRYING' END,
@@ -89,7 +89,7 @@ pub async fn complete_failed(
     db: &mut DbContext<'_>,
     execution_id: &str,
 ) -> Result<(), sqlx::Error> {
-    let t = tbl(db.prefix, "executions");
+    let t = db.tbl("executions");
     sqlx::query(&format!(
         "UPDATE {t}
          SET status = 'FAILED', completed_at = now(),
@@ -107,7 +107,7 @@ pub async fn get(
     db: &mut DbContext<'_>,
     execution_id: &str,
 ) -> Result<Option<Execution>, sqlx::Error> {
-    let t = tbl(db.prefix, "executions");
+    let t = db.tbl("executions");
     sqlx::query_as::<_, Execution>(&format!("SELECT * FROM {t} WHERE execution_id = $1"))
         .bind(execution_id)
         .fetch_optional(&mut *db.conn)
@@ -118,7 +118,7 @@ pub async fn get_for_job(
     db: &mut DbContext<'_>,
     job_id: &str,
 ) -> Result<Option<Execution>, sqlx::Error> {
-    let t = tbl(db.prefix, "executions");
+    let t = db.tbl("executions");
     sqlx::query_as::<_, Execution>(&format!(
         "SELECT * FROM {t} WHERE job_id = $1 ORDER BY created_at DESC LIMIT 1"
     ))
@@ -133,7 +133,7 @@ pub async fn list_for_job(
     cursor: Option<&str>,
     limit: i64,
 ) -> Result<Vec<Execution>, sqlx::Error> {
-    let t = tbl(db.prefix, "executions");
+    let t = db.tbl("executions");
     match cursor {
         Some(c) => {
             sqlx::query_as::<_, Execution>(&format!(
@@ -163,7 +163,7 @@ pub async fn cancel(
     db: &mut DbContext<'_>,
     execution_id: &str,
 ) -> Result<Option<Execution>, sqlx::Error> {
-    let t = tbl(db.prefix, "executions");
+    let t = db.tbl("executions");
     sqlx::query_as::<_, Execution>(&format!(
         "UPDATE {t} SET status = 'CANCELLED', completed_at = now()
          WHERE execution_id = $1 AND status IN ('PENDING', 'QUEUED')
@@ -178,7 +178,7 @@ pub async fn cancel_pending_for_job(
     db: &mut DbContext<'_>,
     job_id: &str,
 ) -> Result<u64, sqlx::Error> {
-    let t = tbl(db.prefix, "executions");
+    let t = db.tbl("executions");
     let result = sqlx::query(&format!(
         "UPDATE {t} SET status = 'CANCELLED', completed_at = now()
          WHERE job_id = $1 AND status IN ('PENDING', 'QUEUED')"

@@ -1,4 +1,4 @@
-use crate::{db::{tbl, DbContext}, models::ExecutionLog};
+use crate::{db::DbContext, models::ExecutionLog};
 
 pub async fn insert(
     db: &mut DbContext<'_>,
@@ -7,7 +7,7 @@ pub async fn insert(
     level: &str,
     message: &str,
 ) -> Result<(), sqlx::Error> {
-    let t = tbl(db.prefix, "execution_logs");
+    let t = db.tbl("execution_logs");
     sqlx::query(&format!(
         "INSERT INTO {t} (execution_id, attempt_number, level, message)
          VALUES ($1, $2, $3, $4)"
@@ -25,7 +25,7 @@ pub async fn list_for_execution(
     db: &mut DbContext<'_>,
     execution_id: &str,
 ) -> Result<Vec<ExecutionLog>, sqlx::Error> {
-    let t = tbl(db.prefix, "execution_logs");
+    let t = db.tbl("execution_logs");
     sqlx::query_as::<_, ExecutionLog>(&format!(
         "SELECT * FROM {t} WHERE execution_id = $1 ORDER BY logged_at ASC"
     ))

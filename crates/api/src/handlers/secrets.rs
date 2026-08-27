@@ -19,10 +19,8 @@ pub async fn create(
         .map_err(|e| AppError::Internal(format!("Encryption failed: {}", e)))?;
 
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
 
     let secret = db::secrets::create(&mut db, &body.name, &encrypted)
         .await
@@ -46,10 +44,8 @@ pub async fn list(
     params: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
     let items = db::secrets::list(&mut db, cursor.as_deref(), limit + 1).await?;
@@ -84,10 +80,8 @@ pub async fn get(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
     let name = path.into_inner();
     let secret = db::secrets::get(&mut db, &name)
         .await?
@@ -110,10 +104,8 @@ pub async fn update(
         .map_err(|e| AppError::Internal(format!("Encryption failed: {}", e)))?;
 
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
 
     let secret = db::secrets::update(&mut db, &name, &encrypted)
         .await?
@@ -131,10 +123,8 @@ pub async fn delete(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
     let name = path.into_inner();
     if db::secrets::has_dependent_endpoints(&mut db, &name).await? {
         return Err(AppError::Conflict(format!(

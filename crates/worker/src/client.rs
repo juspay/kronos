@@ -175,8 +175,8 @@ impl KronosLibraryClient {
         let prefix = self.ctx.table_prefix.as_str();
         let ikey = idempotency_key.unwrap_or("");
 
-        let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        let mut db = DbContext::new(&mut *conn, prefix);
+        let mut conn = self.pool.acquire().await?;
+        let mut db = DbContext::new(&mut *conn, schema_name, prefix);
 
         let ep = db::endpoints::get(&mut db, endpoint)
             .await?
@@ -245,8 +245,8 @@ impl KronosLibraryClient {
         retry_policy: Option<serde_json::Value>,
     ) -> anyhow::Result<()> {
         let prefix = self.ctx.table_prefix.as_str();
-        let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        let mut db = DbContext::new(&mut *conn, prefix);
+        let mut conn = self.pool.acquire().await?;
+        let mut db = DbContext::new(&mut *conn, schema_name, prefix);
 
         let existing = db::endpoints::get(&mut db, name).await?;
         if existing.is_none() {
@@ -265,8 +265,8 @@ impl KronosLibraryClient {
         name: &str,
     ) -> anyhow::Result<()> {
         let prefix = self.ctx.table_prefix.as_str();
-        let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        let mut db = DbContext::new(&mut *conn, prefix);
+        let mut conn = self.pool.acquire().await?;
+        let mut db = DbContext::new(&mut *conn, schema_name, prefix);
         db::endpoints::delete(&mut db, name).await?;
         Ok(())
     }
@@ -281,8 +281,8 @@ impl KronosLibraryClient {
     ) -> anyhow::Result<()> {
         let prefix = self.ctx.table_prefix.as_str();
         let encrypted = kronos_common::crypto::encrypt(plaintext, &self.ctx.encryption_key)?;
-        let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        let mut db = DbContext::new(&mut *conn, prefix);
+        let mut conn = self.pool.acquire().await?;
+        let mut db = DbContext::new(&mut *conn, schema_name, prefix);
         if db::secrets::get(&mut db, name).await?.is_some() {
             db::secrets::update(&mut db, name, &encrypted).await?;
         } else {
@@ -298,8 +298,8 @@ impl KronosLibraryClient {
         name: &str,
     ) -> anyhow::Result<()> {
         let prefix = self.ctx.table_prefix.as_str();
-        let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        let mut db = DbContext::new(&mut *conn, prefix);
+        let mut conn = self.pool.acquire().await?;
+        let mut db = DbContext::new(&mut *conn, schema_name, prefix);
         db::secrets::delete(&mut db, name).await?;
         Ok(())
     }
@@ -307,8 +307,8 @@ impl KronosLibraryClient {
     /// Cancel a job and its pending executions.
     pub async fn cancel_job(&self, schema_name: &str, job_id: &str) -> anyhow::Result<()> {
         let prefix = self.ctx.table_prefix.as_str();
-        let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        let mut db = DbContext::new(&mut *conn, prefix);
+        let mut conn = self.pool.acquire().await?;
+        let mut db = DbContext::new(&mut *conn, schema_name, prefix);
 
         let job = db::jobs::get(&mut db, job_id)
             .await?
@@ -332,8 +332,8 @@ impl KronosLibraryClient {
         execution_id: &str,
     ) -> anyhow::Result<Option<Execution>> {
         let prefix = self.ctx.table_prefix.as_str();
-        let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        let mut db = DbContext::new(&mut *conn, prefix);
+        let mut conn = self.pool.acquire().await?;
+        let mut db = DbContext::new(&mut *conn, schema_name, prefix);
         Ok(db::executions::get(&mut db, execution_id).await?)
     }
 

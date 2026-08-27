@@ -1,5 +1,5 @@
 use crate::db::jobs::register_pg_cron_conn;
-use crate::db::scoped::scoped_transaction;
+use crate::db::tbl;
 use crate::models::endpoint::EndpointType;
 use crate::models::job::TriggerType;
 use crate::models::workspace::Workspace;
@@ -141,17 +141,18 @@ pub async fn provision_schema(
     schema_name: &str,
     table_prefix: &str,
 ) -> Result<(), sqlx::Error> {
+    assert!(
+        validate_schema_name(schema_name),
+        "Invalid schema name: {}",
+        schema_name
+    );
+
     sqlx::query(&format!("CREATE SCHEMA IF NOT EXISTS \"{}\"", schema_name))
         .execute(pool)
         .await?;
 
-    let mut conn = crate::db::scoped::scoped_connection(pool, schema_name).await?;
-
-    // `table_prefix` is used as-is: callers pass the full prefix including any trailing
-    // separator (e.g. "kronos_"), matching the read side (`tbl(prefix, name)` =
-    // `{prefix}{name}`). Do NOT append an underscore here, or provisioned tables
-    // (`kronos__endpoints`) won't match the names queried at runtime (`kronos_endpoints`).
-    let ddl = WORKSPACE_SCHEMA_V1.replace("{p}", table_prefix);
+    let ddl = render_workspace_ddl(schema_name, table_prefix);
+    let mut conn = pool.acquire().await?;
     for stmt in ddl.split(';') {
         let stmt = stmt.trim();
         if !stmt.is_empty() {
@@ -159,19 +160,28 @@ pub async fn provision_schema(
         }
     }
 
-    sqlx::query("SET search_path TO public")
-        .execute(&mut *conn)
-        .await?;
-
     Ok(())
+}
+
+/// Substitute the schema and table prefix into the workspace DDL template.
+///
+/// `table_prefix` is used as-is: callers pass the full prefix including any trailing
+/// separator (e.g. "kronos_"), matching the read side (`tbl(schema, prefix, name)` =
+/// `"{schema}"."{prefix}{name}"`). Do NOT append an underscore here, or provisioned
+/// tables (`kronos__endpoints`) won't match the names queried at runtime
+/// (`kronos_endpoints`).
+fn render_workspace_ddl(schema_name: &str, table_prefix: &str) -> String {
+    WORKSPACE_SCHEMA_V1
+        .replace("{s}", &format!("\"{schema_name}\""))
+        .replace("{p}", table_prefix)
 }
 
 /// Install the dogfooded reaper for a freshly-provisioned workspace: an
 /// `INTERNAL` endpoint, a CRON job firing on `cron_expression`, and the
 /// matching pg_cron entry that materializes one execution per tick. All three
-/// run inside the same scoped transaction so a failure at any step rolls the
-/// whole provisioning back — we never commit a job row without its pg_cron
-/// schedule (which would leave a phantom row that never fires).
+/// run inside the same transaction so a failure at any step rolls the whole
+/// provisioning back — we never commit a job row without its pg_cron schedule
+/// (which would leave a phantom row that never fires).
 ///
 /// `cron_expression` is the caller-supplied schedule (typically from
 /// `AppConfig::reaper::cron_expression`); it is validated as a 5-field
@@ -181,27 +191,32 @@ async fn provision_reaper(
     schema_name: &str,
     cron_expression: &str,
 ) -> Result<(), sqlx::Error> {
-    let mut tx = scoped_transaction(pool, schema_name).await?;
+    let mut tx = pool.begin().await?;
 
     let reaper_spec = serde_json::json!({ "task": "reaper" });
 
-    sqlx::query(
-        "INSERT INTO endpoints (name, endpoint_type, spec) \
-         VALUES ($1, $2, $3)",
-    )
+    // Provisioning runs in schema-per-workspace mode with unprefixed tables, so
+    // the table prefix is empty throughout this function.
+    let t_endpoints = tbl(schema_name, "", "endpoints");
+    let t_jobs = tbl(schema_name, "", "jobs");
+
+    sqlx::query(&format!(
+        "INSERT INTO {t_endpoints} (name, endpoint_type, spec) \
+         VALUES ($1, $2, $3)"
+    ))
     .bind(REAPER_ENDPOINT_NAME)
     .bind(EndpointType::INTERNAL.to_string())
     .bind(&reaper_spec)
     .execute(&mut *tx)
     .await?;
 
-    let (job_id,): (String,) = sqlx::query_as(
-        "INSERT INTO jobs ( \
+    let (job_id,): (String,) = sqlx::query_as(&format!(
+        "INSERT INTO {t_jobs} ( \
             endpoint, endpoint_type, trigger_type, \
             cron_expression, cron_timezone, cron_next_run_at \
          ) VALUES ($1, $2, $3, $4, 'UTC', now()) \
-         RETURNING job_id",
-    )
+         RETURNING job_id"
+    ))
     .bind(REAPER_ENDPOINT_NAME)
     .bind(EndpointType::INTERNAL.to_string())
     .bind(TriggerType::CRON.as_str())
@@ -209,8 +224,6 @@ async fn provision_reaper(
     .fetch_one(&mut *tx)
     .await?;
 
-    // Provisioning runs in schema-per-workspace mode with unprefixed tables, so
-    // the table prefix is empty here.
     register_pg_cron_conn(&mut *tx, "", schema_name, &job_id, cron_expression).await?;
 
     tx.commit().await?;

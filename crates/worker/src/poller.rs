@@ -118,10 +118,10 @@ async fn claim_and_process(
     let prefix = ctx.table_prefix.as_str();
 
     for schema_name in schemas {
-        let mut tx = match db::scoped::scoped_transaction(pool, schema_name).await {
+        let mut tx = match pool.begin().await {
             Ok(tx) => tx,
             Err(e) => {
-                tracing::error!(schema = %schema_name, "Failed to begin scoped transaction: {}", e);
+                tracing::error!(schema = %schema_name, "Failed to begin transaction: {}", e);
                 continue;
             }
         };
@@ -129,7 +129,7 @@ async fn claim_and_process(
         // Bundle connection + prefix into a DbContext.
         // NLL ensures the borrow of tx via db is released after the last use
         // of db (process_execution), allowing tx.commit() below.
-        let mut db = DbContext::new(&mut *tx, prefix);
+        let mut db = DbContext::new(&mut *tx, schema_name, prefix);
 
         let exec = match db::executions::claim(&mut db, worker_id).await {
             Ok(Some(exec)) => exec,

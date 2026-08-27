@@ -27,8 +27,8 @@ use sqlx::PgConnection;
 /// Retire expired CRON jobs in a single schema and unschedule their pg_cron
 /// entries, returning the `job_id`s that were retired. Runs on the caller's
 /// connection: when invoked from the worker pipeline that conn is the same
-/// scoped transaction the execution status is written to, so retire +
-/// unschedule + execution outcome commit (or roll back) together.
+/// transaction the execution status is written to, so retire + unschedule +
+/// execution outcome commit (or roll back) together.
 ///
 /// Retiring and unscheduling together means a failed unschedule rolls the whole
 /// batch back, to be retried on the next sweep; we never commit a RETIRED job
@@ -40,7 +40,7 @@ pub async fn reap_schema(
     prefix: &str,
     schema_name: &str,
 ) -> Result<Vec<String>, sqlx::Error> {
-    let retired = db::jobs::retire_expired_cron_jobs(conn, prefix).await?;
+    let retired = db::jobs::retire_expired_cron_jobs(conn, schema_name, prefix).await?;
 
     for job_id in &retired {
         db::jobs::unregister_pg_cron_conn(conn, schema_name, job_id).await?;

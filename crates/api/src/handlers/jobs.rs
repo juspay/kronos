@@ -25,10 +25,8 @@ pub async fn create(
     let trigger = TriggerType::from_str_val(&body.trigger)
         .ok_or_else(|| AppError::InvalidRequest(format!("Invalid trigger: {}", body.trigger)))?;
 
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
 
     let ep = db::endpoints::get(&mut db, &body.endpoint)
         .await?
@@ -70,7 +68,7 @@ pub async fn create(
         }
     }
 
-    // Drop the scoped connection (and its DbContext) before starting transactions
+    // Release the pooled connection (and its DbContext) before starting transactions
     drop(db);
     drop(conn);
 
@@ -86,10 +84,8 @@ pub async fn create(
             };
 
             let mut tx =
-                kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
-                    .await
-                    .map_err(AppError::from)?;
-            let mut db = DbContext::new(&mut *tx, prefix);
+                state.pool.begin().await.map_err(AppError::from)?;
+            let mut db = DbContext::new(&mut *tx, &ws.0.schema_name, prefix);
 
             let result = db::jobs::create_immediate(
                 &mut db,
@@ -143,10 +139,8 @@ pub async fn create(
             })?;
 
             let mut tx =
-                kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
-                    .await
-                    .map_err(AppError::from)?;
-            let mut db = DbContext::new(&mut *tx, prefix);
+                state.pool.begin().await.map_err(AppError::from)?;
+            let mut db = DbContext::new(&mut *tx, &ws.0.schema_name, prefix);
 
             let result = db::jobs::create_delayed(
                 &mut db,
@@ -208,10 +202,8 @@ pub async fn create(
             })?;
 
             let mut tx =
-                kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
-                    .await
-                    .map_err(AppError::from)?;
-            let mut db = DbContext::new(&mut *tx, prefix);
+                state.pool.begin().await.map_err(AppError::from)?;
+            let mut db = DbContext::new(&mut *tx, &ws.0.schema_name, prefix);
 
             let job = db::jobs::create_cron(
                 &mut db,
@@ -292,10 +284,8 @@ pub async fn list(
     filters: JobFilters,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
     let items = db::jobs::list(&mut db, cursor.as_deref(), limit + 1, &filters.0).await?;
@@ -322,10 +312,8 @@ pub async fn get(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
     let job_id = path.into_inner();
     let job = db::jobs::get(&mut db, &job_id)
         .await?
@@ -342,12 +330,10 @@ pub async fn update(
     body: web::Json<UpdateJob>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
     let job_id = path.into_inner();
     let old_job = {
-        let mut db = DbContext::new(&mut *conn, prefix);
+        let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
         db::jobs::get(&mut db, &job_id)
             .await?
             .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?
@@ -403,13 +389,11 @@ pub async fn update(
     }
     new_job.cron_ends_at = body.ends_at.or(old_job.cron_ends_at);
 
-    // Drop the scoped connection before starting a transaction
+    // Release the pooled connection before starting a transaction
     drop(conn);
 
-    let mut tx = kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *tx, prefix);
+    let mut tx = state.pool.begin().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *tx, &ws.0.schema_name, prefix);
 
     let created = db::jobs::retire_and_replace(&mut db, &job_id, &new_job).await?;
 
@@ -453,10 +437,8 @@ pub async fn cancel(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut tx = kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *tx, prefix);
+    let mut tx = state.pool.begin().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *tx, &ws.0.schema_name, prefix);
     let job_id = path.into_inner();
     let job = db::jobs::get(&mut db, &job_id)
         .await?
@@ -503,10 +485,8 @@ pub async fn status(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
     let job_id = path.into_inner();
     let job = db::jobs::get(&mut db, &job_id)
         .await?
@@ -574,10 +554,8 @@ pub async fn versions(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
     let job_id = path.into_inner();
     let _ = db::jobs::get(&mut db, &job_id)
         .await?
@@ -597,10 +575,8 @@ pub async fn list_executions(
     params: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
-        .await
-        .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut conn = state.pool.acquire().await.map_err(AppError::from)?;
+    let mut db = DbContext::new(&mut *conn, &ws.0.schema_name, prefix);
     let job_id = path.into_inner();
     let _ = db::jobs::get(&mut db, &job_id)
         .await?

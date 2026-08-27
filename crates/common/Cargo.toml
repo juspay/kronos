@@ -7,6 +7,12 @@ edition.workspace = true
 default = []
 kms = ["aws-config", "aws-sdk-kms"]
 
+[dev-dependencies]
+tokio = { workspace = true }
+sqlx = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+
 [dependencies]
 aws-config = { workspace = true, optional = true }
 aws-sdk-kms = { workspace = true, optional = true }
