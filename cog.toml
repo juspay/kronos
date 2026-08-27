@@ -1,0 +1,19 @@
+from_latest_tag = true
+ignore_merge_commits = true
+branch_whitelist = ["main"]
+
+tag_prefix = "v"
+
+pre_bump_hooks = [
+    "cargo set-version --workspace {{version}}",
+    "./scripts/set-sdk-version.sh {{version}}",
+    "cargo update --workspace --offline",
+]
+
+post_bump_hooks = []
+
+[commit_types]
+
+[changelog]
+path = "CHANGELOG.md"
+authors = []
