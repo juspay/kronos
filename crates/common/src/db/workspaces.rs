@@ -8,7 +8,7 @@ use sqlx::PgPool;
 
 const WORKSPACE_SCHEMA_V1: &str = include_str!("../../migrations/workspace_v1.sql");
 
-/// Endpoint name kronos installs in every workspace for its dogfooded reaper.
+/// Endpoint name invokr installs in every workspace for its dogfooded reaper.
 /// The reaper is an `INTERNAL` CRON job whose ticks materialize executions
 /// into the workspace's own `executions` table — see `worker::dispatcher::internal`.
 const REAPER_ENDPOINT_NAME: &str = "kronos.reaper";
@@ -42,7 +42,7 @@ pub async fn create(
     // Create the schema and apply workspace DDL
     provision_schema(pool, schema_name, "").await?;
 
-    // Install kronos's own dogfooded reaper into this workspace. Done as part
+    // Install invokr's own dogfooded reaper into this workspace. Done as part
     // of provisioning rather than from a background loop, so a freshly-created
     // workspace has its reaper job ready by the time `create` returns. If this
     // fails the workspace row exists but schema_version stays unset, marking
@@ -148,9 +148,9 @@ pub async fn provision_schema(
     let mut conn = crate::db::scoped::scoped_connection(pool, schema_name).await?;
 
     // `table_prefix` is used as-is: callers pass the full prefix including any trailing
-    // separator (e.g. "kronos_"), matching the read side (`tbl(prefix, name)` =
+    // separator (e.g. "invokr_"), matching the read side (`tbl(prefix, name)` =
     // `{prefix}{name}`). Do NOT append an underscore here, or provisioned tables
-    // (`kronos__endpoints`) won't match the names queried at runtime (`kronos_endpoints`).
+    // (`invokr__endpoints`) won't match the names queried at runtime (`invokr_endpoints`).
     let ddl = WORKSPACE_SCHEMA_V1.replace("{p}", table_prefix);
     for stmt in ddl.split(';') {
         let stmt = stmt.trim();

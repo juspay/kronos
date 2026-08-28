@@ -11,11 +11,11 @@ import {
 
 // ─── Config ──────────────────────────────────────────────────────
 
-export const KRONOS_URL = process.env.KRONOS_URL ?? "http://localhost:8080";
+export const INVOKR_URL = process.env.INVOKR_URL ?? "http://localhost:8080";
 export const MOCK_URL = process.env.MOCK_URL ?? "http://localhost:9999";
-export const API_KEY = process.env.KRONOS_API_KEY ?? "dev-api-key";
-export const ORG_ID = process.env.KRONOS_ORG_ID!;
-export const WORKSPACE_ID = process.env.KRONOS_WORKSPACE_ID!;
+export const API_KEY = process.env.INVOKR_API_KEY ?? "dev-api-key";
+export const ORG_ID = process.env.INVOKR_ORG_ID!;
+export const WORKSPACE_ID = process.env.INVOKR_WORKSPACE_ID!;
 export const tenant = { org_id: ORG_ID, workspace_id: WORKSPACE_ID };
 export const POLL_INTERVAL_MS = 500;
 export const POLL_TIMEOUT_MS = 30_000;
@@ -34,7 +34,7 @@ export function sleep(ms: number): Promise<void> {
 
 export function createClient(): InvokrServiceClient {
   return new InvokrServiceClient({
-    endpoint: KRONOS_URL,
+    endpoint: INVOKR_URL,
     token: { token: API_KEY },
   });
 }

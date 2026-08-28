@@ -1,11 +1,11 @@
 /**
- * Kronos CLI — Test INTERNAL job/endpoint API guards
+ * Invokr CLI — Test INTERNAL job/endpoint API guards
  *
  * The dogfooded reaper is provisioned at workspace creation as an INTERNAL
  * endpoint (`kronos.reaper`) plus a CRON job. The public API protects this
  * pair so users can't stack their own jobs on the endpoint, modify the
  * reaper job's schedule, or cancel it — all of which would silently break
- * kronos's self-monitoring for that workspace. This script verifies those
+ * invokr's self-monitoring for that workspace. This script verifies those
  * guards and that reads still surface the system state.
  *
  * Steps:
@@ -19,8 +19,8 @@
  * No worker / scheduler required — purely an API-surface test.
  *
  * Prerequisites:
- *   - Kronos API running at KRONOS_URL (default: http://localhost:8080)
- *   - KRONOS_ORG_ID and KRONOS_WORKSPACE_ID env vars pointing at an existing
+ *   - Invokr API running at INVOKR_URL (default: http://localhost:8080)
+ *   - INVOKR_ORG_ID and INVOKR_WORKSPACE_ID env vars pointing at an existing
  *     workspace (which will have the reaper provisioned).
  */
 

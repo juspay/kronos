@@ -1,6 +1,6 @@
-# Kronos CLI Test
+# Invokr CLI Test
 
-Tests the Kronos API using the Smithy-generated TypeScript SDK.
+Tests the Invokr API using the Smithy-generated TypeScript SDK.
 
 ## Prerequisites
 
@@ -10,14 +10,14 @@ All services must be running:
 # Terminal 1: CockroachDB
 docker-compose up -d
 
-# Terminal 2: Kronos API
-cargo run -p kronos-api
+# Terminal 2: Invokr API
+cargo run -p invokr-api
 
-# Terminal 3: Kronos Worker
-cargo run -p kronos-worker
+# Terminal 3: Invokr Worker
+cargo run -p invokr-worker
 
 # Terminal 4: Mock server
-cargo run -p kronos-mock-server
+cargo run -p invokr-mock-server
 ```
 
 ## Setup
@@ -44,6 +44,6 @@ npx tsx src/test-immediate.ts
 
 | Variable | Default | Description |
 |---|---|---|
-| `KRONOS_URL` | `http://localhost:8080` | Kronos API base URL |
+| `INVOKR_URL` | `http://localhost:8080` | Invokr API base URL |
 | `MOCK_URL` | `http://localhost:9999` | Mock server base URL |
-| `KRONOS_API_KEY` | `dev-api-key` | Bearer token for API auth |
+| `INVOKR_API_KEY` | `dev-api-key` | Bearer token for API auth |

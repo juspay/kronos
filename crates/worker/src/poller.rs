@@ -1,4 +1,4 @@
-use kronos_common::{
+use invokr_common::{
     cache::{ConfigCache, SecretCache},
     config::AppConfig,
     db::{self, DbContext},

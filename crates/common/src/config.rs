@@ -43,19 +43,19 @@ impl SensitiveEnvReader {
 pub struct DbEnv {
     pub url: String,
     pub pool_size: u32,
-    /// Prefix for all per-workspace Kronos tables. Default empty (tables stay `jobs`, etc.).
+    /// Prefix for all per-workspace Invokr tables. Default empty (tables stay `jobs`, etc.).
     /// Set to e.g. `sched` to get `sched_jobs`, `sched_executions`, etc.
     pub table_prefix: String,
 }
 
 impl DbEnv {
     async fn new(reader: &SensitiveEnvReader) -> Result<Self, String> {
-        let url = reader.read("TE_DATABASE_URL").await?;
-        let pool_size = get_from_env_or_default("TE_DB_POOL_SIZE", 50);
-        let table_prefix = get_from_env_or_default("TE_TABLE_PREFIX", String::new());
+        let url = reader.read("INVOKR_DATABASE_URL").await?;
+        let pool_size = get_from_env_or_default("INVOKR_DB_POOL_SIZE", 50);
+        let table_prefix = get_from_env_or_default("INVOKR_TABLE_PREFIX", String::new());
         if !validate_table_prefix(&table_prefix) {
             return Err(format!(
-                "TE_TABLE_PREFIX '{}' is invalid: only alphanumeric and underscore allowed",
+                "INVOKR_TABLE_PREFIX '{}' is invalid: only alphanumeric and underscore allowed",
                 table_prefix
             ));
         }
@@ -76,7 +76,7 @@ pub enum ServerMode {
 
 impl ServerMode {
     fn from_env() -> Self {
-        match get_from_env_or_default("TE_MODE", "api".to_string())
+        match get_from_env_or_default("INVOKR_MODE", "api".to_string())
             .to_lowercase()
             .as_str()
         {
@@ -109,19 +109,19 @@ pub struct ServerEnv {
 impl ServerEnv {
     async fn new(reader: &SensitiveEnvReader) -> Result<Self, String> {
         let listen_addr =
-            get_from_env_or_default("TE_LISTEN_ADDR", "0.0.0.0:8080".to_string());
+            get_from_env_or_default("INVOKR_LISTEN_ADDR", "0.0.0.0:8080".to_string());
         let api_key = reader
-            .read_or_default("TE_API_KEY", "dev-api-key".to_string())
+            .read_or_default("INVOKR_API_KEY", "dev-api-key".to_string())
             .await;
         let path_prefix = normalize_prefix(
-            get_from_env_or_default("TE_PATH_PREFIX", String::new()),
+            get_from_env_or_default("INVOKR_PATH_PREFIX", String::new()),
         );
         let mode = ServerMode::from_env();
         let dashboard_prefix = normalize_prefix(
-            get_from_env_or_default("TE_DASHBOARD_PATH_PREFIX", String::new()),
+            get_from_env_or_default("INVOKR_DASHBOARD_PATH_PREFIX", String::new()),
         );
         let dashboard_dist_dir = get_from_env_or_default(
-            "TE_DASHBOARD_DIST_DIR",
+            "INVOKR_DASHBOARD_DIST_DIR",
             "./dashboard-dist".to_string(),
         );
         Ok(Self {
@@ -147,12 +147,12 @@ pub struct WorkerEnv {
 impl WorkerEnv {
     fn new() -> Self {
         Self {
-            max_concurrent: get_from_env_or_default("TE_WORKER_MAX_CONCURRENT", 50),
-            poll_interval_ms: get_from_env_or_default("TE_WORKER_POLL_INTERVAL_MS", 200),
-            config_cache_ttl_sec: get_from_env_or_default("TE_CONFIG_CACHE_TTL_SEC", 60),
-            secret_cache_ttl_sec: get_from_env_or_default("TE_SECRET_CACHE_TTL_SEC", 300),
+            max_concurrent: get_from_env_or_default("INVOKR_WORKER_MAX_CONCURRENT", 50),
+            poll_interval_ms: get_from_env_or_default("INVOKR_WORKER_POLL_INTERVAL_MS", 200),
+            config_cache_ttl_sec: get_from_env_or_default("INVOKR_CONFIG_CACHE_TTL_SEC", 60),
+            secret_cache_ttl_sec: get_from_env_or_default("INVOKR_SECRET_CACHE_TTL_SEC", 300),
             shutdown_timeout_sec: get_from_env_or_default(
-                "TE_WORKER_SHUTDOWN_TIMEOUT_SEC",
+                "INVOKR_WORKER_SHUTDOWN_TIMEOUT_SEC",
                 30,
             ),
         }
@@ -167,7 +167,7 @@ pub struct CryptoEnv {
 impl CryptoEnv {
     async fn new(reader: &SensitiveEnvReader) -> Result<Self, String> {
         let encryption_key = reader
-            .read_or_default("TE_ENCRYPTION_KEY", "0".repeat(64))
+            .read_or_default("INVOKR_ENCRYPTION_KEY", "0".repeat(64))
             .await;
         Ok(Self { encryption_key })
     }
@@ -181,14 +181,14 @@ pub struct MetricsEnv {
 impl MetricsEnv {
     fn new() -> Self {
         Self {
-            port: get_from_env_or_default("TE_METRICS_PORT", 9090),
+            port: get_from_env_or_default("INVOKR_METRICS_PORT", 9090),
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ReaperEnv {
-    /// pg_cron expression controlling how often kronos's own dogfooded reaper
+    /// pg_cron expression controlling how often invokr's own dogfooded reaper
     /// fires per workspace. Read at workspace creation, baked into the
     /// workspace's pg_cron entry; changing it after the fact only affects
     /// newly-created workspaces. Validated as a 5-field PgCronExpr at startup
@@ -199,10 +199,10 @@ pub struct ReaperEnv {
 impl ReaperEnv {
     fn new() -> Result<Self, String> {
         let cron_expression =
-            get_from_env_or_default("TE_REAPER_CRON_EXPRESSION", "*/15 * * * *".to_string());
+            get_from_env_or_default("INVOKR_REAPER_CRON_EXPRESSION", "*/15 * * * *".to_string());
         PgCronExpr::try_from(cron_expression.clone()).map_err(|e| {
             format!(
-                "Invalid TE_REAPER_CRON_EXPRESSION '{}': {}",
+                "Invalid INVOKR_REAPER_CRON_EXPRESSION '{}': {}",
                 cron_expression, e
             )
         })?;
@@ -226,12 +226,12 @@ pub struct AppConfig {
 
 impl AppConfig {
     pub async fn from_env() -> anyhow::Result<Self> {
-        let kms_enabled: bool = get_from_env_or_default("TE_KMS_ENABLED", false);
+        let kms_enabled: bool = get_from_env_or_default("INVOKR_KMS_ENABLED", false);
 
         #[cfg(not(feature = "kms"))]
         if kms_enabled {
             anyhow::bail!(
-                "TE_KMS_ENABLED=true but kronos was compiled without the 'kms' feature"
+                "INVOKR_KMS_ENABLED=true but invokr was compiled without the 'kms' feature"
             );
         }
 

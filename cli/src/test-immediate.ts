@@ -1,5 +1,5 @@
 /**
- * Kronos CLI — Test Immediate Job Execution
+ * Invokr CLI — Test Immediate Job Execution
  *
  * This script:
  * 1. Creates an endpoint pointing to the mock-server's /success route
@@ -8,10 +8,10 @@
  * 4. Prints the execution result and attempts
  *
  * Prerequisites:
- *   - Kronos API running at KRONOS_URL (default: http://localhost:8080)
+ *   - Invokr API running at INVOKR_URL (default: http://localhost:8080)
  *   - Mock server running at MOCK_URL (default: http://localhost:9999)
  *   - CockroachDB + migrations applied
- *   - Kronos worker running
+ *   - Invokr worker running
  */
 
 import {
@@ -28,11 +28,11 @@ import {
 
 // ─── Config ──────────────────────────────────────────────────────
 
-const KRONOS_URL = process.env.KRONOS_URL ?? "http://localhost:8080";
+const INVOKR_URL = process.env.INVOKR_URL ?? "http://localhost:8080";
 const MOCK_URL = process.env.MOCK_URL ?? "http://localhost:9999";
-const API_KEY = process.env.KRONOS_API_KEY ?? "dev-api-key";
-const ORG_ID = process.env.KRONOS_ORG_ID!;
-const WORKSPACE_ID = process.env.KRONOS_WORKSPACE_ID!;
+const API_KEY = process.env.INVOKR_API_KEY ?? "dev-api-key";
+const ORG_ID = process.env.INVOKR_ORG_ID!;
+const WORKSPACE_ID = process.env.INVOKR_WORKSPACE_ID!;
 const tenant = { org_id: ORG_ID, workspace_id: WORKSPACE_ID };
 const POLL_INTERVAL_MS = 500;
 const POLL_TIMEOUT_MS = 30_000;
@@ -54,13 +54,13 @@ const TERMINAL_STATUSES = new Set(["SUCCESS", "FAILED", "CANCELLED"]);
 
 async function main() {
   const client = new InvokrServiceClient({
-    endpoint: KRONOS_URL,
+    endpoint: INVOKR_URL,
     token: { token: API_KEY },
   });
 
   const endpointName = `test-endpoint-${Date.now()}`;
   const testPayload = {
-    message: "Hello from Kronos CLI test",
+    message: "Hello from Invokr CLI test",
     timestamp: new Date().toISOString(),
     test_id: Math.random().toString(36).slice(2),
   };

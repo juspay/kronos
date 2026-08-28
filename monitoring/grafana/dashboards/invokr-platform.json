@@ -41,7 +41,7 @@
       },
       "targets": [
         {
-          "expr": "up{job=\"kronos-api\"}",
+          "expr": "up{job=\"invokr-api\"}",
           "legendFormat": "API"
         }
       ],
@@ -76,7 +76,7 @@
       },
       "targets": [
         {
-          "expr": "up{job=\"kronos-worker\"}",
+          "expr": "up{job=\"invokr-worker\"}",
           "legendFormat": "Worker"
         }
       ],
@@ -111,7 +111,7 @@
       },
       "targets": [
         {
-          "expr": "up{job=\"kronos-scheduler\"}",
+          "expr": "up{job=\"invokr-scheduler\"}",
           "legendFormat": "Scheduler"
         }
       ],
@@ -142,7 +142,7 @@
       },
       "targets": [
         {
-          "expr": "sum(kronos_jobs_created_total) or vector(0)",
+          "expr": "sum(invokr_jobs_created_total) or vector(0)",
           "legendFormat": "Total Jobs"
         }
       ],
@@ -172,7 +172,7 @@
       },
       "targets": [
         {
-          "expr": "sum(kronos_executions_completed_total{status=\"SUCCESS\"}) or vector(0)",
+          "expr": "sum(invokr_executions_completed_total{status=\"SUCCESS\"}) or vector(0)",
           "legendFormat": "Succeeded"
         }
       ],
@@ -203,7 +203,7 @@
       },
       "targets": [
         {
-          "expr": "sum(kronos_executions_completed_total{status=\"FAILED\"}) or vector(0)",
+          "expr": "sum(invokr_executions_completed_total{status=\"FAILED\"}) or vector(0)",
           "legendFormat": "Failed"
         }
       ],
@@ -228,7 +228,7 @@
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["sum", "mean"] }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "expr": "sum(rate(kronos_jobs_created_total[1m])) by (trigger_type)",
+          "expr": "sum(rate(invokr_jobs_created_total[1m])) by (trigger_type)",
           "legendFormat": "{{ trigger_type }}"
         }
       ],
@@ -245,7 +245,7 @@
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["sum", "mean"] }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "expr": "sum(rate(kronos_executions_completed_total[1m])) by (status)",
+          "expr": "sum(rate(invokr_executions_completed_total[1m])) by (status)",
           "legendFormat": "{{ status }}"
         }
       ],
@@ -270,15 +270,15 @@
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(kronos_execution_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.50, sum(rate(invokr_execution_duration_seconds_bucket[5m])) by (le))",
           "legendFormat": "p50"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(kronos_execution_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(invokr_execution_duration_seconds_bucket[5m])) by (le))",
           "legendFormat": "p95"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(kronos_execution_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(invokr_execution_duration_seconds_bucket[5m])) by (le))",
           "legendFormat": "p99"
         }
       ],
@@ -295,11 +295,11 @@
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["sum"] }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "expr": "sum(rate(kronos_dispatch_total{status=\"SUCCESS\"}[1m])) by (endpoint_type)",
+          "expr": "sum(rate(invokr_dispatch_total{status=\"SUCCESS\"}[1m])) by (endpoint_type)",
           "legendFormat": "{{ endpoint_type }} OK"
         },
         {
-          "expr": "sum(rate(kronos_dispatch_total{status=\"FAILURE\"}[1m])) by (endpoint_type)",
+          "expr": "sum(rate(invokr_dispatch_total{status=\"FAILURE\"}[1m])) by (endpoint_type)",
           "legendFormat": "{{ endpoint_type }} FAIL"
         }
       ],
@@ -324,15 +324,15 @@
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(kronos_delayed_job_lag_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.50, sum(rate(invokr_delayed_job_lag_seconds_bucket[5m])) by (le))",
           "legendFormat": "Delayed p50"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(kronos_delayed_job_lag_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(invokr_delayed_job_lag_seconds_bucket[5m])) by (le))",
           "legendFormat": "Delayed p95"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(kronos_delayed_job_lag_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(invokr_delayed_job_lag_seconds_bucket[5m])) by (le))",
           "legendFormat": "Delayed p99"
         }
       ],
@@ -349,15 +349,15 @@
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(kronos_cron_tick_lag_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.50, sum(rate(invokr_cron_tick_lag_seconds_bucket[5m])) by (le))",
           "legendFormat": "Cron p50"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(kronos_cron_tick_lag_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(invokr_cron_tick_lag_seconds_bucket[5m])) by (le))",
           "legendFormat": "Cron p95"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(kronos_cron_tick_lag_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(invokr_cron_tick_lag_seconds_bucket[5m])) by (le))",
           "legendFormat": "Cron p99"
         }
       ],
@@ -382,7 +382,7 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "expr": "sum(kronos_worker_inflight_executions) by (worker_id)",
+          "expr": "sum(invokr_worker_inflight_executions) by (worker_id)",
           "legendFormat": "{{ worker_id }}"
         }
       ],
@@ -399,11 +399,11 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "expr": "sum(rate(kronos_executions_claimed_total[1m])) by (endpoint_type)",
+          "expr": "sum(rate(invokr_executions_claimed_total[1m])) by (endpoint_type)",
           "legendFormat": "Claimed {{ endpoint_type }}"
         },
         {
-          "expr": "sum(rate(kronos_worker_poll_idle_total[1m]))",
+          "expr": "sum(rate(invokr_worker_poll_idle_total[1m]))",
           "legendFormat": "Idle polls"
         }
       ],
@@ -420,11 +420,11 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "expr": "sum(rate(kronos_executions_promoted_total[1m]))",
+          "expr": "sum(rate(invokr_executions_promoted_total[1m]))",
           "legendFormat": "Delayed promoted"
         },
         {
-          "expr": "sum(rate(kronos_cron_ticks_materialized_total[1m]))",
+          "expr": "sum(rate(invokr_cron_ticks_materialized_total[1m]))",
           "legendFormat": "Cron materialized"
         },
       ],
@@ -449,11 +449,11 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(kronos_dispatch_duration_seconds_bucket{endpoint_type=\"HTTP\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(invokr_dispatch_duration_seconds_bucket{endpoint_type=\"HTTP\"}[5m])) by (le))",
           "legendFormat": "HTTP p95"
         },
         {
-          "expr": "histogram_quantile(0.50, sum(rate(kronos_dispatch_duration_seconds_bucket{endpoint_type=\"HTTP\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.50, sum(rate(invokr_dispatch_duration_seconds_bucket{endpoint_type=\"HTTP\"}[5m])) by (le))",
           "legendFormat": "HTTP p50"
         }
       ],
@@ -470,15 +470,15 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(kronos_dispatch_duration_seconds_bucket{endpoint_type=\"KAFKA\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(invokr_dispatch_duration_seconds_bucket{endpoint_type=\"KAFKA\"}[5m])) by (le))",
           "legendFormat": "Kafka p95"
         },
         {
-          "expr": "histogram_quantile(0.50, sum(rate(kronos_dispatch_duration_seconds_bucket{endpoint_type=\"KAFKA\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.50, sum(rate(invokr_dispatch_duration_seconds_bucket{endpoint_type=\"KAFKA\"}[5m])) by (le))",
           "legendFormat": "Kafka p50"
         },
         {
-          "expr": "sum(rate(kronos_kafka_messages_produced_total[1m])) by (status)",
+          "expr": "sum(rate(invokr_kafka_messages_produced_total[1m])) by (status)",
           "legendFormat": "Kafka msgs {{ status }}"
         }
       ],
@@ -495,15 +495,15 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(kronos_dispatch_duration_seconds_bucket{endpoint_type=\"REDIS_STREAM\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(invokr_dispatch_duration_seconds_bucket{endpoint_type=\"REDIS_STREAM\"}[5m])) by (le))",
           "legendFormat": "Redis p95"
         },
         {
-          "expr": "histogram_quantile(0.50, sum(rate(kronos_dispatch_duration_seconds_bucket{endpoint_type=\"REDIS_STREAM\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.50, sum(rate(invokr_dispatch_duration_seconds_bucket{endpoint_type=\"REDIS_STREAM\"}[5m])) by (le))",
           "legendFormat": "Redis p50"
         },
         {
-          "expr": "sum(rate(kronos_redis_stream_messages_sent_total[1m])) by (status)",
+          "expr": "sum(rate(invokr_redis_stream_messages_sent_total[1m])) by (status)",
           "legendFormat": "Redis msgs {{ status }}"
         }
       ],
@@ -513,7 +513,7 @@
   ],
   "refresh": "5s",
   "schemaVersion": 39,
-  "tags": ["kronos"],
+  "tags": ["invokr"],
   "templating": {
     "list": [
       {
@@ -533,7 +533,7 @@
   "time": { "from": "now-30m", "to": "now" },
   "timepicker": {},
   "timezone": "",
-  "title": "Kronos Platform Health",
-  "uid": "kronos-platform-health",
+  "title": "Invokr Platform Health",
+  "uid": "invokr-platform-health",
   "version": 1
 }

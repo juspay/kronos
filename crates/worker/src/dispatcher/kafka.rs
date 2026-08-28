@@ -1,5 +1,5 @@
 use super::DispatchResult;
-use kronos_common::metrics as m;
+use invokr_common::metrics as m;
 use rdkafka::config::ClientConfig;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use serde_json::Value;
@@ -135,7 +135,7 @@ mod tests {
     /// Requires: `docker compose --profile kafka up -d`
     #[tokio::test]
     async fn test_kafka_dispatch_success() {
-        let topic = format!("kronos_test_{}", uuid::Uuid::new_v4().simple());
+        let topic = format!("invokr_test_{}", uuid::Uuid::new_v4().simple());
         let spec = json!({
             "bootstrap_servers": kafka_url(),
             "topic": topic,
@@ -154,14 +154,14 @@ mod tests {
     /// Produce a message with a key and custom headers.
     #[tokio::test]
     async fn test_kafka_dispatch_with_key_and_headers() {
-        let topic = format!("kronos_test_{}", uuid::Uuid::new_v4().simple());
+        let topic = format!("invokr_test_{}", uuid::Uuid::new_v4().simple());
         let spec = json!({
             "bootstrap_servers": kafka_url(),
             "topic": topic,
             "key_template": "my-key-123",
             "value_template": json!({"event": "test"}),
             "headers": {
-                "X-Source": "kronos-test",
+                "X-Source": "invokr-test",
                 "X-Trace-Id": "abc-123",
             },
             "timeout_ms": 15000,
@@ -196,7 +196,7 @@ mod tests {
     /// Multiple sequential produces should all succeed and have increasing offsets.
     #[tokio::test]
     async fn test_kafka_dispatch_multiple_messages() {
-        let topic = format!("kronos_test_{}", uuid::Uuid::new_v4().simple());
+        let topic = format!("invokr_test_{}", uuid::Uuid::new_v4().simple());
         let mut offsets = vec![];
 
         for i in 0..3 {

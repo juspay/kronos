@@ -1,8 +1,8 @@
-# Task Executor — Implementation Brief for Rust + CockroachDB
+# Invokr — Implementation Brief for Rust + CockroachDB
 
 ## What to Build
 
-Build a **Task Executor** service in Rust — a distributed job scheduling and execution engine that provides durable, exactly-once, retriable delivery of messages to HTTP endpoints, Kafka topics, and Redis Streams. Think of it as `setTimeout` and `setInterval` as a service.
+Build **Invokr** in Rust — a distributed job scheduling and execution engine that provides durable, exactly-once, retriable delivery of messages to HTTP endpoints, Kafka topics, and Redis Streams. Think of it as `setTimeout` and `setInterval` as a service.
 
 The service runs on **tokio** async runtime, uses **CockroachDB** (PostgreSQL-compatible) as the primary datastore, and exposes a REST API.
 
@@ -14,7 +14,7 @@ Use cargo-workspaces to organize the codebase. Add a nix flake for the project, 
 
 ## Conceptual Model
 
-| JS Primitive | Task Executor | Trigger |
+| JS Primitive | Invokr | Trigger |
 |---|---|---|
 | `setTimeout(fn, 0)` | `POST /jobs { trigger: IMMEDIATE }` | Fire once, now |
 | `setTimeout(fn, delay)` | `POST /jobs { trigger: DELAYED }` | Fire once, later |
@@ -250,7 +250,7 @@ DELETE /endpoints/{name}    Delete (fails if active jobs reference it)
     },
     "headers": {
       "ce-type": "order.{{input.event_type}}",
-      "ce-source": "task-executor"
+      "ce-source": "invokr"
     },
     "acks": "all",
     "timeout_ms": 10000
@@ -1079,30 +1079,30 @@ No leader election needed.
 
 | Parameter | Default | Env var |
 |-----------|---------|---------|
-| `max_concurrent_jobs` | 50 | `TE_WORKER_MAX_CONCURRENT` |
-| `poll_interval_ms` | 200 | `TE_WORKER_POLL_INTERVAL_MS` |
-| `config_cache_ttl_secs` | 60 | `TE_CONFIG_CACHE_TTL_SEC` |
-| `secret_cache_ttl_secs` | 300 | `TE_SECRET_CACHE_TTL_SEC` |
-| `shutdown_timeout_secs` | 30 | `TE_WORKER_SHUTDOWN_TIMEOUT_SEC` |
-| `db_pool_size` | 10 | `TE_DB_POOL_SIZE` |
+| `max_concurrent_jobs` | 50 | `INVOKR_WORKER_MAX_CONCURRENT` |
+| `poll_interval_ms` | 200 | `INVOKR_WORKER_POLL_INTERVAL_MS` |
+| `config_cache_ttl_secs` | 60 | `INVOKR_CONFIG_CACHE_TTL_SEC` |
+| `secret_cache_ttl_secs` | 300 | `INVOKR_SECRET_CACHE_TTL_SEC` |
+| `shutdown_timeout_secs` | 30 | `INVOKR_WORKER_SHUTDOWN_TIMEOUT_SEC` |
+| `db_pool_size` | 10 | `INVOKR_DB_POOL_SIZE` |
 
 ### Scheduler config
 
 | Parameter | Default | Env var |
 |-----------|---------|---------|
-| `cron_tick_interval_secs` | 1 | `TE_CRON_TICK_INTERVAL_SEC` |
-| `cron_batch_size` | 100 | `TE_CRON_BATCH_SIZE` |
-| `promote_interval_ms` | 500 | `TE_PROMOTE_INTERVAL_MS` |
-| `reclaim_interval_secs` | 30 | `TE_RECLAIM_INTERVAL_SEC` |
-| `stuck_execution_timeout_secs` | 300 | `TE_STUCK_EXECUTION_TIMEOUT_SEC` |
+| `cron_tick_interval_secs` | 1 | `INVOKR_CRON_TICK_INTERVAL_SEC` |
+| `cron_batch_size` | 100 | `INVOKR_CRON_BATCH_SIZE` |
+| `promote_interval_ms` | 500 | `INVOKR_PROMOTE_INTERVAL_MS` |
+| `reclaim_interval_secs` | 30 | `INVOKR_RECLAIM_INTERVAL_SEC` |
+| `stuck_execution_timeout_secs` | 300 | `INVOKR_STUCK_EXECUTION_TIMEOUT_SEC` |
 
 ### API server config
 
 | Parameter | Default | Env var |
 |-----------|---------|---------|
-| `listen_addr` | `0.0.0.0:8080` | `TE_LISTEN_ADDR` |
-| `db_url` | required | `TE_DATABASE_URL` |
-| `db_pool_size` | 20 | `TE_DB_POOL_SIZE` |
+| `listen_addr` | `0.0.0.0:8080` | `INVOKR_LISTEN_ADDR` |
+| `db_url` | required | `INVOKR_DATABASE_URL` |
+| `db_pool_size` | 20 | `INVOKR_DB_POOL_SIZE` |
 
 ---
 
@@ -1132,7 +1132,7 @@ No leader election needed.
 ## Project Structure
 
 ```
-task-executor/
+invokr/
 ├── Cargo.toml
 ├── migrations/
 │   └── 001_initial.sql              # All CREATE TABLE statements
@@ -1267,7 +1267,7 @@ task-executor/
 
 3. **Template resolution**: implement as simple recursive string replacement on `{{...}}` patterns. Walk the JSON tree, replace any string value containing `{{input.X}}` with the corresponding value from the input object. Same for `{{config.X}}` and `{{secret.X}}`. Support nested paths like `{{input.user.name}}`.
 
-4. **Secret encryption**: secrets should be encrypted at rest in the DB. Use a symmetric key (from env var `TE_SECRET_ENCRYPTION_KEY`). Encrypt on write, decrypt on read into the cache.
+4. **Secret encryption**: secrets should be encrypted at rest in the DB. Use a symmetric key (from env var `INVOKR_SECRET_ENCRYPTION_KEY`). Encrypt on write, decrypt on read into the cache.
 
 5. **JSON Schema validation**: use the `jsonschema` crate to validate job input against the endpoint's payload spec before creating the execution.
 
