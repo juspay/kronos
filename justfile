@@ -8,7 +8,7 @@ default:
 
 # ─── Environment ──────────────────────────────────────────────
 
-export INVOKR_DATABASE_URL := env("INVOKR_DATABASE_URL", "postgresql://invokr:invokr@localhost:5432/invokr_db")
+export INVOKR_DATABASE_URL := env("INVOKR_DATABASE_URL", "postgresql://invokr:invokr@localhost:5434/invokr_db")
 export INVOKR_API_KEY := env("INVOKR_API_KEY", "dev-api-key")
 export INVOKR_ENCRYPTION_KEY := env("INVOKR_ENCRYPTION_KEY", "0000000000000000000000000000000000000000000000000000000000000000")
 
@@ -34,12 +34,15 @@ db-up:
 db-down:
     docker compose down
 
-# Run SQL migrations
+# Run SQL migrations.
+# Uses INVOKR_DATABASE_URL as the single source of connection details — the
+# host-published port differs between the dev and prod compose files, so
+# spelling out -h/-U/-d here would drift from whichever one you are running.
 db-migrate:
-    PGPASSWORD=invokr psql -h localhost -U invokr -d invokr_db < migrations/20260317000000_initial.sql
-    PGPASSWORD=invokr psql -h localhost -U invokr -d invokr_db < migrations/20260318000000_multi_tenancy.sql
-    PGPASSWORD=invokr psql -h localhost -U invokr -d invokr_db < migrations/20260322000000_txn_based_pickup.sql
-    PGPASSWORD=invokr psql -h localhost -U invokr -d invokr_db < migrations/20260322000001_pg_cron.sql
+    psql "$INVOKR_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/20260317000000_initial.sql
+    psql "$INVOKR_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/20260318000000_multi_tenancy.sql
+    psql "$INVOKR_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/20260322000000_txn_based_pickup.sql
+    psql "$INVOKR_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/20260322000001_pg_cron.sql
 
 # Reset database (drop + recreate + migrate)
 db-reset:
@@ -49,7 +52,7 @@ db-reset:
 
 # Open a SQL shell
 db-shell:
-    PGPASSWORD=invokr psql -h localhost -U invokr -d invokr_db
+    psql "$INVOKR_DATABASE_URL"
 
 # ─── Build ────────────────────────────────────────────────────
 

@@ -42,7 +42,7 @@
 
           shellHook = ''
             echo "Invokr dev shell ready"
-            export DATABASE_URL="postgresql://invokr:invokr@localhost:5432/invokr_db"
+            export DATABASE_URL="postgresql://invokr:invokr@localhost:5434/invokr_db"
           '';
         };
       });
