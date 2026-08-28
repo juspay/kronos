@@ -129,13 +129,13 @@ docker compose up -d postgres
 ```
 
 **1. (Re)create the database.** Connect to the default `postgres` database and drop/recreate
-`taskexecutor` for a clean slate:
+`invokr_db` for a clean slate:
 
 ```bash
-docker exec -i invokr-postgres-1 psql -U kronos -d postgres -c \
-  "DROP DATABASE IF EXISTS taskexecutor WITH (FORCE);"
-docker exec -i invokr-postgres-1 psql -U kronos -d postgres -c \
-  "CREATE DATABASE taskexecutor;"
+docker exec -i invokr-postgres-1 psql -U invokr -d postgres -c \
+  "DROP DATABASE IF EXISTS invokr_db WITH (FORCE);"
+docker exec -i invokr-postgres-1 psql -U invokr -d postgres -c \
+  "CREATE DATABASE invokr_db;"
 ```
 
 **2. Apply migrations** in order:
@@ -146,7 +146,7 @@ for f in migrations/20260317000000_initial.sql \
          migrations/20260322000000_txn_based_pickup.sql \
          migrations/20260322000001_pg_cron.sql; do
   echo ">> applying $f"
-  docker exec -i invokr-postgres-1 psql -U kronos -d taskexecutor -v ON_ERROR_STOP=1 < "$f"
+  docker exec -i invokr-postgres-1 psql -U invokr -d invokr_db -v ON_ERROR_STOP=1 < "$f"
 done
 ```
 
@@ -154,7 +154,7 @@ done
 and the API under `/api`, on port 8090):
 
 ```bash
-INVOKR_DATABASE_URL="postgres://kronos:kronos@localhost:5434/taskexecutor" \
+INVOKR_DATABASE_URL="postgres://invokr:invokr@localhost:5434/invokr_db" \
 INVOKR_LISTEN_ADDR="0.0.0.0:8090" \
 INVOKR_MODE="both" \
 INVOKR_PATH_PREFIX="/api" \
@@ -169,7 +169,7 @@ cargo run -p invokr-api
 **4. Run the worker** in a separate shell:
 
 ```bash
-INVOKR_DATABASE_URL="postgres://kronos:kronos@localhost:5434/taskexecutor" \
+INVOKR_DATABASE_URL="postgres://invokr:invokr@localhost:5434/invokr_db" \
 INVOKR_METRICS_PORT="9090" \
 cargo run -p invokr-worker
 ```

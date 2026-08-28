@@ -9,7 +9,7 @@
 //! The sweep used to run as a tokio interval task in each worker pod, invisible
 //! to the rest of invokr. It is now itself a invokr CRON job: each workspace is
 //! provisioned at creation time (see `db::workspaces::provision_reaper`) with
-//! an `INTERNAL` endpoint named `kronos.reaper` and a `* * * * *` job whose
+//! an `INTERNAL` endpoint named `invokr.reaper` and a `* * * * *` job whose
 //! pg_cron tick materializes an execution into the workspace's own
 //! `executions` table. The worker claims it via the normal `SKIP LOCKED` path
 //! and the [`crate::dispatcher::internal`] arm calls [`reap_schema`] — same

@@ -569,13 +569,13 @@ Error codes:
 ### Database Setup
 
 ```sql
-CREATE DATABASE taskexecutor;
-USE taskexecutor;
+CREATE DATABASE invokr_db;
+USE invokr_db;
 
 -- Single region for now. When adding regions later:
--- ALTER DATABASE taskexecutor SET PRIMARY REGION = 'ap-south-1';
--- ALTER DATABASE taskexecutor ADD REGION 'ap-south-2';
--- ALTER DATABASE taskexecutor SURVIVE ZONE FAILURE;
+-- ALTER DATABASE invokr_db SET PRIMARY REGION = 'ap-south-1';
+-- ALTER DATABASE invokr_db ADD REGION 'ap-south-2';
+-- ALTER DATABASE invokr_db SURVIVE ZONE FAILURE;
 ```
 
 ### Tables

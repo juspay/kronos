@@ -22,7 +22,7 @@ BEGIN
             'SELECT job_id, cron_expression, endpoint FROM %I.jobs WHERE trigger_type = ''CRON'' AND status = ''ACTIVE''',
             ws.schema_name
         ) LOOP
-            cron_job_name := 'kronos_' || ws.schema_name || '_' || job.job_id;
+            cron_job_name := 'invokr_' || ws.schema_name || '_' || job.job_id;
             cron_command := format(
                 'INSERT INTO %I.executions '
                     '(job_id, endpoint, endpoint_type, idempotency_key, status, input, run_at, max_attempts) '

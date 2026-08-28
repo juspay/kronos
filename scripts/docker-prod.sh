@@ -19,7 +19,7 @@ $DC up -d postgres localstack invokr-mock-server
 
 echo ""
 echo "==> Waiting for PostgreSQL..."
-until $DC exec -T postgres pg_isready -U kronos -d taskexecutor > /dev/null 2>&1; do
+until $DC exec -T postgres pg_isready -U invokr -d invokr_db > /dev/null 2>&1; do
     sleep 1
 done
 echo "    PostgreSQL ready."
@@ -34,10 +34,10 @@ echo "    LocalStack ready."
 echo ""
 echo "==> Running database migrations..."
 $DC exec -T postgres sh -c '
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor -f /migrations/20260317000000_initial.sql &&
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor -f /migrations/20260318000000_multi_tenancy.sql &&
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor -f /migrations/20260322000000_txn_based_pickup.sql &&
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor -f /migrations/20260322000001_pg_cron.sql
+    PGPASSWORD=invokr psql -h localhost -U invokr -d invokr_db -f /migrations/20260317000000_initial.sql &&
+    PGPASSWORD=invokr psql -h localhost -U invokr -d invokr_db -f /migrations/20260318000000_multi_tenancy.sql &&
+    PGPASSWORD=invokr psql -h localhost -U invokr -d invokr_db -f /migrations/20260322000000_txn_based_pickup.sql &&
+    PGPASSWORD=invokr psql -h localhost -U invokr -d invokr_db -f /migrations/20260322000001_pg_cron.sql
 '
 echo "    Migrations applied."
 
@@ -79,7 +79,7 @@ encrypt_value() {
 }
 
 # DB URL uses Docker-internal hostname
-ENC_DB_URL=$(encrypt_value "postgresql://kronos:kronos@postgres:5432/taskexecutor")
+ENC_DB_URL=$(encrypt_value "postgresql://invokr:invokr@postgres:5432/invokr_db")
 echo "    INVOKR_DATABASE_URL      encrypted"
 
 ENC_API_KEY=$(encrypt_value "dev-api-key")
