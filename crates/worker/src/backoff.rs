@@ -1,4 +1,4 @@
-use kronos_common::models::endpoint::RetryPolicy;
+use invokr_common::models::endpoint::RetryPolicy;
 use rand::Rng;
 
 pub fn compute_backoff(policy: &RetryPolicy, attempt: i64) -> i64 {

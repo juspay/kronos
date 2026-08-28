@@ -79,6 +79,6 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /usr/local/bin/app /usr/local/bin/app
 COPY --from=dashboard-builder /app/crates/dashboard/pkg /app/dashboard-dist
 
-ENV TE_DASHBOARD_DIST_DIR=/app/dashboard-dist
+ENV INVOKR_DASHBOARD_DIST_DIR=/app/dashboard-dist
 
 ENTRYPOINT ["/usr/local/bin/app"]

@@ -9,7 +9,7 @@ pub fn Sidebar() -> impl IntoView {
     view! {
         <aside class="w-64 bg-gray-900 text-white min-h-screen flex flex-col">
             <div class="p-6 border-b border-gray-700">
-                <h1 class="text-xl font-bold tracking-tight">"Kronos"</h1>
+                <h1 class="text-xl font-bold tracking-tight">"Invokr"</h1>
                 <p class="text-xs text-gray-400 mt-1">"Job Scheduling Engine"</p>
             </div>
 

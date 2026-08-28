@@ -13,7 +13,7 @@ pub mod workspaces;
 use sqlx::PgConnection;
 use sqlx::PgPool;
 
-/// Connect a `PgPool` with Kronos's logging policy: SQL statement logs are
+/// Connect a `PgPool` with Invokr's logging policy: SQL statement logs are
 /// demoted from sqlx's default DEBUG to TRACE so steady-state chatter (e.g.
 /// the worker's poll queries) doesn't flood debug logs. Opt back in with
 /// `RUST_LOG=sqlx::query=trace`.

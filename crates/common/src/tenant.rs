@@ -55,8 +55,8 @@ pub fn build_schema_name(org_id: &str, workspace_slug: &str) -> String {
 }
 
 /// Trait for discovering active workspace schemas.
-/// Implement this to tell Kronos's worker where to find the list of workspaces.
-/// Kronos ships `SchemaRegistry` as the default implementation.
+/// Implement this to tell Invokr's worker where to find the list of workspaces.
+/// Invokr ships `SchemaRegistry` as the default implementation.
 ///
 /// Declared with `-> impl Future + Send` (rather than `async fn`) so the
 /// returned future is usable inside the spawned worker task; implementors
@@ -68,8 +68,8 @@ pub trait SchemaProvider: Send + Sync + 'static {
 }
 
 /// Cached registry of active workspace schemas.
-/// Default `SchemaProvider` implementation — queries Kronos's own
-/// `public.workspaces` table. Used by standalone Kronos.
+/// Default `SchemaProvider` implementation — queries Invokr's own
+/// `public.workspaces` table. Used by standalone Invokr.
 #[derive(Clone)]
 pub struct SchemaRegistry {
     pool: PgPool,

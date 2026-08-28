@@ -2,7 +2,7 @@
 -- pg_cron handles scheduling natively, eliminating the need for the CRON materializer loop.
 --
 -- The per-tick command below is a hand-maintained copy of
--- `kronos_common::db::jobs::build_cron_command` -- keep the two in sync. `cron.schedule` upserts
+-- `invokr_common::db::jobs::build_cron_command` -- keep the two in sync. `cron.schedule` upserts
 -- by job name, so re-running this migration replaces the stored command in place.
 --
 -- Standalone deployment only (unprefixed tables); library-mode embeds own their schema.

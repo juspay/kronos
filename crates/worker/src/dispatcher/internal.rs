@@ -1,6 +1,6 @@
 //! In-process dispatcher for `INTERNAL` endpoints.
 //!
-//! `INTERNAL` endpoints back kronos's own dogfooded jobs — work that runs
+//! `INTERNAL` endpoints back invokr's own dogfooded jobs — work that runs
 //! inside the worker pool rather than crossing a network boundary. The
 //! endpoint `spec` carries a `task` discriminator; this dispatcher matches on
 //! it and calls the matching Rust function, returning its result through the
@@ -10,7 +10,7 @@
 //! Today the only task is `"reaper"`: the per-schema CRON sweep that retires
 //! expired CRON jobs and unschedules their pg_cron entries. By running it
 //! through the regular execution pipeline, every sweep becomes a visible
-//! execution in the workspace's own dashboard — self-monitoring via kronos.
+//! execution in the workspace's own dashboard — self-monitoring via invokr.
 
 use serde_json::Value;
 use sqlx::PgConnection;

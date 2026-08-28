@@ -6,7 +6,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/kronos
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/invokr
 
 permissions:
   contents: read
@@ -18,19 +18,19 @@ jobs:
     strategy:
       matrix:
         include:
-          - binary: kronos-api
+          - binary: invokr-api
             features: ""
             include_dashboard: "true"
-          - binary: kronos-api
+          - binary: invokr-api
             features: "kms"
-            image_name: "kronos-api-kms"
+            image_name: "invokr-api-kms"
             include_dashboard: "true"
-          - binary: kronos-worker
+          - binary: invokr-worker
             features: ""
             include_dashboard: "false"
-          - binary: kronos-worker
+          - binary: invokr-worker
             features: "kms"
-            image_name: "kronos-worker-kms"
+            image_name: "invokr-worker-kms"
             include_dashboard: "false"
     steps:
       - uses: actions/checkout@v4

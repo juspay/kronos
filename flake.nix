@@ -1,5 +1,5 @@
 {
-  description = "Kronos - Task Executor";
+  description = "Invokr - distributed job scheduling and execution engine";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -41,7 +41,7 @@
           ];
 
           shellHook = ''
-            echo "Kronos dev shell ready"
+            echo "Invokr dev shell ready"
             export DATABASE_URL="postgresql://kronos:kronos@localhost:5432/taskexecutor"
           '';
         };
