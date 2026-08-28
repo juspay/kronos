@@ -1,6 +1,6 @@
 $version: "2"
 
-namespace com.kronos
+namespace com.invokr
 
 // ─── Job structures ──────────────────────────────────────────────
 structure JobResource {

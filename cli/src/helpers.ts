@@ -1,5 +1,5 @@
 import {
-  KronosServiceClient,
+  InvokrServiceClient,
   CreateEndpointCommand,
   CancelJobCommand,
   ListJobExecutionsCommand,
@@ -7,7 +7,7 @@ import {
   ListExecutionAttemptsCommand,
   GetJobStatusCommand,
   DeleteEndpointCommand,
-} from "kronos-sdk";
+} from "invokr-sdk";
 
 // ─── Config ──────────────────────────────────────────────────────
 
@@ -32,15 +32,15 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-export function createClient(): KronosServiceClient {
-  return new KronosServiceClient({
+export function createClient(): InvokrServiceClient {
+  return new InvokrServiceClient({
     endpoint: KRONOS_URL,
     token: { token: API_KEY },
   });
 }
 
 export async function createTestEndpoint(
-  client: KronosServiceClient,
+  client: InvokrServiceClient,
   name: string,
   mockPath: string = "/success",
 ) {
@@ -54,7 +54,7 @@ export async function createTestEndpoint(
         url: `${MOCK_URL}${mockPath}`,
         headers: {
           "Content-Type": "application/json",
-          "X-Test-Source": "kronos-cli",
+          "X-Test-Source": "invokr-cli",
         },
       },
       retry_policy: {
@@ -69,7 +69,7 @@ export async function createTestEndpoint(
 }
 
 export async function pollExecution(
-  client: KronosServiceClient,
+  client: InvokrServiceClient,
   jobId: string,
   timeoutMs: number = POLL_TIMEOUT_MS,
 ): Promise<any> {
@@ -107,7 +107,7 @@ export async function pollExecution(
 }
 
 export async function printExecutionResult(
-  client: KronosServiceClient,
+  client: InvokrServiceClient,
   jobId: string,
   execution: any,
 ) {
@@ -168,7 +168,7 @@ export async function printExecutionResult(
 }
 
 export async function cleanup(
-  client: KronosServiceClient,
+  client: InvokrServiceClient,
   jobId: string | null,
   endpointName: string,
 ) {

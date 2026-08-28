@@ -1,16 +1,16 @@
 $version: "2"
 
-namespace com.kronos
+namespace com.invokr
 
 use aws.protocols#restJson1
 
-/// Kronos — Distributed Job Scheduling and Execution Engine.
+/// Invokr — Distributed Job Scheduling and Execution Engine.
 /// Provides durable, retriable delivery of messages to HTTP endpoints,
 /// Kafka topics, and Redis Streams.
 @restJson1
-@title("Kronos Task Executor API")
+@title("Invokr API")
 @httpBearerAuth
-service KronosService {
+service InvokrService {
     version: "2026-03-17"
     operations: [
         // Payload Specs
@@ -19,14 +19,12 @@ service KronosService {
         GetPayloadSpec
         UpdatePayloadSpec
         DeletePayloadSpec
-
         // Endpoints
         CreateEndpoint
         ListEndpoints
         GetEndpoint
         UpdateEndpoint
         DeleteEndpoint
-
         // Jobs
         CreateJob
         ListJobs
@@ -36,7 +34,6 @@ service KronosService {
         GetJobStatus
         GetJobVersions
         ListJobExecutions
-
         // Executions
         GetExecution
         CancelExecution

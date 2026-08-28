@@ -1,6 +1,6 @@
 $version: "2"
 
-namespace com.kronos
+namespace com.invokr
 
 // ─── Workspace Headers ─────────────────────────────────────
 

@@ -74,6 +74,6 @@ mod _trigger_type_enum;
 /// Builders
 pub mod builders;
 
-/// Error types that Kronos Task Executor API can respond with.
+/// Error types that Invokr API can respond with.
 pub mod error;
 

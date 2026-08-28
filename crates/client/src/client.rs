@@ -8,13 +8,13 @@
 
                 
 /// 
-/// An ergonomic client for Kronos Task Executor API.
+/// An ergonomic client for Invokr API.
 /// 
-/// This client allows ergonomic access to Kronos Task Executor API.
+/// This client allows ergonomic access to Invokr API.
 /// Each method corresponds to an API defined in the service's Smithy model,
 /// and the request and response shapes are auto-generated from that same model.
 /// 
-/// Client for calling Kronos Task Executor API.
+/// Client for calling Invokr API.
 /// 
 /// ## Constructing a `Client`
 /// 
@@ -32,10 +32,10 @@
 /// Below is a minimal example of how to create a client:
 /// 
 /// ```rust,no_run
-/// let config = kronos_sdk::Config::builder()
+/// let config = invokr_sdk::Config::builder()
 ///     .endpoint_url("http://localhost:1234")
 ///     .build();
-/// let client = kronos_sdk::Client::from_conf(config);
+/// let client = invokr_sdk::Client::from_conf(config);
 /// ```
 /// 
 /// _Note:_ Client construction is expensive due to connection thread pool initialization, and should be done
@@ -121,8 +121,8 @@ mod create_payload_spec;
 /// operation call. For example, this can be used to add an additional HTTP header:
 /// 
 /// ```ignore
-/// # async fn wrapper() -> ::std::result::Result<(), kronos_sdk::Error> {
-/// # let client: kronos_sdk::Client = unimplemented!();
+/// # async fn wrapper() -> ::std::result::Result<(), invokr_sdk::Error> {
+/// # let client: invokr_sdk::Client = unimplemented!();
 /// use ::http::header::{HeaderName, HeaderValue};
 /// 
 /// let result = client.cancel_execution()
