@@ -8,7 +8,7 @@ default:
 
 # ─── Environment ──────────────────────────────────────────────
 
-export INVOKR_DATABASE_URL := env("INVOKR_DATABASE_URL", "postgresql://kronos:kronos@localhost:5432/taskexecutor")
+export INVOKR_DATABASE_URL := env("INVOKR_DATABASE_URL", "postgresql://invokr:invokr@localhost:5434/invokr_db")
 export INVOKR_API_KEY := env("INVOKR_API_KEY", "dev-api-key")
 export INVOKR_ENCRYPTION_KEY := env("INVOKR_ENCRYPTION_KEY", "0000000000000000000000000000000000000000000000000000000000000000")
 
@@ -34,12 +34,15 @@ db-up:
 db-down:
     docker compose down
 
-# Run SQL migrations
+# Run SQL migrations.
+# Uses INVOKR_DATABASE_URL as the single source of connection details — the
+# host-published port differs between the dev and prod compose files, so
+# spelling out -h/-U/-d here would drift from whichever one you are running.
 db-migrate:
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260317000000_initial.sql
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260318000000_multi_tenancy.sql
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260322000000_txn_based_pickup.sql
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260322000001_pg_cron.sql
+    psql "$INVOKR_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/20260317000000_initial.sql
+    psql "$INVOKR_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/20260318000000_multi_tenancy.sql
+    psql "$INVOKR_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/20260322000000_txn_based_pickup.sql
+    psql "$INVOKR_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/20260322000001_pg_cron.sql
 
 # Reset database (drop + recreate + migrate)
 db-reset:
@@ -49,7 +52,7 @@ db-reset:
 
 # Open a SQL shell
 db-shell:
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor
+    psql "$INVOKR_DATABASE_URL"
 
 # ─── Build ────────────────────────────────────────────────────
 
@@ -78,6 +81,10 @@ smithy-validate:
 # committed Rust SDK at sdks/rust/. Edit smithy/model/* → run this →
 # commit the resulting diff (model + sdks/rust/) in the same PR.
 smithy-build: smithy-validate
+    # `smithy build` writes into smithy/build/ without clearing it, so renaming
+    # a shape leaves the old artifact behind alongside the new one, and
+    # `build-sdk` compiles the whole directory into the published package.
+    rm -rf smithy/build
     cd smithy && smithy build
     rm -rf crates/client
     cp -R smithy/build/smithy/source/rust-client-codegen crates/client

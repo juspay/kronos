@@ -415,7 +415,7 @@ pub async fn register_pg_cron(
     job_id: &str,
     cron_expression: &str,
 ) -> Result<(), sqlx::Error> {
-    let cron_job_name = format!("kronos_{}_{}", schema_name, job_id);
+    let cron_job_name = format!("invokr_{}_{}", schema_name, job_id);
     let command = build_cron_command(prefix, schema_name, job_id);
 
     sqlx::query("SELECT cron.schedule($1, $2, $3)")
@@ -444,7 +444,7 @@ pub async fn register_pg_cron_conn(
     job_id: &str,
     cron_expression: &str,
 ) -> Result<(), sqlx::Error> {
-    let cron_job_name = format!("kronos_{}_{}", schema_name, job_id);
+    let cron_job_name = format!("invokr_{}_{}", schema_name, job_id);
     let command = build_cron_command(prefix, schema_name, job_id);
 
     sqlx::query("SELECT cron.schedule($1, $2, $3)")
@@ -463,7 +463,7 @@ pub async fn unregister_pg_cron(
     schema_name: &str,
     job_id: &str,
 ) -> Result<(), sqlx::Error> {
-    let cron_job_name = format!("kronos_{}_{}", schema_name, job_id);
+    let cron_job_name = format!("invokr_{}_{}", schema_name, job_id);
 
     sqlx::query("SELECT cron.unschedule($1)")
         .bind(&cron_job_name)
@@ -484,7 +484,7 @@ pub async fn unregister_pg_cron_conn(
     schema_name: &str,
     job_id: &str,
 ) -> Result<(), sqlx::Error> {
-    let cron_job_name = format!("kronos_{}_{}", schema_name, job_id);
+    let cron_job_name = format!("invokr_{}_{}", schema_name, job_id);
 
     sqlx::query("SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname = $1")
         .bind(&cron_job_name)

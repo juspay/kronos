@@ -11,7 +11,7 @@ const WORKSPACE_SCHEMA_V1: &str = include_str!("../../migrations/workspace_v1.sq
 /// Endpoint name invokr installs in every workspace for its dogfooded reaper.
 /// The reaper is an `INTERNAL` CRON job whose ticks materialize executions
 /// into the workspace's own `executions` table — see `worker::dispatcher::internal`.
-const REAPER_ENDPOINT_NAME: &str = "kronos.reaper";
+const REAPER_ENDPOINT_NAME: &str = "invokr.reaper";
 
 pub async fn create(
     pool: &PgPool,

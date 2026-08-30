@@ -2,15 +2,15 @@
  * Invokr CLI — Test INTERNAL job/endpoint API guards
  *
  * The dogfooded reaper is provisioned at workspace creation as an INTERNAL
- * endpoint (`kronos.reaper`) plus a CRON job. The public API protects this
+ * endpoint (`invokr.reaper`) plus a CRON job. The public API protects this
  * pair so users can't stack their own jobs on the endpoint, modify the
  * reaper job's schedule, or cancel it — all of which would silently break
  * invokr's self-monitoring for that workspace. This script verifies those
  * guards and that reads still surface the system state.
  *
  * Steps:
- *   1. List jobs and find the reaper (endpoint == "kronos.reaper").
- *   2. POST /jobs with endpoint: "kronos.reaper" → expect 400 INVALID_REQUEST.
+ *   1. List jobs and find the reaper (endpoint == "invokr.reaper").
+ *   2. POST /jobs with endpoint: "invokr.reaper" → expect 400 INVALID_REQUEST.
  *   3. PATCH /jobs/{reaper}                     → expect 409 JOB_NOT_UPDATABLE.
  *   4. DELETE /jobs/{reaper}                    → expect 409 CONFLICT.
  *   5. POST /endpoints with type: "INTERNAL"    → expect 400 INVALID_REQUEST.
@@ -36,7 +36,7 @@ import {
 
 import { log, createClient, tenant } from "./helpers.js";
 
-const REAPER_ENDPOINT = "kronos.reaper";
+const REAPER_ENDPOINT = "invokr.reaper";
 
 /**
  * Assert that an SDK call rejected with the expected HTTP status and error
@@ -72,7 +72,7 @@ async function expectError(
 }
 
 async function findReaperJob(client: ReturnType<typeof createClient>): Promise<string> {
-  // The reaper job is the only one with endpoint == kronos.reaper.
+  // The reaper job is the only one with endpoint == invokr.reaper.
   // It should always be present in an active workspace because
   // db::workspaces::create provisions it as part of schema setup.
   const resp = await client.send(new ListJobsCommand({ ...tenant }));
@@ -80,7 +80,7 @@ async function findReaperJob(client: ReturnType<typeof createClient>): Promise<s
   const reaper = jobs.find((j: any) => j.endpoint === REAPER_ENDPOINT);
   if (!reaper) {
     throw new Error(
-      `Workspace has no kronos.reaper job — was it provisioned at creation time? ` +
+      `Workspace has no invokr.reaper job — was it provisioned at creation time? ` +
         `(Found ${jobs.length} jobs, none with endpoint=${REAPER_ENDPOINT}.)`,
     );
   }
@@ -95,7 +95,7 @@ async function main() {
   log(`  Reaper job_id: ${reaperJobId}`);
 
   // ── 1. Block creating a user job that targets the reaper endpoint ──
-  log("Attempting POST /jobs with endpoint=kronos.reaper (should 400)");
+  log("Attempting POST /jobs with endpoint=invokr.reaper (should 400)");
   await expectError(
     "create job on INTERNAL endpoint",
     400,

@@ -50,7 +50,7 @@ echo "$KEY_ID" > .kms-key-id
 echo "    Saved key ID to .kms-key-id"
 
 # Plaintext values to encrypt
-DB_URL="${INVOKR_DATABASE_URL:-postgresql://kronos:kronos@localhost:5432/taskexecutor}"
+DB_URL="${INVOKR_DATABASE_URL:-postgresql://invokr:invokr@localhost:5434/invokr_db}"
 API_KEY="${INVOKR_API_KEY:-dev-api-key}"
 ENCRYPTION_KEY="${INVOKR_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}"
 

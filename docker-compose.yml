@@ -4,15 +4,15 @@ services:
     ports:
       - "5434:5432"
     environment:
-      POSTGRES_USER: kronos
-      POSTGRES_PASSWORD: kronos
-      POSTGRES_DB: taskexecutor
+      POSTGRES_USER: invokr
+      POSTGRES_PASSWORD: invokr
+      POSTGRES_DB: invokr_db
     command:
       - "postgres"
       - "-c"
       - "shared_preload_libraries=pg_cron"
       - "-c"
-      - "cron.database_name=taskexecutor"
+      - "cron.database_name=invokr_db"
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
