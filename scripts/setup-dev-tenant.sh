@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${KRONOS_BASE_URL:-http://localhost:8080}"
-API_KEY="${TE_API_KEY:-dev-api-key}"
+BASE_URL="${INVOKR_BASE_URL:-http://localhost:8080}"
+API_KEY="${INVOKR_API_KEY:-dev-api-key}"
 ENV_FILE="${1:-.env}"
 
-ORG_NAME="${KRONOS_ORG_NAME:-Dev Org}"
-ORG_SLUG="${KRONOS_ORG_SLUG:-dev-org}"
-WS_NAME="${KRONOS_WS_NAME:-Dev Workspace}"
-WS_SLUG="${KRONOS_WS_SLUG:-dev-ws}"
+ORG_NAME="${INVOKR_ORG_NAME:-Dev Org}"
+ORG_SLUG="${INVOKR_ORG_SLUG:-dev-org}"
+WS_NAME="${INVOKR_WS_NAME:-Dev Workspace}"
+WS_SLUG="${INVOKR_WS_SLUG:-dev-ws}"
 
 AUTH="Authorization: Bearer ${API_KEY}"
 
@@ -37,12 +37,12 @@ if [ ! -f "${ENV_FILE}" ]; then
 fi
 
 # Remove old values if present, then append new ones
-sed -i '/^#\?\s*KRONOS_ORG_ID=/d' "${ENV_FILE}"
-sed -i '/^#\?\s*KRONOS_WORKSPACE_ID=/d' "${ENV_FILE}"
+sed -i '/^#\?\s*INVOKR_ORG_ID=/d' "${ENV_FILE}"
+sed -i '/^#\?\s*INVOKR_WORKSPACE_ID=/d' "${ENV_FILE}"
 
-echo "KRONOS_ORG_ID=${ORG_ID}" >> "${ENV_FILE}"
-echo "KRONOS_WORKSPACE_ID=${WS_ID}" >> "${ENV_FILE}"
+echo "INVOKR_ORG_ID=${ORG_ID}" >> "${ENV_FILE}"
+echo "INVOKR_WORKSPACE_ID=${WS_ID}" >> "${ENV_FILE}"
 
 echo "Updated ${ENV_FILE}:"
-echo "  KRONOS_ORG_ID=${ORG_ID}"
-echo "  KRONOS_WORKSPACE_ID=${WS_ID}"
+echo "  INVOKR_ORG_ID=${ORG_ID}"
+echo "  INVOKR_WORKSPACE_ID=${WS_ID}"

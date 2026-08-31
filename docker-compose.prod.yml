@@ -7,22 +7,22 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: kronos
-      POSTGRES_PASSWORD: kronos
-      POSTGRES_DB: taskexecutor
+      POSTGRES_USER: invokr
+      POSTGRES_PASSWORD: invokr
+      POSTGRES_DB: invokr_db
     command:
       - "postgres"
       - "-c"
       - "shared_preload_libraries=pg_cron"
       - "-c"
-      - "cron.database_name=taskexecutor"
+      - "cron.database_name=invokr_db"
     volumes:
       - postgres-prod-data:/var/lib/postgresql/data
       - ./migrations:/migrations:ro
     networks:
-      - kronos-net
+      - invokr-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U kronos -d taskexecutor"]
+      test: ["CMD-SHELL", "pg_isready -U invokr -d invokr_db"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -35,37 +35,37 @@ services:
       SERVICES: kms
       AWS_DEFAULT_REGION: us-east-1
     networks:
-      - kronos-net
+      - invokr-net
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health"]
       interval: 5s
       timeout: 3s
       retries: 10
 
-  kronos-mock-server:
+  invokr-mock-server:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        BINARY: kronos-mock-server
+        BINARY: invokr-mock-server
     ports:
       - "9999:9999"
     environment:
       MOCK_PORT: "9999"
     networks:
-      - kronos-net
+      - invokr-net
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9999/health"]
       interval: 5s
       timeout: 3s
       retries: 10
 
-  kronos-server:
+  invokr-server:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        BINARY: kronos-api
+        BINARY: invokr-api
         FEATURES: kms
         INCLUDE_DASHBOARD: "true"
     ports:
@@ -74,30 +74,30 @@ services:
       - path: .env.prod.kms
         required: false
     environment:
-      TE_LISTEN_ADDR: "0.0.0.0:8080"
-      TE_MODE: "both"
-      TE_PATH_PREFIX: "/kronos"
-      TE_DASHBOARD_PATH_PREFIX: "/dashboard"
-      TE_DASHBOARD_DIST_DIR: "/app/dashboard-dist"
+      INVOKR_LISTEN_ADDR: "0.0.0.0:8080"
+      INVOKR_MODE: "both"
+      INVOKR_PATH_PREFIX: "/invokr"
+      INVOKR_DASHBOARD_PATH_PREFIX: "/dashboard"
+      INVOKR_DASHBOARD_DIST_DIR: "/app/dashboard-dist"
     networks:
-      - kronos-net
+      - invokr-net
     depends_on:
       postgres:
         condition: service_healthy
       localstack:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/kronos/health"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/invokr/health"]
       interval: 5s
       timeout: 3s
       retries: 15
 
-  kronos-worker:
+  invokr-worker:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        BINARY: kronos-worker
+        BINARY: invokr-worker
         FEATURES: kms
     ports:
       - "9090:9090"
@@ -105,19 +105,19 @@ services:
       - path: .env.prod.kms
         required: false
     environment:
-      TE_METRICS_PORT: "9090"
+      INVOKR_METRICS_PORT: "9090"
     networks:
-      - kronos-net
+      - invokr-net
     depends_on:
       postgres:
         condition: service_healthy
       localstack:
         condition: service_healthy
-      kronos-mock-server:
+      invokr-mock-server:
         condition: service_healthy
 
 networks:
-  kronos-net:
+  invokr-net:
     driver: bridge
 
 volumes:

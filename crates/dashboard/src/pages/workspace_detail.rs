@@ -1647,7 +1647,7 @@ fn JobsTable(
                             let wid_versions = workspace_id.clone();
                             let is_active = job.status == "ACTIVE";
                             let is_cron = job.trigger == "CRON";
-                            // Internal jobs are kronos-managed and rejected by the API for user invokes.
+                            // Internal jobs are invokr-managed and rejected by the API for user invokes.
                             let can_invoke = is_active && job.endpoint_type != "INTERNAL";
                             let job_invoke = job.clone();
                             let jid_for_status = job.job_id.clone();

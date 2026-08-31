@@ -1,5 +1,5 @@
 /**
- * Kronos Load Test — Create N jobs of each type and track completion
+ * Invokr Load Test — Create N jobs of each type and track completion
  *
  * Usage:
  *   npx tsx src/load-test.ts [N] [--no-wait]
@@ -12,7 +12,7 @@
  *   npx tsx src/load-test.ts 100 --no-wait
  *
  * Prerequisites:
- *   - Kronos API, worker, scheduler, mock-server all running (just dev)
+ *   - Invokr API, worker, scheduler, mock-server all running (just dev)
  *   - Database migrated with at least one org+workspace
  */
 
@@ -28,11 +28,11 @@ import {
 
 // ─── Config ──────────────────────────────────────────────────────
 
-const KRONOS_URL = process.env.KRONOS_URL ?? "http://localhost:8080";
+const INVOKR_URL = process.env.INVOKR_URL ?? "http://localhost:8080";
 const MOCK_URL = process.env.MOCK_URL ?? "http://localhost:9999";
-const API_KEY = process.env.KRONOS_API_KEY ?? "dev-api-key";
-const ORG_ID = process.env.KRONOS_ORG_ID!;
-const WORKSPACE_ID = process.env.KRONOS_WORKSPACE_ID!;
+const API_KEY = process.env.INVOKR_API_KEY ?? "dev-api-key";
+const ORG_ID = process.env.INVOKR_ORG_ID!;
+const WORKSPACE_ID = process.env.INVOKR_WORKSPACE_ID!;
 const CONCURRENCY = parseInt(process.env.LOAD_TEST_CONCURRENCY ?? "10", 10);
 const POLL_INTERVAL_MS = 500;
 const POLL_TIMEOUT_MS = 120_000;
@@ -92,7 +92,7 @@ async function pooled<T>(
 
 async function main() {
   const client = new InvokrServiceClient({
-    endpoint: KRONOS_URL,
+    endpoint: INVOKR_URL,
     token: { token: API_KEY },
   });
 
@@ -103,7 +103,7 @@ async function main() {
   const epCron = `load-cron-${runId}`;
 
   console.log("═".repeat(60));
-  console.log("  KRONOS LOAD TEST");
+  console.log("  INVOKR LOAD TEST");
   console.log("═".repeat(60));
   log(`Jobs per type:  ${N}`);
   log(`Total jobs:     ${N * 3}`);

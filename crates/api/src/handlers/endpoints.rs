@@ -1,7 +1,7 @@
 use crate::extractors::{AuthenticatedRequest, Workspace};
 use crate::router::AppState;
 use actix_web::{web, HttpResponse};
-use kronos_common::{
+use invokr_common::{
     db,
     db::DbContext,
     error::AppError,
@@ -15,7 +15,7 @@ pub async fn create(
     ws: Workspace,
     body: web::Json<CreateEndpoint>,
 ) -> Result<HttpResponse, AppError> {
-    // INTERNAL endpoints exist for kronos-driven internal tasks (e.g. the
+    // INTERNAL endpoints exist for invokr-driven internal tasks (e.g. the
     // dogfooded reaper) and are provisioned at workspace-creation time —
     // never through the public API. Reject them explicitly so the constraint
     // doesn't have to do it with an opaque "violates check" error.
@@ -30,7 +30,7 @@ pub async fn create(
     }
 
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -78,7 +78,7 @@ pub async fn list(
     params: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -108,7 +108,7 @@ pub async fn get(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -127,7 +127,7 @@ pub async fn update(
     body: web::Json<UpdateEndpoint>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -169,7 +169,7 @@ pub async fn delete(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -186,7 +186,7 @@ pub async fn delete(
     Ok(HttpResponse::NoContent().finish())
 }
 
-fn endpoint_to_json(ep: &kronos_common::models::Endpoint) -> serde_json::Value {
+fn endpoint_to_json(ep: &invokr_common::models::Endpoint) -> serde_json::Value {
     serde_json::json!({
         "name": ep.name,
         "type": ep.endpoint_type,

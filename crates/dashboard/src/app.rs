@@ -42,7 +42,7 @@ pub fn shell(app: impl IntoView) -> impl IntoView {
     let config_script = use_context::<DashboardConfig>()
         .map(|c| {
             format!(
-                r#"window.__KRONOS_CONFIG__={{apiBaseUrl:"{}",apiPrefix:"{}",dashboardPrefix:"{}",apiKey:"{}"}};"#,
+                r#"window.__INVOKR_CONFIG__={{apiBaseUrl:"{}",apiPrefix:"{}",dashboardPrefix:"{}",apiKey:"{}"}};"#,
                 c.api_base_url, c.api_prefix, c.dashboard_prefix, c.api_key
             )
         })
@@ -50,7 +50,7 @@ pub fn shell(app: impl IntoView) -> impl IntoView {
 
     let pkg = pkg_base();
     let wasm_script = format!(
-        r#"import init, {{ hydrate }} from '{pkg}/kronos_dashboard.js'; async function main() {{ await init('{pkg}/kronos_dashboard_bg.wasm'); hydrate(); }} main();"#
+        r#"import init, {{ hydrate }} from '{pkg}/invokr_dashboard.js'; async function main() {{ await init('{pkg}/invokr_dashboard_bg.wasm'); hydrate(); }} main();"#
     );
 
     view! {
@@ -75,13 +75,13 @@ pub fn shell(app: impl IntoView) -> impl IntoView {
 pub fn App() -> impl IntoView {
     provide_meta_context();
 
-    // During hydration, read config from the injected window.__KRONOS_CONFIG__
+    // During hydration, read config from the injected window.__INVOKR_CONFIG__
     #[cfg(feature = "hydrate")]
     {
         if use_context::<DashboardConfig>().is_none() {
             use wasm_bindgen::JsValue;
             let window = web_sys::window().expect("no global window");
-            let config = js_sys::Reflect::get(&window, &JsValue::from_str("__KRONOS_CONFIG__"))
+            let config = js_sys::Reflect::get(&window, &JsValue::from_str("__INVOKR_CONFIG__"))
                 .unwrap_or(JsValue::UNDEFINED);
             let get = |key: &str| -> String {
                 if config.is_undefined() || config.is_null() {
@@ -106,7 +106,7 @@ pub fn App() -> impl IntoView {
 
     view! {
         <Stylesheet href=css_href />
-        <Title text="Kronos Dashboard" />
+        <Title text="Invokr Dashboard" />
         <Router base=base>
             <div class="flex min-h-screen">
                 <Sidebar />

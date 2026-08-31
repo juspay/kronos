@@ -1,20 +1,20 @@
 [package]
-name = "kronos-worker"
+name = "invokr-worker"
 version.workspace = true
 edition.workspace = true
 
 [[bin]]
-name = "kronos-worker"
+name = "invokr-worker"
 path = "src/main.rs"
 
 [features]
 default = []
 kafka = ["rdkafka"]
 redis-stream = ["redis"]
-kms = ["kronos-common/kms"]
+kms = ["invokr-common/kms"]
 
 [dependencies]
-kronos-common = { path = "../common" }
+invokr-common = { path = "../common" }
 tokio.workspace = true
 sqlx.workspace = true
 serde.workspace = true

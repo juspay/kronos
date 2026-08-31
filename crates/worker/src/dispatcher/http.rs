@@ -1,5 +1,5 @@
 use super::DispatchResult;
-use kronos_common::metrics as m;
+use invokr_common::metrics as m;
 use reqwest::Client;
 use serde_json::Value;
 use std::time::Duration;
@@ -33,7 +33,7 @@ pub async fn dispatch(client: &Client, spec: &Value, idempotency_key: &str) -> D
         for (k, v) in headers {
             if let Some(val) = v.as_str() {
                 req = req.header(k.as_str(), val);
-                if k.eq_ignore_ascii_case("x-kronos-idempotency-key") {
+                if k.eq_ignore_ascii_case("x-invokr-idempotency-key") {
                     has_user_idempotency_header = true;
                 }
             }
@@ -41,7 +41,7 @@ pub async fn dispatch(client: &Client, spec: &Value, idempotency_key: &str) -> D
     }
 
     if !has_user_idempotency_header {
-        req = req.header("x-kronos-idempotency-key", idempotency_key);
+        req = req.header("x-invokr-idempotency-key", idempotency_key);
     }
 
     req = req.timeout(Duration::from_millis(timeout_ms));
@@ -132,7 +132,7 @@ mod tests {
     }
 
     /// POST to mock-server /success and verify 200 response.
-    /// Requires: `cargo run -p kronos-mock-server`
+    /// Requires: `cargo run -p invokr-mock-server`
     #[tokio::test]
     async fn test_http_dispatch_success() {
         let client = Client::new();

@@ -1,4 +1,4 @@
-# Kronos
+# Invokr
 
 **`setTimeout` and `setInterval` as a service.**
 
@@ -10,7 +10,7 @@ Distributed, durable, retriable, observable delivery of jobs to HTTP endpoints, 
 
 If you've written JavaScript, you already know the API.
 
-| What you want | JS | Kronos |
+| What you want | JS | Invokr |
 |---|---|---|
 | Fire now | `setTimeout(fn, 0)` | `POST /v1/jobs { trigger: IMMEDIATE }` |
 | Fire later | `setTimeout(fn, 5000)` | `POST /v1/jobs { trigger: DELAYED, run_at: "..." }` |
@@ -62,7 +62,7 @@ Except: it survives crashes, retries on failure, never fires twice, and every ex
 
 ### How scheduling works
 
-Kronos uses **PostgreSQL pg_cron** for CRON materialization and **transaction-based pickup** for all job types:
+Invokr uses **PostgreSQL pg_cron** for CRON materialization and **transaction-based pickup** for all job types:
 
 - **IMMEDIATE** jobs: Execution is created as `QUEUED` in the same transaction as the job. Workers pick it up directly.
 - **DELAYED** jobs: Execution is created as `PENDING` with a `run_at` timestamp. Workers pick up PENDING executions once `run_at <= now()`.
@@ -74,15 +74,15 @@ No separate scheduler process is needed. The database handles all scheduling con
 
 | Crate | Description |
 |-------|-------------|
-| `kronos-common` | Shared library — models, DB layer, config, tenant management, caching, metrics |
-| `kronos-api` | REST API server (actix-web). CRUD for all resources, job invocation, Prometheus metrics at `/metrics` |
-| `kronos-worker` | Execution engine. Polls DB for QUEUED/RETRYING/PENDING executions, resolves templates, dispatches to endpoints. Exposes metrics via HTTP listener |
-| `kronos-mock-server` | Test fixture — HTTP server on port 9999 for integration tests |
-| `kronos-dashboard` | Web UI — Leptos/WASM, shows jobs, executions, attempts. Excluded from workspace build |
+| `invokr-common` | Shared library — models, DB layer, config, tenant management, caching, metrics |
+| `invokr-api` | REST API server (actix-web). CRUD for all resources, job invocation, Prometheus metrics at `/metrics` |
+| `invokr-worker` | Execution engine. Polls DB for QUEUED/RETRYING/PENDING executions, resolves templates, dispatches to endpoints. Exposes metrics via HTTP listener |
+| `invokr-mock-server` | Test fixture — HTTP server on port 9999 for integration tests |
+| `invokr-dashboard` | Web UI — Leptos/WASM, shows jobs, executions, attempts. Excluded from workspace build |
 
 ### Multi-tenancy
 
-Kronos uses **schema-per-tenant** isolation. Each workspace gets its own PostgreSQL schema with isolated tables. Shared tables live in the `public` schema.
+Invokr uses **schema-per-tenant** isolation. Each workspace gets its own PostgreSQL schema with isolated tables. Shared tables live in the `public` schema.
 
 ```
 public schema:        organizations, workspaces
@@ -120,7 +120,7 @@ The API is now running at `http://localhost:8080`.
 
 If you'd rather drive each step yourself (e.g. to run with a path prefix and the
 dashboard), the flow below mirrors what `just setup`/`just dev` automate. It assumes
-the Postgres container from `docker compose` is up and named `kronos-postgres-1`, with
+the Postgres container from `docker compose` is up and named `invokr-postgres-1`, with
 host port **5434** mapped to the container's `5432` (see `docker-compose.yml`).
 
 ```bash
@@ -129,13 +129,13 @@ docker compose up -d postgres
 ```
 
 **1. (Re)create the database.** Connect to the default `postgres` database and drop/recreate
-`taskexecutor` for a clean slate:
+`invokr_db` for a clean slate:
 
 ```bash
-docker exec -i kronos-postgres-1 psql -U kronos -d postgres -c \
-  "DROP DATABASE IF EXISTS taskexecutor WITH (FORCE);"
-docker exec -i kronos-postgres-1 psql -U kronos -d postgres -c \
-  "CREATE DATABASE taskexecutor;"
+docker exec -i invokr-postgres-1 psql -U invokr -d postgres -c \
+  "DROP DATABASE IF EXISTS invokr_db WITH (FORCE);"
+docker exec -i invokr-postgres-1 psql -U invokr -d postgres -c \
+  "CREATE DATABASE invokr_db;"
 ```
 
 **2. Apply migrations** in order:
@@ -146,7 +146,7 @@ for f in migrations/20260317000000_initial.sql \
          migrations/20260322000000_txn_based_pickup.sql \
          migrations/20260322000001_pg_cron.sql; do
   echo ">> applying $f"
-  docker exec -i kronos-postgres-1 psql -U kronos -d taskexecutor -v ON_ERROR_STOP=1 < "$f"
+  docker exec -i invokr-postgres-1 psql -U invokr -d invokr_db -v ON_ERROR_STOP=1 < "$f"
 done
 ```
 
@@ -154,24 +154,24 @@ done
 and the API under `/api`, on port 8090):
 
 ```bash
-TE_DATABASE_URL="postgres://kronos:kronos@localhost:5434/taskexecutor" \
-TE_LISTEN_ADDR="0.0.0.0:8090" \
-TE_MODE="both" \
-TE_PATH_PREFIX="/api" \
-TE_DASHBOARD_PATH_PREFIX="/dashboard" \
-TE_DASHBOARD_DIST_DIR="crates/dashboard/pkg" \
-cargo run -p kronos-api
+INVOKR_DATABASE_URL="postgres://invokr:invokr@localhost:5434/invokr_db" \
+INVOKR_LISTEN_ADDR="0.0.0.0:8090" \
+INVOKR_MODE="both" \
+INVOKR_PATH_PREFIX="/api" \
+INVOKR_DASHBOARD_PATH_PREFIX="/dashboard" \
+INVOKR_DASHBOARD_DIST_DIR="crates/dashboard/pkg" \
+cargo run -p invokr-api
 ```
 
-> Building the dashboard bundle first (`just dashboard-build`) is required for `TE_MODE=both`
+> Building the dashboard bundle first (`just dashboard-build`) is required for `INVOKR_MODE=both`
 > to serve `crates/dashboard/pkg`.
 
 **4. Run the worker** in a separate shell:
 
 ```bash
-TE_DATABASE_URL="postgres://kronos:kronos@localhost:5434/taskexecutor" \
-TE_METRICS_PORT="9090" \
-cargo run -p kronos-worker
+INVOKR_DATABASE_URL="postgres://invokr:invokr@localhost:5434/invokr_db" \
+INVOKR_METRICS_PORT="9090" \
+cargo run -p invokr-worker
 ```
 
 ### Verify
@@ -250,7 +250,7 @@ curl -X POST http://localhost:8080/v1/secrets $HEADERS \
   }'
 ```
 
-### 3. Register — tell Kronos where to deliver
+### 3. Register — tell Invokr where to deliver
 
 ```bash
 curl -X POST http://localhost:8080/v1/endpoints $HEADERS \
@@ -344,7 +344,7 @@ curl http://localhost:8080/v1/executions/{execution_id}/attempts $HEADERS
 
 ## Using the TypeScript SDK
 
-Kronos generates a TypeScript SDK from Smithy models.
+Invokr generates a TypeScript SDK from Smithy models.
 
 ```bash
 just build-sdk    # Generate and compile the SDK
@@ -352,9 +352,9 @@ just cli-install  # Install CLI deps (links to built SDK)
 ```
 
 ```typescript
-import { KronosServiceClient, CreateJobCommand } from "kronos-sdk";
+import { InvokrServiceClient, CreateJobCommand } from "invokr-sdk";
 
-const client = new KronosServiceClient({
+const client = new InvokrServiceClient({
   endpoint: "http://localhost:8080",
   token: { token: "dev-api-key" },
 });
@@ -446,30 +446,30 @@ curl http://localhost:8080/v1/jobs/{job_id}/versions $HEADERS
 
 ## Monitoring
 
-Kronos exposes Prometheus metrics. The API serves metrics at `GET /metrics`, the worker exposes metrics via a separate HTTP listener (default port 9090).
+Invokr exposes Prometheus metrics. The API serves metrics at `GET /metrics`, the worker exposes metrics via a separate HTTP listener (default port 9090).
 
 ```bash
 # Start Prometheus + Grafana
 just monitoring-up
 
 # Prometheus: http://localhost:9099
-# Grafana:    http://localhost:3001  (admin / kronos)
+# Grafana:    http://localhost:3001  (admin / invokr)
 ```
 
-A pre-built Grafana dashboard is included at `monitoring/grafana/dashboards/kronos-platform.json`.
+A pre-built Grafana dashboard is included at `monitoring/grafana/dashboards/invokr-platform.json`.
 
 ### Key metrics
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `kronos_jobs_created_total` | Counter | Jobs created, by trigger type, endpoint, schema |
-| `kronos_executions_claimed_total` | Counter | Executions claimed by workers |
-| `kronos_executions_completed_total` | Counter | Executions completed, by status (SUCCESS/FAILED) |
-| `kronos_execution_duration_seconds` | Histogram | End-to-end execution duration |
-| `kronos_dispatch_total` | Counter | Dispatch attempts by endpoint type |
-| `kronos_dispatch_duration_seconds` | Histogram | Dispatcher-level latency |
-| `kronos_worker_inflight_executions` | Gauge | Currently in-flight executions per worker |
-| `kronos_worker_poll_idle_total` | Counter | Idle poll cycles (no work found) |
+| `invokr_jobs_created_total` | Counter | Jobs created, by trigger type, endpoint, schema |
+| `invokr_executions_claimed_total` | Counter | Executions claimed by workers |
+| `invokr_executions_completed_total` | Counter | Executions completed, by status (SUCCESS/FAILED) |
+| `invokr_execution_duration_seconds` | Histogram | End-to-end execution duration |
+| `invokr_dispatch_total` | Counter | Dispatch attempts by endpoint type |
+| `invokr_dispatch_duration_seconds` | Histogram | Dispatcher-level latency |
+| `invokr_worker_inflight_executions` | Gauge | Currently in-flight executions per worker |
+| `invokr_worker_poll_idle_total` | Counter | Idle poll cycles (no work found) |
 
 ---
 
@@ -528,32 +528,32 @@ All list endpoints support cursor-based pagination via `?limit=N&cursor=...`.
 
 ## Configuration
 
-All configuration is via environment variables prefixed with `TE_`:
+All configuration is via environment variables prefixed with `INVOKR_`:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TE_DATABASE_URL` | *required* | PostgreSQL connection string |
-| `TE_LISTEN_ADDR` | `0.0.0.0:8080` | API server bind address |
-| `TE_API_KEY` | `dev-api-key` | Bearer token for authentication |
-| `TE_ENCRYPTION_KEY` | 64 zeros | AES key for secret encryption (hex, 32+ bytes) |
-| `TE_DB_POOL_SIZE` | `50` | Database connection pool size |
-| `TE_WORKER_MAX_CONCURRENT` | `50` | Max concurrent job executions per worker |
-| `TE_WORKER_POLL_INTERVAL_MS` | `200` | Worker DB polling interval |
-| `TE_WORKER_SHUTDOWN_TIMEOUT_SEC` | `30` | Graceful shutdown timeout for in-flight work |
-| `TE_CONFIG_CACHE_TTL_SEC` | `60` | Config cache TTL in worker |
-| `TE_SECRET_CACHE_TTL_SEC` | `300` | Secret cache TTL in worker |
-| `TE_METRICS_PORT` | `9090` | Prometheus metrics HTTP listener port (worker) |
-| `TE_PATH_PREFIX` | *(empty)* | URL path prefix for the API server (e.g. `/kronos`) |
+| `INVOKR_DATABASE_URL` | *required* | PostgreSQL connection string |
+| `INVOKR_LISTEN_ADDR` | `0.0.0.0:8080` | API server bind address |
+| `INVOKR_API_KEY` | `dev-api-key` | Bearer token for authentication |
+| `INVOKR_ENCRYPTION_KEY` | 64 zeros | AES key for secret encryption (hex, 32+ bytes) |
+| `INVOKR_DB_POOL_SIZE` | `50` | Database connection pool size |
+| `INVOKR_WORKER_MAX_CONCURRENT` | `50` | Max concurrent job executions per worker |
+| `INVOKR_WORKER_POLL_INTERVAL_MS` | `200` | Worker DB polling interval |
+| `INVOKR_WORKER_SHUTDOWN_TIMEOUT_SEC` | `30` | Graceful shutdown timeout for in-flight work |
+| `INVOKR_CONFIG_CACHE_TTL_SEC` | `60` | Config cache TTL in worker |
+| `INVOKR_SECRET_CACHE_TTL_SEC` | `300` | Secret cache TTL in worker |
+| `INVOKR_METRICS_PORT` | `9090` | Prometheus metrics HTTP listener port (worker) |
+| `INVOKR_PATH_PREFIX` | *(empty)* | URL path prefix for the API server (e.g. `/invokr`) |
 
 ### Path prefix
 
-Kronos can be hosted under a URL prefix, useful when running behind a reverse proxy alongside other services.
+Invokr can be hosted under a URL prefix, useful when running behind a reverse proxy alongside other services.
 
-**API server** — set `TE_PATH_PREFIX` at runtime:
+**API server** — set `INVOKR_PATH_PREFIX` at runtime:
 
 ```bash
-# All routes are now under /kronos: /kronos/health, /kronos/v1/jobs, etc.
-TE_PATH_PREFIX=/kronos just dev
+# All routes are now under /invokr: /invokr/health, /invokr/v1/jobs, etc.
+INVOKR_PATH_PREFIX=/invokr just dev
 ```
 
 When a prefix is configured, hitting `GET /` returns a `302` redirect to `{prefix}/health`.
@@ -562,25 +562,25 @@ When a prefix is configured, hitting `GET /` returns a `302` redirect to `{prefi
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TE_DASHBOARD_PATH_PREFIX` | *(empty)* | URL prefix for dashboard routes (e.g. `/dashboard`) |
-| `TE_API_BASE_URL` | *(empty)* | Full API base URL including prefix (e.g. `http://localhost:8080/kronos`) |
+| `INVOKR_DASHBOARD_PATH_PREFIX` | *(empty)* | URL prefix for dashboard routes (e.g. `/dashboard`) |
+| `INVOKR_API_BASE_URL` | *(empty)* | Full API base URL including prefix (e.g. `http://localhost:8080/invokr`) |
 
 ```bash
-# Dashboard at http://localhost:3000/dashboard/, API calls go to http://localhost:8080/kronos/v1/...
-TE_DASHBOARD_PATH_PREFIX=/dashboard TE_API_BASE_URL=http://localhost:8080/kronos just dashboard
+# Dashboard at http://localhost:3000/dashboard/, API calls go to http://localhost:8080/invokr/v1/...
+INVOKR_DASHBOARD_PATH_PREFIX=/dashboard INVOKR_API_BASE_URL=http://localhost:8080/invokr just dashboard
 ```
 
 Using `just` with `.env` (since the justfile has `set dotenv-load`):
 
 ```env
 # .env
-TE_PATH_PREFIX=/kronos
-TE_DASHBOARD_PATH_PREFIX=/dashboard
-TE_API_BASE_URL=http://localhost:8080/kronos
+INVOKR_PATH_PREFIX=/invokr
+INVOKR_DASHBOARD_PATH_PREFIX=/dashboard
+INVOKR_API_BASE_URL=http://localhost:8080/invokr
 ```
 
 ```bash
-just dev        # API at http://localhost:8080/kronos/...
+just dev        # API at http://localhost:8080/invokr/...
 just dashboard  # Dashboard at http://localhost:3000/dashboard/
 ```
 
@@ -588,8 +588,8 @@ Without these variables, everything works at the root path as before.
 
 **Note:** When using a path prefix, update monitoring and healthcheck configs to match:
 
-- **Prometheus** (`monitoring/prometheus.yml`): change `metrics_path` from `/metrics` to `/{prefix}/metrics` (e.g. `/kronos/metrics`)
-- **Docker healthchecks** (`docker-compose.prod.yml`): change healthcheck URLs from `http://localhost:8080/health` to `http://localhost:8080/{prefix}/health` (e.g. `http://localhost:8080/kronos/health`)
+- **Prometheus** (`monitoring/prometheus.yml`): change `metrics_path` from `/metrics` to `/{prefix}/metrics` (e.g. `/invokr/metrics`)
+- **Docker healthchecks** (`docker-compose.prod.yml`): change healthcheck URLs from `http://localhost:8080/health` to `http://localhost:8080/{prefix}/health` (e.g. `http://localhost:8080/invokr/health`)
 
 ---
 
@@ -663,7 +663,7 @@ just infra-down         # Stop all infra
 ### Project structure
 
 ```
-kronos/
+invokr/
 ├── crates/
 │   ├── common/          # Shared: models, DB, config, tenant, cache, metrics
 │   ├── api/             # REST API server (actix-web)
@@ -691,10 +691,10 @@ The worker dispatches to endpoint types via `crates/worker/src/dispatcher/`. Kaf
 
 ```bash
 # Build with Kafka support
-cargo build --workspace --features kronos-worker/kafka
+cargo build --workspace --features invokr-worker/kafka
 
 # Build with Redis Stream support
-cargo build --workspace --features kronos-worker/redis-stream
+cargo build --workspace --features invokr-worker/redis-stream
 ```
 
 To start Kafka or Redis for local dev:
@@ -725,7 +725,7 @@ Workers use a semaphore to limit concurrency (default 50). Each poll iteration a
 
 ### Database-driven scheduling
 
-Instead of a separate scheduler process, Kronos delegates scheduling to PostgreSQL:
+Instead of a separate scheduler process, Invokr delegates scheduling to PostgreSQL:
 
 - **pg_cron extension** handles CRON job materialization. When a CRON job is created, it's registered with `cron.schedule()`. pg_cron inserts a new `QUEUED` execution row on each tick with an idempotency key (`cron_{job_id}_{epoch_ms}`) to prevent duplicates.
 - **Transaction-based pickup** handles DELAYED jobs. The worker's claim query includes `PENDING` status with `run_at <= now()`, so delayed jobs are picked up directly when their time arrives — no promoter loop needed.

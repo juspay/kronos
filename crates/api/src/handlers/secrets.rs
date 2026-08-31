@@ -1,7 +1,7 @@
 use crate::extractors::{AuthenticatedRequest, Workspace};
 use crate::router::AppState;
 use actix_web::{web, HttpResponse};
-use kronos_common::{
+use invokr_common::{
     crypto, db,
     db::DbContext,
     error::AppError,
@@ -19,7 +19,7 @@ pub async fn create(
         .map_err(|e| AppError::Internal(format!("Encryption failed: {}", e)))?;
 
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -46,7 +46,7 @@ pub async fn list(
     params: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -84,7 +84,7 @@ pub async fn get(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -110,7 +110,7 @@ pub async fn update(
         .map_err(|e| AppError::Internal(format!("Encryption failed: {}", e)))?;
 
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -131,7 +131,7 @@ pub async fn delete(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);

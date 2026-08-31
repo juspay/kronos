@@ -1,5 +1,5 @@
 /**
- * Kronos CLI — Test Delayed Job Execution
+ * Invokr CLI — Test Delayed Job Execution
  *
  * This script:
  * 1. Creates an endpoint pointing to the mock-server's /success route
@@ -9,10 +9,10 @@
  * 5. Prints the execution result and attempts
  *
  * Prerequisites:
- *   - Kronos API running at KRONOS_URL (default: http://localhost:8080)
+ *   - Invokr API running at INVOKR_URL (default: http://localhost:8080)
  *   - Mock server running at MOCK_URL (default: http://localhost:9999)
- *   - Kronos worker running
- *   - Kronos scheduler running (delayed_promoter)
+ *   - Invokr worker running
+ *   - Invokr scheduler running (delayed_promoter)
  */
 
 import {
@@ -57,7 +57,7 @@ async function main() {
         run_at: runAt,
         idempotency_key: idempotencyKey,
         input: {
-          message: "Hello from Kronos delayed job test",
+          message: "Hello from Invokr delayed job test",
           timestamp: new Date().toISOString(),
           test_id: Math.random().toString(36).slice(2),
         },

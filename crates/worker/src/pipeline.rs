@@ -1,5 +1,5 @@
 use chrono::Utc;
-use kronos_common::{
+use invokr_common::{
     cache::{ConfigCache, SecretCache},
     crypto, db, db::DbContext, metrics as m, template,
 };

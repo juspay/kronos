@@ -1,5 +1,5 @@
 /**
- * Kronos CLI — Test CRON Job Execution
+ * Invokr CLI — Test CRON Job Execution
  *
  * This script:
  * 1. Creates an endpoint pointing to the mock-server's /success route
@@ -9,10 +9,10 @@
  * 5. Cancels the job and verifies it stops
  *
  * Prerequisites:
- *   - Kronos API running at KRONOS_URL (default: http://localhost:8080)
+ *   - Invokr API running at INVOKR_URL (default: http://localhost:8080)
  *   - Mock server running at MOCK_URL (default: http://localhost:9999)
- *   - Kronos worker running
- *   - Kronos scheduler running (cron_materializer)
+ *   - Invokr worker running
+ *   - Invokr scheduler running (cron_materializer)
  */
 
 import {
@@ -104,7 +104,7 @@ async function main() {
         cron: CRON_EVERY_MIN,
         timezone: "UTC",
         input: {
-          message: "Hello from Kronos CRON test",
+          message: "Hello from Invokr CRON test",
           iteration: "v1",
         },
       }),

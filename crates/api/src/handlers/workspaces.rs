@@ -1,7 +1,7 @@
 use crate::extractors::AuthenticatedRequest;
 use crate::router::AppState;
 use actix_web::{web, HttpResponse};
-use kronos_common::{
+use invokr_common::{
     db,
     error::AppError,
     models::workspace::CreateWorkspace,

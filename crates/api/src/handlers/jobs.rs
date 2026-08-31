@@ -2,8 +2,8 @@ use crate::extractors::{AuthenticatedRequest, JobFilters, Workspace};
 use crate::router::AppState;
 use actix_web::{web, HttpResponse};
 use chrono::Utc;
-use kronos_common::metrics as m;
-use kronos_common::{
+use invokr_common::metrics as m;
+use invokr_common::{
     db,
     db::DbContext,
     error::AppError,
@@ -25,7 +25,7 @@ pub async fn create(
     let trigger = TriggerType::from_str_val(&body.trigger)
         .ok_or_else(|| AppError::InvalidRequest(format!("Invalid trigger: {}", body.trigger)))?;
 
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -34,7 +34,7 @@ pub async fn create(
         .await?
         .ok_or_else(|| AppError::EndpointNotFound(body.endpoint.clone()))?;
 
-    // INTERNAL endpoints back kronos-driven jobs (today: the dogfooded reaper)
+    // INTERNAL endpoints back invokr-driven jobs (today: the dogfooded reaper)
     // and are not user-creatable — see `handlers::endpoints::create`. The same
     // invariant has to hold on the job side, or a user could stack their own
     // jobs against an internal endpoint (extra reaper sweeps, or one-off
@@ -86,7 +86,7 @@ pub async fn create(
             };
 
             let mut tx =
-                kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
+                invokr_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
                     .await
                     .map_err(AppError::from)?;
             let mut db = DbContext::new(&mut *tx, prefix);
@@ -143,7 +143,7 @@ pub async fn create(
             })?;
 
             let mut tx =
-                kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
+                invokr_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
                     .await
                     .map_err(AppError::from)?;
             let mut db = DbContext::new(&mut *tx, prefix);
@@ -208,7 +208,7 @@ pub async fn create(
             })?;
 
             let mut tx =
-                kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
+                invokr_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
                     .await
                     .map_err(AppError::from)?;
             let mut db = DbContext::new(&mut *tx, prefix);
@@ -292,7 +292,7 @@ pub async fn list(
     filters: JobFilters,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -322,7 +322,7 @@ pub async fn get(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -342,7 +342,7 @@ pub async fn update(
     body: web::Json<UpdateJob>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let job_id = path.into_inner();
@@ -361,12 +361,12 @@ pub async fn update(
     if old_job.status != "ACTIVE" {
         return Err(AppError::JobNotUpdatable("Job is not active".into()));
     }
-    // INTERNAL jobs are kronos-managed (today: the dogfooded reaper). Changing
+    // INTERNAL jobs are invokr-managed (today: the dogfooded reaper). Changing
     // the schedule or pushing ends_at into the past would break monitoring for
     // this workspace, with nothing left to re-provision the job afterwards.
     if EndpointType::from_str_val(&old_job.endpoint_type) == Some(EndpointType::INTERNAL) {
         return Err(AppError::JobNotUpdatable(
-            "Internal kronos jobs cannot be modified through the API".into(),
+            "Internal invokr jobs cannot be modified through the API".into(),
         ));
     }
 
@@ -406,7 +406,7 @@ pub async fn update(
     // Drop the scoped connection before starting a transaction
     drop(conn);
 
-    let mut tx = kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
+    let mut tx = invokr_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *tx, prefix);
@@ -453,7 +453,7 @@ pub async fn cancel(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut tx = kronos_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
+    let mut tx = invokr_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *tx, prefix);
@@ -465,12 +465,12 @@ pub async fn cancel(
     if job.status == "RETIRED" {
         return Err(AppError::Conflict("Job is already retired".into()));
     }
-    // INTERNAL jobs are kronos-managed (today: the dogfooded reaper). Cancelling
+    // INTERNAL jobs are invokr-managed (today: the dogfooded reaper). Cancelling
     // one would stop the reaper from sweeping this workspace, with no surviving
     // bootstrap path to bring it back.
     if EndpointType::from_str_val(&job.endpoint_type) == Some(EndpointType::INTERNAL) {
         return Err(AppError::Conflict(
-            "Internal kronos jobs cannot be cancelled through the API".into(),
+            "Internal invokr jobs cannot be cancelled through the API".into(),
         ));
     }
 
@@ -503,7 +503,7 @@ pub async fn status(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -574,7 +574,7 @@ pub async fn versions(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -597,7 +597,7 @@ pub async fn list_executions(
     params: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -668,8 +668,8 @@ fn compute_next_cron(
 }
 
 fn job_response(
-    job: &kronos_common::models::Job,
-    exec: Option<&kronos_common::models::Execution>,
+    job: &invokr_common::models::Job,
+    exec: Option<&invokr_common::models::Execution>,
 ) -> serde_json::Value {
     let mut v = job_summary(job);
     if let Some(e) = exec {
@@ -685,7 +685,7 @@ fn job_response(
     v
 }
 
-fn job_summary(job: &kronos_common::models::Job) -> serde_json::Value {
+fn job_summary(job: &invokr_common::models::Job) -> serde_json::Value {
     serde_json::json!({
         "job_id": job.job_id,
         "endpoint": job.endpoint,

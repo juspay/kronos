@@ -2,7 +2,7 @@ use actix_files::Files;
 use actix_web::web;
 use leptos::prelude::*;
 use leptos_actix::{generate_route_list, render_app_to_stream_with_context};
-use kronos_dashboard::{app::{App, shell}, config::DashboardConfig};
+use invokr_dashboard::{app::{App, shell}, config::DashboardConfig};
 
 pub fn configure(
     dashboard_prefix: &str,

@@ -1,4 +1,4 @@
-# Task Executor Platform — API Specification
+# Invokr — API Specification
 
 **Version:** 4.1.0
 **Date:** March 15, 2026
@@ -7,9 +7,9 @@
 
 ## Overview
 
-The Task Executor is a distributed job scheduling and execution engine. It provides durable, exactly-once, retriable execution of HTTP callbacks — with support for immediate, delayed, and recurring triggers.
+Invokr is a distributed job scheduling and execution engine. It provides durable, exactly-once, retriable execution of HTTP callbacks — with support for immediate, delayed, and recurring triggers.
 
-**Base URL:** `https://api.taskexecutor.io/v1`
+**Base URL:** `https://api.invokr.io/v1`
 
 ### How It Works
 
@@ -21,7 +21,7 @@ The Task Executor is a distributed job scheduling and execution engine. It provi
 
 ### Conceptual Model
 
-| JS Primitive | Task Executor | Trigger |
+| JS Primitive | Invokr | Trigger |
 |---|---|---|
 | `setTimeout(fn, 0)` | `POST /jobs { trigger: IMMEDIATE }` | Fire once, now |
 | `setTimeout(fn, delay)` | `POST /jobs { trigger: DELAYED }` | Fire once, later |

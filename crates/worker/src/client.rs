@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use kronos_common::{
+use invokr_common::{
     cache::{ConfigCache, SecretCache},
     db,
     db::DbContext,
@@ -33,10 +33,10 @@ pub enum JobTrigger {
     },
 }
 
-/// Abstracts over library-mode (`KronosLibraryClient`) and service-mode (`KronosHttpClient`).
+/// Abstracts over library-mode (`InvokrLibraryClient`) and service-mode (`InvokrHttpClient`).
 /// Switching between the two requires only env-var changes — no code changes at call sites.
 #[async_trait]
-pub trait KronosClient: Send + Sync {
+pub trait InvokrClient: Send + Sync {
     async fn upsert_secret(
         &self,
         schema_name: &str,
@@ -68,7 +68,7 @@ pub trait KronosClient: Send + Sync {
     ) -> anyhow::Result<String>;
 
     /// Library mode: no-op — the caller's workspace template already provisioned the tables.
-    /// Service mode: tells Kronos service to create the scheduler tables in its own DB.
+    /// Service mode: tells Invokr service to create the scheduler tables in its own DB.
     async fn provision_workspace(&self, schema_name: &str) -> anyhow::Result<()>;
 
     /// Cancel a job. For CRON jobs also unregisters the pg_cron schedule.
@@ -104,17 +104,17 @@ impl Default for WorkerConfig {
     }
 }
 
-/// The public API for embedding Kronos in another application.
+/// The public API for embedding Invokr in another application.
 ///
 /// Holds a caller-provided `PgPool` and exposes job creation, endpoint
 /// registration, and worker startup. The caller controls pool sizing.
 #[derive(Clone)]
-pub struct KronosLibraryClient {
+pub struct InvokrLibraryClient {
     pool: PgPool,
     ctx: Arc<PipelineContext>,
 }
 
-impl KronosLibraryClient {
+impl InvokrLibraryClient {
     /// `table_prefix` must include the trailing underscore (e.g. `"sched_"`); use `""` for no prefix.
     pub fn new(
         pool: PgPool,
@@ -272,7 +272,7 @@ impl KronosLibraryClient {
     }
 
     /// Upsert a secret in the given workspace schema.
-    /// The plaintext value is encrypted with Kronos's own encryption key before storage.
+    /// The plaintext value is encrypted with Invokr's own encryption key before storage.
     pub async fn upsert_secret(
         &self,
         schema_name: &str,
@@ -280,7 +280,7 @@ impl KronosLibraryClient {
         plaintext: &str,
     ) -> anyhow::Result<()> {
         let prefix = self.ctx.table_prefix.as_str();
-        let encrypted = kronos_common::crypto::encrypt(plaintext, &self.ctx.encryption_key)?;
+        let encrypted = invokr_common::crypto::encrypt(plaintext, &self.ctx.encryption_key)?;
         let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
         let mut db = DbContext::new(&mut *conn, prefix);
         if db::secrets::get(&mut db, name).await?.is_some() {
@@ -384,8 +384,8 @@ impl WorkerHandle {
 }
 
 /// Build an AppConfig from the PipelineContext and WorkerConfig for the poller.
-fn build_app_config(ctx: &PipelineContext, wc: &WorkerConfig) -> kronos_common::config::AppConfig {
-    use kronos_common::config::{
+fn build_app_config(ctx: &PipelineContext, wc: &WorkerConfig) -> invokr_common::config::AppConfig {
+    use invokr_common::config::{
         AppConfig, CryptoEnv, DbEnv, MetricsEnv, ReaperEnv, ServerEnv, ServerMode, WorkerEnv,
     };
 
@@ -423,18 +423,18 @@ fn build_app_config(ctx: &PipelineContext, wc: &WorkerConfig) -> kronos_common::
 }
 
 #[async_trait]
-impl KronosClient for KronosLibraryClient {
+impl InvokrClient for InvokrLibraryClient {
     async fn upsert_secret(
         &self,
         schema_name: &str,
         name: &str,
         plaintext: &str,
     ) -> anyhow::Result<()> {
-        KronosLibraryClient::upsert_secret(self, schema_name, name, plaintext).await
+        InvokrLibraryClient::upsert_secret(self, schema_name, name, plaintext).await
     }
 
     async fn delete_secret(&self, schema_name: &str, name: &str) -> anyhow::Result<()> {
-        KronosLibraryClient::delete_secret(self, schema_name, name).await
+        InvokrLibraryClient::delete_secret(self, schema_name, name).await
     }
 
     async fn register_endpoint(
@@ -445,12 +445,12 @@ impl KronosClient for KronosLibraryClient {
         spec: serde_json::Value,
         retry_policy: Option<serde_json::Value>,
     ) -> anyhow::Result<()> {
-        KronosLibraryClient::register_endpoint(self, schema_name, name, endpoint_type, spec, retry_policy)
+        InvokrLibraryClient::register_endpoint(self, schema_name, name, endpoint_type, spec, retry_policy)
             .await
     }
 
     async fn delete_endpoint(&self, schema_name: &str, name: &str) -> anyhow::Result<()> {
-        KronosLibraryClient::delete_endpoint(self, schema_name, name).await
+        InvokrLibraryClient::delete_endpoint(self, schema_name, name).await
     }
 
     async fn create_job(
@@ -462,7 +462,7 @@ impl KronosClient for KronosLibraryClient {
         trigger: JobTrigger,
         idempotency_key: Option<&str>,
     ) -> anyhow::Result<String> {
-        KronosLibraryClient::create_job(
+        InvokrLibraryClient::create_job(
             self,
             schema_name,
             endpoint,
@@ -479,7 +479,7 @@ impl KronosClient for KronosLibraryClient {
     }
 
     async fn cancel_job(&self, schema_name: &str, job_id: &str) -> anyhow::Result<()> {
-        KronosLibraryClient::cancel_job(self, schema_name, job_id).await
+        InvokrLibraryClient::cancel_job(self, schema_name, job_id).await
     }
 
     async fn get_execution(
@@ -487,25 +487,25 @@ impl KronosClient for KronosLibraryClient {
         schema_name: &str,
         execution_id: &str,
     ) -> anyhow::Result<Option<Execution>> {
-        KronosLibraryClient::get_execution(self, schema_name, execution_id).await
+        InvokrLibraryClient::get_execution(self, schema_name, execution_id).await
     }
 }
 
-/// HTTP client for Kronos-as-a-service mode. Implements `KronosClient` identically
-/// to `KronosLibraryClient` so all call sites are transparent to the deployment mode.
+/// HTTP client for Invokr-as-a-service mode. Implements `InvokrClient` identically
+/// to `InvokrLibraryClient` so all call sites are transparent to the deployment mode.
 ///
 /// Workspace routing: each request sends `x-org-id` and `x-workspace-id` (= schema_name)
-/// headers. Kronos resolves the workspace by slug, which requires `resolve_schema` in Kronos
+/// headers. Invokr resolves the workspace by slug, which requires `resolve_schema` in Invokr
 /// to accept slug as well as workspace_id UUID (see `db/workspaces.rs`).
-pub struct KronosHttpClient {
+pub struct InvokrHttpClient {
     base_url: String,
     api_key: String,
-    /// Kronos org_id this client operates under. Set via `KRONOS_ORG_ID` env var.
+    /// Invokr org_id this client operates under. Set via `INVOKR_ORG_ID` env var.
     org_id: String,
     http_client: Client,
 }
 
-impl KronosHttpClient {
+impl InvokrHttpClient {
     pub fn new(base_url: String, api_key: String, org_id: String) -> Self {
         Self { base_url, api_key, org_id, http_client: Client::new() }
     }
@@ -535,7 +535,7 @@ impl KronosHttpClient {
 }
 
 #[async_trait]
-impl KronosClient for KronosHttpClient {
+impl InvokrClient for InvokrHttpClient {
     async fn upsert_secret(
         &self,
         schema_name: &str,
@@ -704,9 +704,9 @@ impl KronosClient for KronosHttpClient {
     }
 
     async fn provision_workspace(&self, schema_name: &str) -> anyhow::Result<()> {
-        // Register workspace in Kronos so it can resolve x-workspace-id = schema_name.
-        // The org must already exist (created by the operator, org_id set via KRONOS_ORG_ID).
-        // Workspace slug = schema_name; Kronos resolve_schema accepts slug OR uuid.
+        // Register workspace in Invokr so it can resolve x-workspace-id = schema_name.
+        // The org must already exist (created by the operator, org_id set via INVOKR_ORG_ID).
+        // Workspace slug = schema_name; Invokr resolve_schema accepts slug OR uuid.
         let resp = self
             .authed(
                 self.http_client
