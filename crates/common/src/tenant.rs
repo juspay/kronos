@@ -19,7 +19,10 @@ pub fn validate_schema_name(name: &str) -> bool {
 
 /// Validates that a table prefix contains only safe characters (empty is also valid).
 pub fn validate_table_prefix(prefix: &str) -> bool {
-    prefix.is_empty() || prefix.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    prefix.is_empty()
+        || prefix
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// Maximum length of an org/workspace slug. Kept well under PostgreSQL's 63-byte
@@ -62,9 +65,7 @@ pub fn build_schema_name(org_id: &str, workspace_slug: &str) -> String {
 /// returned future is usable inside the spawned worker task; implementors
 /// can simply write `async fn get_active_schemas(&self)`.
 pub trait SchemaProvider: Send + Sync + 'static {
-    fn get_active_schemas(
-        &self,
-    ) -> impl Future<Output = Result<Vec<String>, sqlx::Error>> + Send;
+    fn get_active_schemas(&self) -> impl Future<Output = Result<Vec<String>, sqlx::Error>> + Send;
 }
 
 /// Cached registry of active workspace schemas.
@@ -95,34 +96,6 @@ impl SchemaRegistry {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn accepts_well_formed_slugs() {
-        for s in ["acme", "acme-corp", "team-1", "a", "ab-cd-ef", "x1y2z3"] {
-            assert!(validate_slug(s), "expected '{s}' to be valid");
-        }
-    }
-
-    #[test]
-    fn rejects_malformed_slugs() {
-        for s in [
-            "",
-            "-acme",
-            "acme-",
-            "Acme",          // uppercase
-            "acme_corp",     // underscore
-            "acme corp",     // space
-            "acme.corp",     // dot
-            &"a".repeat(MAX_SLUG_LEN + 1),
-        ] {
-            assert!(!validate_slug(s), "expected '{s}' to be invalid");
-        }
-    }
-}
-
 impl SchemaProvider for SchemaRegistry {
     async fn get_active_schemas(&self) -> Result<Vec<String>, sqlx::Error> {
         // Check cache first
@@ -146,5 +119,33 @@ impl SchemaProvider for SchemaRegistry {
         cache.fetched_at = Instant::now();
 
         Ok(schemas)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_well_formed_slugs() {
+        for s in ["acme", "acme-corp", "team-1", "a", "ab-cd-ef", "x1y2z3"] {
+            assert!(validate_slug(s), "expected '{s}' to be valid");
+        }
+    }
+
+    #[test]
+    fn rejects_malformed_slugs() {
+        for s in [
+            "",
+            "-acme",
+            "acme-",
+            "Acme",      // uppercase
+            "acme_corp", // underscore
+            "acme corp", // space
+            "acme.corp", // dot
+            &"a".repeat(MAX_SLUG_LEN + 1),
+        ] {
+            assert!(!validate_slug(s), "expected '{s}' to be invalid");
+        }
     }
 }

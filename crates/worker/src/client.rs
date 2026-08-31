@@ -5,7 +5,7 @@ use invokr_common::{
     db,
     db::DbContext,
     models::Execution,
-    tenant::{SchemaProvider, validate_table_prefix},
+    tenant::{validate_table_prefix, SchemaProvider},
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -176,11 +176,17 @@ impl InvokrLibraryClient {
         let ikey = idempotency_key.unwrap_or("");
 
         let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        let mut db = DbContext::new(&mut *conn, prefix);
+        let mut db = DbContext::new(&mut conn, prefix);
 
         let ep = db::endpoints::get(&mut db, endpoint)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("Endpoint '{}' not found in schema '{}'", endpoint, schema_name))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Endpoint '{}' not found in schema '{}'",
+                    endpoint,
+                    schema_name
+                )
+            })?;
 
         let execution_id = match trigger {
             JobTrigger::Immediate => {
@@ -246,27 +252,40 @@ impl InvokrLibraryClient {
     ) -> anyhow::Result<()> {
         let prefix = self.ctx.table_prefix.as_str();
         let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        let mut db = DbContext::new(&mut *conn, prefix);
+        let mut db = DbContext::new(&mut conn, prefix);
 
         let existing = db::endpoints::get(&mut db, name).await?;
         if existing.is_none() {
-            db::endpoints::create(&mut db, name, endpoint_type, None, None, &spec, retry_policy.as_ref()).await?;
+            db::endpoints::create(
+                &mut db,
+                name,
+                endpoint_type,
+                None,
+                None,
+                &spec,
+                retry_policy.as_ref(),
+            )
+            .await?;
         } else {
-            db::endpoints::update(&mut db, name, Some(&spec), None, None, retry_policy.as_ref()).await?;
+            db::endpoints::update(
+                &mut db,
+                name,
+                Some(&spec),
+                None,
+                None,
+                retry_policy.as_ref(),
+            )
+            .await?;
         }
 
         Ok(())
     }
 
     /// Delete an endpoint from the given workspace schema.
-    pub async fn delete_endpoint(
-        &self,
-        schema_name: &str,
-        name: &str,
-    ) -> anyhow::Result<()> {
+    pub async fn delete_endpoint(&self, schema_name: &str, name: &str) -> anyhow::Result<()> {
         let prefix = self.ctx.table_prefix.as_str();
         let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        let mut db = DbContext::new(&mut *conn, prefix);
+        let mut db = DbContext::new(&mut conn, prefix);
         db::endpoints::delete(&mut db, name).await?;
         Ok(())
     }
@@ -282,7 +301,7 @@ impl InvokrLibraryClient {
         let prefix = self.ctx.table_prefix.as_str();
         let encrypted = invokr_common::crypto::encrypt(plaintext, &self.ctx.encryption_key)?;
         let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        let mut db = DbContext::new(&mut *conn, prefix);
+        let mut db = DbContext::new(&mut conn, prefix);
         if db::secrets::get(&mut db, name).await?.is_some() {
             db::secrets::update(&mut db, name, &encrypted).await?;
         } else {
@@ -292,23 +311,22 @@ impl InvokrLibraryClient {
     }
 
     /// Delete a secret from the given workspace schema. No-op if the secret does not exist.
-    pub async fn delete_secret(
-        &self,
-        schema_name: &str,
-        name: &str,
-    ) -> anyhow::Result<()> {
+    pub async fn delete_secret(&self, schema_name: &str, name: &str) -> anyhow::Result<()> {
         let prefix = self.ctx.table_prefix.as_str();
         let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        let mut db = DbContext::new(&mut *conn, prefix);
+        let mut db = DbContext::new(&mut conn, prefix);
         db::secrets::delete(&mut db, name).await?;
         Ok(())
     }
 
     /// Cancel a job and its pending executions.
+    // `drop(db)` releases the scoped connection borrow before the pg_cron
+    // unschedule runs on the pool; it is a borrow handoff, not a destructor.
+    #[allow(clippy::drop_non_drop)]
     pub async fn cancel_job(&self, schema_name: &str, job_id: &str) -> anyhow::Result<()> {
         let prefix = self.ctx.table_prefix.as_str();
         let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        let mut db = DbContext::new(&mut *conn, prefix);
+        let mut db = DbContext::new(&mut conn, prefix);
 
         let job = db::jobs::get(&mut db, job_id)
             .await?
@@ -333,7 +351,7 @@ impl InvokrLibraryClient {
     ) -> anyhow::Result<Option<Execution>> {
         let prefix = self.ctx.table_prefix.as_str();
         let mut conn = db::scoped::scoped_connection(&self.pool, schema_name).await?;
-        let mut db = DbContext::new(&mut *conn, prefix);
+        let mut db = DbContext::new(&mut conn, prefix);
         Ok(db::executions::get(&mut db, execution_id).await?)
     }
 
@@ -355,9 +373,7 @@ impl InvokrLibraryClient {
         let cancel = CancellationToken::new();
         let join = {
             let cancel = cancel.clone();
-            tokio::spawn(async move {
-                poller::run(pool, config, schema_provider, cancel).await
-            })
+            tokio::spawn(async move { poller::run(pool, config, schema_provider, cancel).await })
         };
         WorkerHandle { cancel, join }
     }
@@ -445,8 +461,15 @@ impl InvokrClient for InvokrLibraryClient {
         spec: serde_json::Value,
         retry_policy: Option<serde_json::Value>,
     ) -> anyhow::Result<()> {
-        InvokrLibraryClient::register_endpoint(self, schema_name, name, endpoint_type, spec, retry_policy)
-            .await
+        InvokrLibraryClient::register_endpoint(
+            self,
+            schema_name,
+            name,
+            endpoint_type,
+            spec,
+            retry_policy,
+        )
+        .await
     }
 
     async fn delete_endpoint(&self, schema_name: &str, name: &str) -> anyhow::Result<()> {
@@ -475,7 +498,10 @@ impl InvokrClient for InvokrLibraryClient {
     }
 
     async fn provision_workspace(&self, schema_name: &str) -> anyhow::Result<()> {
-        Ok(db::workspaces::provision_schema(&self.pool, schema_name, &self.ctx.table_prefix).await?)
+        Ok(
+            db::workspaces::provision_schema(&self.pool, schema_name, &self.ctx.table_prefix)
+                .await?,
+        )
     }
 
     async fn cancel_job(&self, schema_name: &str, job_id: &str) -> anyhow::Result<()> {
@@ -507,7 +533,12 @@ pub struct InvokrHttpClient {
 
 impl InvokrHttpClient {
     pub fn new(base_url: String, api_key: String, org_id: String) -> Self {
-        Self { base_url, api_key, org_id, http_client: Client::new() }
+        Self {
+            base_url,
+            api_key,
+            org_id,
+            http_client: Client::new(),
+        }
     }
 
     fn url(&self, path: &str) -> String {
@@ -518,9 +549,13 @@ impl InvokrHttpClient {
         req.header("Authorization", format!("Bearer {}", self.api_key))
     }
 
-    fn with_workspace(&self, req: reqwest::RequestBuilder, schema_name: &str) -> reqwest::RequestBuilder {
+    fn with_workspace(
+        &self,
+        req: reqwest::RequestBuilder,
+        schema_name: &str,
+    ) -> reqwest::RequestBuilder {
         req.header("x-org-id", &self.org_id)
-           .header("x-workspace-id", schema_name)
+            .header("x-workspace-id", schema_name)
     }
 
     async fn check(resp: reqwest::Response, ctx: &str) -> anyhow::Result<reqwest::Response> {
@@ -571,10 +606,13 @@ impl InvokrClient for InvokrHttpClient {
 
     async fn delete_secret(&self, schema_name: &str, name: &str) -> anyhow::Result<()> {
         let resp = self
-            .authed(self.with_workspace(
-                self.http_client.delete(self.url(&format!("/secrets/{name}"))),
-                schema_name,
-            ))
+            .authed(
+                self.with_workspace(
+                    self.http_client
+                        .delete(self.url(&format!("/secrets/{name}"))),
+                    schema_name,
+                ),
+            )
             .send()
             .await?;
         Self::check(resp, "delete_secret").await?;
@@ -591,10 +629,13 @@ impl InvokrClient for InvokrHttpClient {
     ) -> anyhow::Result<()> {
         // Try update first; on 404 (doesn't exist yet) fall through to create.
         let resp = self
-            .authed(self.with_workspace(
-                self.http_client.put(self.url(&format!("/endpoints/{name}"))),
-                schema_name,
-            ))
+            .authed(
+                self.with_workspace(
+                    self.http_client
+                        .put(self.url(&format!("/endpoints/{name}"))),
+                    schema_name,
+                ),
+            )
             .json(&serde_json::json!({ "spec": spec, "retry_policy": retry_policy }))
             .send()
             .await?;
@@ -608,10 +649,7 @@ impl InvokrClient for InvokrHttpClient {
         }
         // 404 — endpoint doesn't exist, create it.
         let resp = self
-            .authed(self.with_workspace(
-                self.http_client.post(self.url("/endpoints")),
-                schema_name,
-            ))
+            .authed(self.with_workspace(self.http_client.post(self.url("/endpoints")), schema_name))
             .json(&serde_json::json!({
                 "name": name,
                 "type": endpoint_type,
@@ -626,10 +664,13 @@ impl InvokrClient for InvokrHttpClient {
 
     async fn delete_endpoint(&self, schema_name: &str, name: &str) -> anyhow::Result<()> {
         let resp = self
-            .authed(self.with_workspace(
-                self.http_client.delete(self.url(&format!("/endpoints/{name}"))),
-                schema_name,
-            ))
+            .authed(
+                self.with_workspace(
+                    self.http_client
+                        .delete(self.url(&format!("/endpoints/{name}"))),
+                    schema_name,
+                ),
+            )
             .send()
             .await?;
         Self::check(resp, "delete_endpoint").await?;
@@ -651,7 +692,13 @@ impl InvokrClient for InvokrHttpClient {
         let (trigger_str, extra) = match trigger {
             JobTrigger::Immediate => ("IMMEDIATE", serde_json::json!({})),
             JobTrigger::Delayed { run_at } => ("DELAYED", serde_json::json!({ "run_at": run_at })),
-            JobTrigger::Cron { expression, timezone, starts_at, ends_at, .. } => (
+            JobTrigger::Cron {
+                expression,
+                timezone,
+                starts_at,
+                ends_at,
+                ..
+            } => (
                 "CRON",
                 serde_json::json!({
                     "cron": expression,
@@ -680,10 +727,7 @@ impl InvokrClient for InvokrHttpClient {
         }
 
         let resp = self
-            .authed(self.with_workspace(
-                self.http_client.post(self.url("/jobs")),
-                schema_name,
-            ))
+            .authed(self.with_workspace(self.http_client.post(self.url("/jobs")), schema_name))
             .json(&body)
             .send()
             .await?;
@@ -699,7 +743,9 @@ impl InvokrClient for InvokrHttpClient {
             json["data"]["execution"]["execution_id"]
                 .as_str()
                 .map(String::from)
-                .ok_or_else(|| anyhow::anyhow!("create_job: response missing 'data.execution.execution_id'"))
+                .ok_or_else(|| {
+                    anyhow::anyhow!("create_job: response missing 'data.execution.execution_id'")
+                })
         }
     }
 
@@ -725,11 +771,13 @@ impl InvokrClient for InvokrHttpClient {
 
     async fn cancel_job(&self, schema_name: &str, job_id: &str) -> anyhow::Result<()> {
         let resp = self
-            .authed(self.with_workspace(
-                self.http_client
-                    .post(self.url(&format!("/jobs/{job_id}/cancel"))),
-                schema_name,
-            ))
+            .authed(
+                self.with_workspace(
+                    self.http_client
+                        .post(self.url(&format!("/jobs/{job_id}/cancel"))),
+                    schema_name,
+                ),
+            )
             .send()
             .await?;
         Self::check(resp, "cancel_job").await?;
@@ -742,11 +790,13 @@ impl InvokrClient for InvokrHttpClient {
         execution_id: &str,
     ) -> anyhow::Result<Option<Execution>> {
         let resp = self
-            .authed(self.with_workspace(
-                self.http_client
-                    .get(self.url(&format!("/executions/{execution_id}"))),
-                schema_name,
-            ))
+            .authed(
+                self.with_workspace(
+                    self.http_client
+                        .get(self.url(&format!("/executions/{execution_id}"))),
+                    schema_name,
+                ),
+            )
             .send()
             .await?;
         if resp.status().as_u16() == 404 {

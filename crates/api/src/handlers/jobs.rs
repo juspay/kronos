@@ -14,6 +14,11 @@ use invokr_common::{
 };
 use uuid::Uuid;
 
+// `drop(db)` below is not about running a destructor — it marks the point
+// where the DbContext hands the `&mut tx` borrow back so the transaction
+// can be used (and committed) directly. Keep it: NLL would end the borrow
+// anyway, but the explicit release is what the surrounding comments refer to.
+#[allow(clippy::drop_non_drop)]
 pub async fn create(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
@@ -28,7 +33,7 @@ pub async fn create(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
 
     let ep = db::endpoints::get(&mut db, &body.endpoint)
         .await?
@@ -89,7 +94,7 @@ pub async fn create(
                 invokr_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
                     .await
                     .map_err(AppError::from)?;
-            let mut db = DbContext::new(&mut *tx, prefix);
+            let mut db = DbContext::new(&mut tx, prefix);
 
             let result = db::jobs::create_immediate(
                 &mut db,
@@ -146,7 +151,7 @@ pub async fn create(
                 invokr_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
                     .await
                     .map_err(AppError::from)?;
-            let mut db = DbContext::new(&mut *tx, prefix);
+            let mut db = DbContext::new(&mut tx, prefix);
 
             let result = db::jobs::create_delayed(
                 &mut db,
@@ -211,7 +216,7 @@ pub async fn create(
                 invokr_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
                     .await
                     .map_err(AppError::from)?;
-            let mut db = DbContext::new(&mut *tx, prefix);
+            let mut db = DbContext::new(&mut tx, prefix);
 
             let job = db::jobs::create_cron(
                 &mut db,
@@ -247,7 +252,7 @@ pub async fn create(
             // the pg_cron schedule commit (or roll back) together. If pg_cron is
             // unhealthy the whole create fails and the client can retry.
             db::jobs::register_pg_cron_conn(
-                &mut *tx,
+                &mut tx,
                 prefix,
                 &ws.0.schema_name,
                 &job.job_id,
@@ -295,7 +300,7 @@ pub async fn list(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
     let items = db::jobs::list(&mut db, cursor.as_deref(), limit + 1, &filters.0).await?;
@@ -325,15 +330,20 @@ pub async fn get(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let job_id = path.into_inner();
     let job = db::jobs::get(&mut db, &job_id)
         .await?
-        .ok_or_else(|| AppError::JobNotFound(job_id))?;
+        .ok_or(AppError::JobNotFound(job_id))?;
     let exec = db::executions::get_for_job(&mut db, &job.job_id).await?;
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": job_response(&job, exec.as_ref()) })))
 }
 
+// `drop(db)` below is not about running a destructor — it marks the point
+// where the DbContext hands the `&mut tx` borrow back so the transaction
+// can be used (and committed) directly. Keep it: NLL would end the borrow
+// anyway, but the explicit release is what the surrounding comments refer to.
+#[allow(clippy::drop_non_drop)]
 pub async fn update(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
@@ -347,7 +357,7 @@ pub async fn update(
         .map_err(AppError::from)?;
     let job_id = path.into_inner();
     let old_job = {
-        let mut db = DbContext::new(&mut *conn, prefix);
+        let mut db = DbContext::new(&mut conn, prefix);
         db::jobs::get(&mut db, &job_id)
             .await?
             .ok_or_else(|| AppError::JobNotFound(job_id.clone()))?
@@ -409,7 +419,7 @@ pub async fn update(
     let mut tx = invokr_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *tx, prefix);
+    let mut db = DbContext::new(&mut tx, prefix);
 
     let created = db::jobs::retire_and_replace(&mut db, &job_id, &new_job).await?;
 
@@ -418,9 +428,9 @@ pub async fn update(
     // Unschedule the old pg_cron job and register the new one on the same tx as
     // the version flip, so the retire/replace and the schedule swap commit (or
     // roll back) atomically.
-    db::jobs::unregister_pg_cron_conn(&mut *tx, &ws.0.schema_name, &job_id).await?;
+    db::jobs::unregister_pg_cron_conn(&mut tx, &ws.0.schema_name, &job_id).await?;
     db::jobs::register_pg_cron_conn(
-        &mut *tx,
+        &mut tx,
         prefix,
         &ws.0.schema_name,
         &created.job_id,
@@ -446,6 +456,11 @@ pub async fn update(
     }})))
 }
 
+// `drop(db)` below is not about running a destructor — it marks the point
+// where the DbContext hands the `&mut tx` borrow back so the transaction
+// can be used (and committed) directly. Keep it: NLL would end the borrow
+// anyway, but the explicit release is what the surrounding comments refer to.
+#[allow(clippy::drop_non_drop)]
 pub async fn cancel(
     state: web::Data<AppState>,
     _auth: AuthenticatedRequest,
@@ -456,7 +471,7 @@ pub async fn cancel(
     let mut tx = invokr_common::db::scoped::scoped_transaction(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *tx, prefix);
+    let mut db = DbContext::new(&mut tx, prefix);
     let job_id = path.into_inner();
     let job = db::jobs::get(&mut db, &job_id)
         .await?
@@ -488,7 +503,7 @@ pub async fn cancel(
     // the status flip so the cancel and the pg_cron unschedule commit (or roll
     // back) atomically — no more RETIRED rows left with a live pg_cron entry.
     if job.trigger_type == "CRON" {
-        db::jobs::unregister_pg_cron_conn(&mut *tx, &ws.0.schema_name, &job_id).await?;
+        db::jobs::unregister_pg_cron_conn(&mut tx, &ws.0.schema_name, &job_id).await?;
     }
 
     tx.commit().await.map_err(AppError::from)?;
@@ -506,7 +521,7 @@ pub async fn status(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let job_id = path.into_inner();
     let job = db::jobs::get(&mut db, &job_id)
         .await?
@@ -577,7 +592,7 @@ pub async fn versions(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let job_id = path.into_inner();
     let _ = db::jobs::get(&mut db, &job_id)
         .await?
@@ -600,7 +615,7 @@ pub async fn list_executions(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let job_id = path.into_inner();
     let _ = db::jobs::get(&mut db, &job_id)
         .await?

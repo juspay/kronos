@@ -1,4 +1,7 @@
-use crate::{db::{tbl, DbContext}, models::PayloadSpec};
+use crate::{
+    db::{tbl, DbContext},
+    models::PayloadSpec,
+};
 
 pub async fn create(
     db: &mut DbContext<'_>,
@@ -16,10 +19,7 @@ pub async fn create(
     .await
 }
 
-pub async fn get(
-    db: &mut DbContext<'_>,
-    name: &str,
-) -> Result<Option<PayloadSpec>, sqlx::Error> {
+pub async fn get(db: &mut DbContext<'_>, name: &str) -> Result<Option<PayloadSpec>, sqlx::Error> {
     let t = tbl(db.prefix, "payload_specs");
     sqlx::query_as::<_, PayloadSpec>(&format!(
         "SELECT name, schema_json, created_at, updated_at FROM {t} WHERE name = $1"
@@ -75,10 +75,7 @@ pub async fn update(
     .await
 }
 
-pub async fn delete(
-    db: &mut DbContext<'_>,
-    name: &str,
-) -> Result<bool, sqlx::Error> {
+pub async fn delete(db: &mut DbContext<'_>, name: &str) -> Result<bool, sqlx::Error> {
     let t = tbl(db.prefix, "payload_specs");
     let result = sqlx::query(&format!("DELETE FROM {t} WHERE name = $1"))
         .bind(name)
@@ -92,10 +89,11 @@ pub async fn has_dependent_endpoints(
     name: &str,
 ) -> Result<bool, sqlx::Error> {
     let te = tbl(db.prefix, "endpoints");
-    let row: (i64,) =
-        sqlx::query_as(&format!("SELECT COUNT(*) FROM {te} WHERE payload_spec_ref = $1"))
-            .bind(name)
-            .fetch_one(&mut *db.conn)
-            .await?;
+    let row: (i64,) = sqlx::query_as(&format!(
+        "SELECT COUNT(*) FROM {te} WHERE payload_spec_ref = $1"
+    ))
+    .bind(name)
+    .fetch_one(&mut *db.conn)
+    .await?;
     Ok(row.0 > 0)
 }

@@ -1,6 +1,12 @@
-use crate::{db::{tbl, DbContext}, models::Attempt};
+use crate::{
+    db::{tbl, DbContext},
+    models::Attempt,
+};
 use chrono::{DateTime, Utc};
 
+// One parameter per column of the `attempts` insert; grouping them into a
+// struct would only move the same list one layer out.
+#[allow(clippy::too_many_arguments)]
 pub async fn insert(
     db: &mut DbContext<'_>,
     execution_id: &str,

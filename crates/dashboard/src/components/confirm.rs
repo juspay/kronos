@@ -9,11 +9,14 @@ pub fn ConfirmDialog(
     set_open: WriteSignal<bool>,
     on_confirm: Callback<()>,
     /// Confirm button text. Defaults to "Delete".
-    #[prop(into, optional)] confirm_label: Option<String>,
+    #[prop(into, optional)]
+    confirm_label: Option<String>,
     /// Dismiss button text. Defaults to "Cancel".
-    #[prop(into, optional)] dismiss_label: Option<String>,
+    #[prop(into, optional)]
+    dismiss_label: Option<String>,
     /// When true, the confirm button is amber (cancel-style) instead of red.
-    #[prop(optional)] amber: bool,
+    #[prop(optional)]
+    amber: bool,
 ) -> impl IntoView {
     let confirm_label = confirm_label.unwrap_or_else(|| "Delete".to_string());
     let dismiss_label = dismiss_label.unwrap_or_else(|| "Cancel".to_string());

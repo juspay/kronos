@@ -1,0 +1,261 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A new push to the same branch cancels the previous (still-running) CI.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: clippy + feature builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # libsasl2/zlib headers are needed by the vendored librdkafka the
+      # `kafka` feature compiles from source.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev libsasl2-dev zlib1g-dev cmake
+      # --all-targets so test modules are linted too; the feature-gated
+      # dispatchers (kafka, redis-stream) are only reachable with the features on.
+      - name: Clippy (default features)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      # The optional dispatchers and the KMS config path are built by nothing
+      # else in CI, so without this step they rot silently.
+      - name: Clippy (kafka + redis-stream + kms)
+        run: |
+          cargo clippy -p invokr-worker --all-targets \
+            --features kafka,redis-stream,kms -- -D warnings
+          cargo clippy -p invokr-api --all-targets --features kms -- -D warnings
+
+  test:
+    name: unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev cmake
+
+      - name: Build test binaries
+        run: cargo test --workspace --no-run
+
+      # The HTTP dispatcher tests (crates/worker/src/dispatcher/http.rs) POST to
+      # the mock server, so it has to be listening before `cargo test` runs.
+      - name: Start mock server
+        run: |
+          cargo run -p invokr-mock-server > "$RUNNER_TEMP/mock-server.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            if curl -sf http://localhost:9999/health > /dev/null; then
+              echo "mock-server ready"; exit 0
+            fi
+            sleep 1
+          done
+          echo "mock-server failed to start"; cat "$RUNNER_TEMP/mock-server.log"; exit 1
+
+      - name: Run tests
+        run: cargo test --workspace
+
+      - name: Mock server log
+        if: failure()
+        run: cat "$RUNNER_TEMP/mock-server.log" || true
+
+  dispatchers:
+    name: dispatcher integration (kafka + redis)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # librdkafka is vendored by rdkafka-sys and compiled from source.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev libsasl2-dev zlib1g-dev cmake
+
+      # Same compose profiles the justfile uses locally (`just infra-up`), so CI
+      # and dev run against identical broker versions/config.
+      - name: Start Kafka and Redis
+        # Naming the services keeps compose from also starting (and building)
+        # the postgres image, which these tests do not touch.
+        run: docker compose --profile kafka --profile redis up -d kafka redis
+
+      - name: Wait for Kafka
+        run: |
+          for _ in $(seq 1 60); do
+            if docker compose exec -T kafka \
+                 kafka-topics.sh --bootstrap-server localhost:9092 --list > /dev/null 2>&1; then
+              echo "kafka ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "kafka failed to start"; docker compose logs kafka; exit 1
+
+      - name: Wait for Redis
+        run: |
+          for _ in $(seq 1 30); do
+            if docker compose exec -T redis redis-cli ping | grep -q PONG; then
+              echo "redis ready"; exit 0
+            fi
+            sleep 1
+          done
+          echo "redis failed to start"; docker compose logs redis; exit 1
+
+      # --test-threads=1 mirrors `just test-kafka` / `just test-redis`: the
+      # dispatchers share a broker connection and interleave badly in parallel.
+      - name: Kafka dispatcher tests
+        env:
+          TEST_KAFKA_BOOTSTRAP: localhost:9092
+        run: |
+          cargo test -p invokr-worker --features kafka \
+            --lib dispatcher::kafka::tests -- --test-threads=1
+
+      - name: Redis stream dispatcher tests
+        env:
+          TEST_REDIS_URL: redis://127.0.0.1:6379
+        run: |
+          cargo test -p invokr-worker --features redis-stream \
+            --lib dispatcher::redis_stream::tests -- --test-threads=1
+
+      - name: Broker logs
+        if: failure()
+        run: docker compose logs kafka redis
+
+      - name: Tear down
+        if: always()
+        run: docker compose --profile kafka --profile redis down -v
+
+  migrations:
+    name: migrations (pg_cron)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # docker/postgres bakes pg_cron into postgres:16; the pg_cron migration
+      # fails against a stock image, so build the same image dev uses.
+      - name: Start PostgreSQL
+        run: docker compose up -d --build postgres
+
+      - name: Wait for PostgreSQL
+        run: |
+          for _ in $(seq 1 60); do
+            if docker compose exec -T postgres pg_isready -U invokr -d invokr_db > /dev/null 2>&1; then
+              echo "postgres ready"; exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres failed to start"; docker compose logs postgres; exit 1
+
+      # Piped through `docker compose exec` rather than a host psql so the client
+      # version always matches the server.
+      - name: Apply migrations
+        run: |
+          # Glob order is lexicographic, which matches the datestamped
+          # filename order the justfile applies them in.
+          for f in migrations/*.sql; do
+            echo "==> $f"
+            docker compose exec -T postgres \
+              psql -v ON_ERROR_STOP=1 -U invokr -d invokr_db < "$f"
+          done
+
+      - name: Verify schema
+        run: |
+          docker compose exec -T postgres \
+            psql -v ON_ERROR_STOP=1 -U invokr -d invokr_db -c "\dt public.*"
+          docker compose exec -T postgres \
+            psql -v ON_ERROR_STOP=1 -U invokr -d invokr_db \
+            -c "SELECT extname FROM pg_extension WHERE extname IN ('pg_cron','pgcrypto');" \
+            | grep -q pg_cron
+
+      - name: PostgreSQL logs
+        if: failure()
+        run: docker compose logs postgres
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  dashboard:
+    name: dashboard wasm build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: latest
+
+      # `cargo test`/`clippy` only ever build the dashboard for the host with the
+      # `ssr` feature; the `hydrate` (wasm32) side is a separate compile surface
+      # that only breaks here or in the Docker image build.
+      - name: Build hydration bundle
+        working-directory: crates/dashboard
+        run: wasm-pack build --target web --release -- --features hydrate
+
+      # Pinned to the same Tailwind release the Dockerfile downloads.
+      - name: Install Tailwind CLI
+        run: |
+          curl -sSL -o /usr/local/bin/tailwindcss \
+            https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64
+          chmod +x /usr/local/bin/tailwindcss
+
+      - name: Build stylesheet
+        working-directory: crates/dashboard
+        run: tailwindcss -i input.css -o pkg/tailwind-output.css --minify
+
+  client-sdk:
+    name: generated rust sdk
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/client
+      # crates/client is excluded from the workspace (own MSRV + runtime stack),
+      # so nothing else in CI compiles it — but downstream consumers depend on it
+      # by git, which makes a broken regeneration their problem, not ours.
+      - name: Check generated SDK compiles
+        run: cargo check --manifest-path crates/client/Cargo.toml --all-features

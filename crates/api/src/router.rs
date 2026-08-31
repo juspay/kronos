@@ -102,10 +102,7 @@ pub fn configure(
                         .route("/configs", web::post().to(handlers::configs::create))
                         .route("/configs", web::get().to(handlers::configs::list))
                         .route("/configs/{name}", web::get().to(handlers::configs::get))
-                        .route(
-                            "/configs/{name}",
-                            web::put().to(handlers::configs::update),
-                        )
+                        .route("/configs/{name}", web::put().to(handlers::configs::update))
                         .route(
                             "/configs/{name}",
                             web::delete().to(handlers::configs::delete),
@@ -114,24 +111,15 @@ pub fn configure(
                         .route("/secrets", web::post().to(handlers::secrets::create))
                         .route("/secrets", web::get().to(handlers::secrets::list))
                         .route("/secrets/{name}", web::get().to(handlers::secrets::get))
-                        .route(
-                            "/secrets/{name}",
-                            web::put().to(handlers::secrets::update),
-                        )
+                        .route("/secrets/{name}", web::put().to(handlers::secrets::update))
                         .route(
                             "/secrets/{name}",
                             web::delete().to(handlers::secrets::delete),
                         )
                         // Endpoints
-                        .route(
-                            "/endpoints",
-                            web::post().to(handlers::endpoints::create),
-                        )
+                        .route("/endpoints", web::post().to(handlers::endpoints::create))
                         .route("/endpoints", web::get().to(handlers::endpoints::list))
-                        .route(
-                            "/endpoints/{name}",
-                            web::get().to(handlers::endpoints::get),
-                        )
+                        .route("/endpoints/{name}", web::get().to(handlers::endpoints::get))
                         .route(
                             "/endpoints/{name}",
                             web::put().to(handlers::endpoints::update),

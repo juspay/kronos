@@ -106,6 +106,9 @@ pub async fn create_delayed(
     })
 }
 
+// One parameter per column of the CRON job insert; grouping them into a
+// struct would only move the same list one layer out.
+#[allow(clippy::too_many_arguments)]
 pub async fn create_cron(
     db: &mut DbContext<'_>,
     endpoint: &str,
@@ -137,10 +140,7 @@ pub async fn create_cron(
     .await
 }
 
-pub async fn get(
-    db: &mut DbContext<'_>,
-    job_id: &str,
-) -> Result<Option<Job>, sqlx::Error> {
+pub async fn get(db: &mut DbContext<'_>, job_id: &str) -> Result<Option<Job>, sqlx::Error> {
     let t = tbl(db.prefix, "jobs");
     sqlx::query_as::<_, Job>(&format!("SELECT * FROM {t} WHERE job_id = $1"))
         .bind(job_id)
@@ -199,7 +199,11 @@ fn escape_like(s: &str) -> String {
 
 /// Builds the `list` query and ordered binds. Pure, so it's unit-tested; the
 /// caller binds the final `LIMIT` as an `i64`.
-fn build_list_query(t: &str, cursor: Option<&str>, filters: &JobFilters) -> (String, Vec<BindValue>) {
+fn build_list_query(
+    t: &str,
+    cursor: Option<&str>,
+    filters: &JobFilters,
+) -> (String, Vec<BindValue>) {
     let mut conditions: Vec<String> = Vec::new();
     let mut binds: Vec<BindValue> = Vec::new();
     let mut n = 1;
@@ -213,17 +217,35 @@ fn build_list_query(t: &str, cursor: Option<&str>, filters: &JobFilters) -> (Str
     }
     if !filters.status.is_empty() {
         conditions.push(format!("status = ANY(${n})"));
-        binds.push(BindValue::Array(filters.status.iter().map(|s| s.as_str().to_string()).collect()));
+        binds.push(BindValue::Array(
+            filters
+                .status
+                .iter()
+                .map(|s| s.as_str().to_string())
+                .collect(),
+        ));
         n += 1;
     }
     if !filters.trigger.is_empty() {
         conditions.push(format!("trigger_type = ANY(${n})"));
-        binds.push(BindValue::Array(filters.trigger.iter().map(|x| x.as_str().to_string()).collect()));
+        binds.push(BindValue::Array(
+            filters
+                .trigger
+                .iter()
+                .map(|x| x.as_str().to_string())
+                .collect(),
+        ));
         n += 1;
     }
     if !filters.endpoint_type.is_empty() {
         conditions.push(format!("endpoint_type = ANY(${n})"));
-        binds.push(BindValue::Array(filters.endpoint_type.iter().map(|x| x.as_str().to_string()).collect()));
+        binds.push(BindValue::Array(
+            filters
+                .endpoint_type
+                .iter()
+                .map(|x| x.as_str().to_string())
+                .collect(),
+        ));
         n += 1;
     }
     if let Some(endpoint) = &filters.endpoint {
@@ -252,9 +274,8 @@ fn build_list_query(t: &str, cursor: Option<&str>, filters: &JobFilters) -> (Str
     } else {
         format!(" WHERE {}", conditions.join(" AND "))
     };
-    let sql = format!(
-        "SELECT * FROM {t}{where_clause} ORDER BY created_at DESC, job_id DESC LIMIT ${n}"
-    );
+    let sql =
+        format!("SELECT * FROM {t}{where_clause} ORDER BY created_at DESC, job_id DESC LIMIT ${n}");
     (sql, binds)
 }
 
@@ -276,10 +297,7 @@ pub async fn list(
     query.bind(limit).fetch_all(&mut *db.conn).await
 }
 
-pub async fn cancel(
-    db: &mut DbContext<'_>,
-    job_id: &str,
-) -> Result<Option<Job>, sqlx::Error> {
+pub async fn cancel(db: &mut DbContext<'_>, job_id: &str) -> Result<Option<Job>, sqlx::Error> {
     let t = tbl(db.prefix, "jobs");
     sqlx::query_as::<_, Job>(&format!(
         "UPDATE {t} SET status = 'RETIRED', retired_at = now()
@@ -316,9 +334,9 @@ pub async fn retire_and_replace(
     .bind(&new_job.input)
     .bind(&new_job.cron_expression)
     .bind(&new_job.cron_timezone)
-    .bind(&new_job.cron_starts_at)
-    .bind(&new_job.cron_ends_at)
-    .bind(&new_job.cron_next_run_at)
+    .bind(new_job.cron_starts_at)
+    .bind(new_job.cron_ends_at)
+    .bind(new_job.cron_next_run_at)
     .bind(new_job.version)
     .bind(old_job_id)
     .fetch_one(&mut *db.conn)
@@ -327,10 +345,7 @@ pub async fn retire_and_replace(
     Ok(new)
 }
 
-pub async fn get_versions(
-    db: &mut DbContext<'_>,
-    job_id: &str,
-) -> Result<Vec<Job>, sqlx::Error> {
+pub async fn get_versions(db: &mut DbContext<'_>, job_id: &str) -> Result<Vec<Job>, sqlx::Error> {
     let t = tbl(db.prefix, "jobs");
     sqlx::query_as::<_, Job>(&format!(
         "WITH RECURSIVE chain AS (
@@ -404,7 +419,6 @@ fn build_cron_command(prefix: &str, schema_name: &str, job_id: &str) -> String {
         job_id = job_id,
     )
 }
-
 
 /// Register a CRON job with pg_cron. Uses the pool directly (pg_cron schedules
 /// run outside a transaction) and takes prefix/schema_name explicitly.
@@ -630,14 +644,20 @@ mod tests {
 
     #[test]
     fn list_query_escapes_like_metacharacters_in_endpoint() {
-        let filters = JobFilters { endpoint: Some("order_50%_v2".into()), ..Default::default() };
+        let filters = JobFilters {
+            endpoint: Some("order_50%_v2".into()),
+            ..Default::default()
+        };
         let (_sql, binds) = build_list_query("jobs", None, &filters);
         assert_eq!(binds, vec![BindValue::Scalar(r"order\_50\%\_v2".into())]);
     }
 
     #[test]
     fn list_query_filters_by_exact_job_id() {
-        let filters = JobFilters { job_id: Some("job-42".into()), ..Default::default() };
+        let filters = JobFilters {
+            job_id: Some("job-42".into()),
+            ..Default::default()
+        };
         let (sql, binds) = build_list_query("jobs", None, &filters);
         assert_eq!(
             sql,

@@ -22,7 +22,7 @@ pub async fn create(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
 
     let secret = db::secrets::create(&mut db, &body.name, &encrypted)
         .await
@@ -49,7 +49,7 @@ pub async fn list(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
     let items = db::secrets::list(&mut db, cursor.as_deref(), limit + 1).await?;
@@ -87,11 +87,11 @@ pub async fn get(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let name = path.into_inner();
     let secret = db::secrets::get(&mut db, &name)
         .await?
-        .ok_or_else(|| AppError::SecretNotFound(name))?;
+        .ok_or(AppError::SecretNotFound(name))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "name": secret.name, "created_at": secret.created_at, "updated_at": secret.updated_at,
@@ -113,11 +113,11 @@ pub async fn update(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
 
     let secret = db::secrets::update(&mut db, &name, &encrypted)
         .await?
-        .ok_or_else(|| AppError::SecretNotFound(name))?;
+        .ok_or(AppError::SecretNotFound(name))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "name": secret.name, "created_at": secret.created_at, "updated_at": secret.updated_at,
@@ -134,7 +134,7 @@ pub async fn delete(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let name = path.into_inner();
     if db::secrets::has_dependent_endpoints(&mut db, &name).await? {
         return Err(AppError::Conflict(format!(

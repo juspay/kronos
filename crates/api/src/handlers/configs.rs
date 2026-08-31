@@ -25,7 +25,7 @@ pub async fn create(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
 
     let config = db::configs::create(&mut db, &body.name, &body.values)
         .await
@@ -52,7 +52,7 @@ pub async fn list(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
     let items = db::configs::list(&mut db, cursor.as_deref(), limit + 1).await?;
@@ -91,11 +91,11 @@ pub async fn get(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let name = path.into_inner();
     let config = db::configs::get(&mut db, &name)
         .await?
-        .ok_or_else(|| AppError::ConfigNotFound(name))?;
+        .ok_or(AppError::ConfigNotFound(name))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "name": config.name, "values": config.values_json,
@@ -120,12 +120,12 @@ pub async fn update(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let name = path.into_inner();
 
     let config = db::configs::update(&mut db, &name, &body.values)
         .await?
-        .ok_or_else(|| AppError::ConfigNotFound(name))?;
+        .ok_or(AppError::ConfigNotFound(name))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "name": config.name, "values": config.values_json,
@@ -143,7 +143,7 @@ pub async fn delete(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let name = path.into_inner();
     if db::configs::has_dependent_endpoints(&mut db, &name).await? {
         return Err(AppError::Conflict(format!(

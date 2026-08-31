@@ -1,7 +1,9 @@
 use chrono::Utc;
 use invokr_common::{
     cache::{ConfigCache, SecretCache},
-    crypto, db, db::DbContext, metrics as m, template,
+    crypto, db,
+    db::DbContext,
+    metrics as m, template,
 };
 use reqwest::Client;
 use sqlx::PgPool;
@@ -19,6 +21,10 @@ pub struct PipelineContext {
     pub table_prefix: String,
 }
 
+// The execution row and its job/endpoint columns are passed through
+// individually rather than re-fetched here; bundling them would just move
+// the same list into a struct the poller has to fill in.
+#[allow(clippy::too_many_arguments)]
 pub async fn process_execution(
     ctx: &PipelineContext,
     db: &mut DbContext<'_>,
@@ -40,8 +46,14 @@ pub async fn process_execution(
         Ok(None) => {
             tracing::error!(execution_id, "Endpoint not found: {}", endpoint_name);
             let _ = db::executions::complete_failed(db, execution_id).await;
-            log_execution(db, execution_id, attempt_count, "ERROR",
-                &format!("Endpoint not found: {}", endpoint_name)).await;
+            log_execution(
+                db,
+                execution_id,
+                attempt_count,
+                "ERROR",
+                &format!("Endpoint not found: {}", endpoint_name),
+            )
+            .await;
             return;
         }
         Err(e) => {
@@ -60,10 +72,26 @@ pub async fn process_execution(
             Err(e) => {
                 tracing::error!(execution_id, "Config resolution failed: {}", e);
                 let _ = db::executions::complete_failed(db, execution_id).await;
-                record_attempt(db, execution_id, attempt_count, "FAILED", started_at, None,
-                    Some(&serde_json::json!({ "type": "TEMPLATE_RESOLUTION_FAILED", "message": e }))).await;
-                log_execution(db, execution_id, attempt_count, "ERROR",
-                    &format!("Template resolution failed: {}", e)).await;
+                record_attempt(
+                    db,
+                    execution_id,
+                    attempt_count,
+                    "FAILED",
+                    started_at,
+                    None,
+                    Some(
+                        &serde_json::json!({ "type": "TEMPLATE_RESOLUTION_FAILED", "message": e }),
+                    ),
+                )
+                .await;
+                log_execution(
+                    db,
+                    execution_id,
+                    attempt_count,
+                    "ERROR",
+                    &format!("Template resolution failed: {}", e),
+                )
+                .await;
                 return;
             }
         }
@@ -76,10 +104,24 @@ pub async fn process_execution(
         Err(e) => {
             tracing::error!(execution_id, "Secret resolution failed: {}", e);
             let _ = db::executions::complete_failed(db, execution_id).await;
-            record_attempt(db, execution_id, attempt_count, "FAILED", started_at, None,
-                Some(&serde_json::json!({ "type": "TEMPLATE_RESOLUTION_FAILED", "message": e }))).await;
-            log_execution(db, execution_id, attempt_count, "ERROR",
-                &format!("Secret resolution failed: {}", e)).await;
+            record_attempt(
+                db,
+                execution_id,
+                attempt_count,
+                "FAILED",
+                started_at,
+                None,
+                Some(&serde_json::json!({ "type": "TEMPLATE_RESOLUTION_FAILED", "message": e })),
+            )
+            .await;
+            log_execution(
+                db,
+                execution_id,
+                attempt_count,
+                "ERROR",
+                &format!("Secret resolution failed: {}", e),
+            )
+            .await;
             return;
         }
     };
@@ -90,24 +132,49 @@ pub async fn process_execution(
         .unwrap_or_default();
 
     let mut execution_map: HashMap<String, serde_json::Value> = HashMap::new();
-    execution_map.insert("idempotency_key".to_string(), serde_json::json!(idempotency_key));
-    execution_map.insert("attempt_count".to_string(), serde_json::json!(attempt_count));
+    execution_map.insert(
+        "idempotency_key".to_string(),
+        serde_json::json!(idempotency_key),
+    );
+    execution_map.insert(
+        "attempt_count".to_string(),
+        serde_json::json!(attempt_count),
+    );
     execution_map.insert("execution_id".to_string(), serde_json::json!(execution_id));
     execution_map.insert("job_id".to_string(), serde_json::json!(job_id));
 
-    let resolved_spec =
-        match template::resolve(&endpoint.spec, &input_map, &config_values, &secret_values, &execution_map) {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::error!(execution_id, "Template resolution failed: {}", e);
-                let _ = db::executions::complete_failed(db, execution_id).await;
-                record_attempt(db, execution_id, attempt_count, "FAILED", started_at, None,
-                    Some(&serde_json::json!({ "type": "TEMPLATE_RESOLUTION_FAILED", "message": e }))).await;
-                log_execution(db, execution_id, attempt_count, "ERROR",
-                    &format!("Template resolution failed: {}", e)).await;
-                return;
-            }
-        };
+    let resolved_spec = match template::resolve(
+        &endpoint.spec,
+        &input_map,
+        &config_values,
+        &secret_values,
+        &execution_map,
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(execution_id, "Template resolution failed: {}", e);
+            let _ = db::executions::complete_failed(db, execution_id).await;
+            record_attempt(
+                db,
+                execution_id,
+                attempt_count,
+                "FAILED",
+                started_at,
+                None,
+                Some(&serde_json::json!({ "type": "TEMPLATE_RESOLUTION_FAILED", "message": e })),
+            )
+            .await;
+            log_execution(
+                db,
+                execution_id,
+                attempt_count,
+                "ERROR",
+                &format!("Template resolution failed: {}", e),
+            )
+            .await;
+            return;
+        }
+    };
 
     // 3. Inject job input as body if no body/body_template in resolved spec
     let mut dispatch_spec = resolved_spec;
@@ -120,8 +187,14 @@ pub async fn process_execution(
     }
 
     // 4. Dispatch
-    log_execution(db, execution_id, attempt_count, "INFO",
-        &format!("Dispatching {} to {}", endpoint_type, endpoint_name)).await;
+    log_execution(
+        db,
+        execution_id,
+        attempt_count,
+        "INFO",
+        &format!("Dispatching {} to {}", endpoint_type, endpoint_name),
+    )
+    .await;
 
     let result = match endpoint_type {
         "HTTP" => {
@@ -163,21 +236,52 @@ pub async fn process_execution(
             )
             .record(duration_secs);
 
-            record_attempt(db, execution_id, attempt_count, "SUCCESS", started_at,
-                Some(&output), None).await;
+            record_attempt(
+                db,
+                execution_id,
+                attempt_count,
+                "SUCCESS",
+                started_at,
+                Some(&output),
+                None,
+            )
+            .await;
             let _ = db::executions::complete_success(db, execution_id, &output).await;
-            log_execution(db, execution_id, attempt_count, "INFO",
-                &format!("Execution succeeded in {}ms", duration_ms)).await;
+            log_execution(
+                db,
+                execution_id,
+                attempt_count,
+                "INFO",
+                &format!("Execution succeeded in {}ms", duration_ms),
+            )
+            .await;
         }
         DispatchResult::Failure { error } => {
-            record_attempt(db, execution_id, attempt_count, "FAILED", started_at,
-                None, Some(&error)).await;
+            record_attempt(
+                db,
+                execution_id,
+                attempt_count,
+                "FAILED",
+                started_at,
+                None,
+                Some(&error),
+            )
+            .await;
 
             if attempt_count < max_attempts {
                 let backoff_ms = backoff::compute_backoff(&retry_policy, attempt_count);
                 let _ = db::executions::complete_retry(db, execution_id, backoff_ms).await;
-                log_execution(db, execution_id, attempt_count, "WARN",
-                    &format!("Attempt {} failed, retrying in {}ms: {}", attempt_count, backoff_ms, error)).await;
+                log_execution(
+                    db,
+                    execution_id,
+                    attempt_count,
+                    "WARN",
+                    &format!(
+                        "Attempt {} failed, retrying in {}ms: {}",
+                        attempt_count, backoff_ms, error
+                    ),
+                )
+                .await;
             } else {
                 metrics::counter!(m::EXECUTIONS_COMPLETED_TOTAL,
                     "status" => "FAILED",
@@ -193,8 +297,17 @@ pub async fn process_execution(
                 .record(duration_secs);
 
                 let _ = db::executions::complete_failed(db, execution_id).await;
-                log_execution(db, execution_id, attempt_count, "ERROR",
-                    &format!("Execution failed after {} attempts: {}", attempt_count, error)).await;
+                log_execution(
+                    db,
+                    execution_id,
+                    attempt_count,
+                    "ERROR",
+                    &format!(
+                        "Execution failed after {} attempts: {}",
+                        attempt_count, error
+                    ),
+                )
+                .await;
             }
         }
     }
@@ -214,7 +327,8 @@ async fn load_config(
         .map_err(|e| format!("Failed to load config '{}': {}", name, e))?
         .ok_or_else(|| format!("Config '{}' not found", name))?;
 
-    ctx.config_cache.set(name.to_string(), config.values_json.clone());
+    ctx.config_cache
+        .set(name.to_string(), config.values_json.clone());
     flatten_json_object(&config.values_json)
 }
 

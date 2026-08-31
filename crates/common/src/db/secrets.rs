@@ -1,4 +1,7 @@
-use crate::{db::{tbl, DbContext}, models::secret::Secret};
+use crate::{
+    db::{tbl, DbContext},
+    models::secret::Secret,
+};
 
 pub async fn create(
     db: &mut DbContext<'_>,
@@ -16,10 +19,7 @@ pub async fn create(
     .await
 }
 
-pub async fn get(
-    db: &mut DbContext<'_>,
-    name: &str,
-) -> Result<Option<Secret>, sqlx::Error> {
+pub async fn get(db: &mut DbContext<'_>, name: &str) -> Result<Option<Secret>, sqlx::Error> {
     let t = tbl(db.prefix, "secrets");
     sqlx::query_as::<_, Secret>(&format!(
         "SELECT name, encrypted_value, created_at, updated_at FROM {t} WHERE name = $1"
@@ -75,10 +75,7 @@ pub async fn update(
     .await
 }
 
-pub async fn delete(
-    db: &mut DbContext<'_>,
-    name: &str,
-) -> Result<bool, sqlx::Error> {
+pub async fn delete(db: &mut DbContext<'_>, name: &str) -> Result<bool, sqlx::Error> {
     let t = tbl(db.prefix, "secrets");
     let result = sqlx::query(&format!("DELETE FROM {t} WHERE name = $1"))
         .bind(name)

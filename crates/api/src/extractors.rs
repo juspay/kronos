@@ -189,7 +189,7 @@ fn last_scalar(pairs: &[(String, String)], key: &str) -> Option<String> {
         .iter()
         .filter(|(k, _)| k == key)
         .filter_map(|(_, v)| blank_to_none(Some(v.clone())))
-        .last()
+        .next_back()
 }
 
 /// Validated, de-duplicated enum list for `key`. Accepts repeated params
@@ -419,7 +419,8 @@ mod tests {
     /// drops; the real filters must still resolve.
     #[test]
     fn stray_ampersands_do_not_drop_filters() {
-        let f = parse_job_filters(&from_query("limit=50&status=ACTIVE&endpoint_type=KAFKA&")).unwrap();
+        let f =
+            parse_job_filters(&from_query("limit=50&status=ACTIVE&endpoint_type=KAFKA&")).unwrap();
         assert_eq!(f.status, vec![JobStatus::ACTIVE]);
         assert_eq!(f.endpoint_type, vec![EndpointType::KAFKA]);
 

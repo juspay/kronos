@@ -43,9 +43,12 @@ pub async fn create(
     )
     .await
     .map_err(|e| match e {
-        sqlx::Error::Database(ref db_err) if db_err.constraint().is_some() => AppError::Conflict(
-            format!("Workspace with slug '{}' already exists in this org", body.slug),
-        ),
+        sqlx::Error::Database(ref db_err) if db_err.constraint().is_some() => {
+            AppError::Conflict(format!(
+                "Workspace with slug '{}' already exists in this org",
+                body.slug
+            ))
+        }
         _ => AppError::from(e),
     })?;
 

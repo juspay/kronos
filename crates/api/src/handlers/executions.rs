@@ -13,11 +13,11 @@ pub async fn get(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let execution_id = path.into_inner();
     let exec = db::executions::get(&mut db, &execution_id)
         .await?
-        .ok_or_else(|| AppError::ExecutionNotFound(execution_id))?;
+        .ok_or(AppError::ExecutionNotFound(execution_id))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "execution_id": exec.execution_id,
@@ -48,7 +48,7 @@ pub async fn cancel(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let execution_id = path.into_inner();
     let exec = db::executions::get(&mut db, &execution_id)
         .await?
@@ -81,7 +81,7 @@ pub async fn list_attempts(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let execution_id = path.into_inner();
     let _ = db::executions::get(&mut db, &execution_id)
         .await?
@@ -117,7 +117,7 @@ pub async fn list_logs(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let execution_id = path.into_inner();
     let _ = db::executions::get(&mut db, &execution_id)
         .await?

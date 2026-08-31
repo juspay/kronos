@@ -23,7 +23,7 @@ pub async fn dispatch(spec: &Value) -> DispatchResult {
 
     let producer: FutureProducer = match ClientConfig::new()
         .set("bootstrap.servers", bootstrap_servers)
-        .set("message.timeout.ms", &timeout_ms.to_string())
+        .set("message.timeout.ms", timeout_ms.to_string())
         .set("acks", acks)
         .create()
     {
@@ -216,7 +216,11 @@ mod tests {
 
         // Offsets should be monotonically increasing
         for window in offsets.windows(2) {
-            assert!(window[1] > window[0], "offsets not increasing: {:?}", offsets);
+            assert!(
+                window[1] > window[0],
+                "offsets not increasing: {:?}",
+                offsets
+            );
         }
     }
 }
