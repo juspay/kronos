@@ -15,7 +15,7 @@
  */
 
 import {
-  KronosServiceClient,
+  InvokrServiceClient,
   CreateEndpointCommand,
   CreateJobCommand,
   CancelJobCommand,
@@ -24,7 +24,7 @@ import {
   GetExecutionCommand,
   ListExecutionAttemptsCommand,
   DeleteEndpointCommand,
-} from "kronos-sdk";
+} from "invokr-sdk";
 
 // ─── Config ──────────────────────────────────────────────────────
 
@@ -53,7 +53,7 @@ const TERMINAL_STATUSES = new Set(["SUCCESS", "FAILED", "CANCELLED"]);
 // ─── Main ────────────────────────────────────────────────────────
 
 async function main() {
-  const client = new KronosServiceClient({
+  const client = new InvokrServiceClient({
     endpoint: KRONOS_URL,
     token: { token: API_KEY },
   });
@@ -79,7 +79,7 @@ async function main() {
           url: `${MOCK_URL}/success`,
           headers: {
             "Content-Type": "application/json",
-            "X-Test-Source": "kronos-cli",
+            "X-Test-Source": "invokr-cli",
           },
         },
         retry_policy: {

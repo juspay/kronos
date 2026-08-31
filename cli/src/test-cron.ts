@@ -25,7 +25,7 @@ import {
   ListJobExecutionsCommand,
   GetExecutionCommand,
   ListExecutionAttemptsCommand,
-} from "kronos-sdk";
+} from "invokr-sdk";
 
 import {
   log,

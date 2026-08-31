@@ -32,7 +32,7 @@ import {
   GetJobCommand,
   ListJobsCommand,
   ListJobExecutionsCommand,
-} from "kronos-sdk";
+} from "invokr-sdk";
 
 import { log, createClient, tenant } from "./helpers.js";
 

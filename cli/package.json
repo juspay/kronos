@@ -1,5 +1,5 @@
 {
-  "name": "kronos-cli",
+  "name": "invokr-cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "load-test": "npx tsx src/load-test.ts"
   },
   "dependencies": {
-    "kronos-sdk": "file:../smithy/build/smithy/source/typescript-client-codegen"
+    "invokr-sdk": "file:../smithy/build/smithy/source/typescript-client-codegen"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

@@ -18,14 +18,14 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
-//! Kronos — Distributed Job Scheduling and Execution Engine.
+//! Invokr — Distributed Job Scheduling and Execution Engine.
 //! Provides durable, retriable delivery of messages to HTTP endpoints,
 //! Kafka topics, and Redis Streams.
 //! 
 //! # Crate Organization
 //! 
 //! The entry point for most customers will be [`Client`], which exposes one method for each API
-//! offered by Kronos Task Executor API. The return value of each of these methods is a "fluent builder",
+//! offered by Invokr API. The return value of each of these methods is a "fluent builder",
 //! where the different inputs for that API are added by builder-style function call chaining,
 //! followed by calling `send()` to get a [`Future`](std::future::Future) that will result in
 //! either a successful output or a [`SdkError`](crate::error::SdkError).
@@ -53,7 +53,7 @@ pub use error_meta::Error;
 #[doc(inline)]
 pub use config::Config;
 
-/// Client for calling Kronos Task Executor API.
+/// Client for calling Invokr API.
 /// 
 /// ## Constructing a `Client`
 /// 
@@ -71,10 +71,10 @@ pub use config::Config;
 /// Below is a minimal example of how to create a client:
 /// 
 /// ```rust,no_run
-/// let config = kronos_sdk::Config::builder()
+/// let config = invokr_sdk::Config::builder()
 ///     .endpoint_url("http://localhost:1234")
 ///     .build();
-/// let client = kronos_sdk::Client::from_conf(config);
+/// let client = invokr_sdk::Client::from_conf(config);
 /// ```
 /// 
 /// _Note:_ Client construction is expensive due to connection thread pool initialization, and should be done
@@ -100,7 +100,7 @@ pub use config::Config;
 /// information.
 pub mod client;
 
-/// Configuration for Kronos Task Executor API.
+/// Configuration for Invokr API.
 pub mod config;
 
 /// Common errors and error handling utilities.

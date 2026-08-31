@@ -18,7 +18,7 @@
 import {
   CreateJobCommand,
   GetJobStatusCommand,
-} from "kronos-sdk";
+} from "invokr-sdk";
 
 import {
   log,
