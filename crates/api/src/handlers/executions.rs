@@ -1,7 +1,7 @@
 use crate::extractors::{AuthenticatedRequest, Workspace};
 use crate::router::AppState;
 use actix_web::{web, HttpResponse};
-use kronos_common::{db, db::DbContext, error::AppError};
+use invokr_common::{db, db::DbContext, error::AppError};
 
 pub async fn get(
     state: web::Data<AppState>,
@@ -10,7 +10,7 @@ pub async fn get(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -45,7 +45,7 @@ pub async fn cancel(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -78,7 +78,7 @@ pub async fn list_attempts(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
@@ -114,7 +114,7 @@ pub async fn list_logs(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);

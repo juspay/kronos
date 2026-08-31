@@ -1,4 +1,4 @@
-//! CRON job reaper — dogfooded as a kronos INTERNAL CRON job.
+//! CRON job reaper — dogfooded as a invokr INTERNAL CRON job.
 //!
 //! pg_cron drives execution materialization, but it has no concept of a job's
 //! `cron_ends_at` window — left alone it fires forever. The `cron_ends_at` guard
@@ -7,9 +7,9 @@
 //! and removes their pg_cron entry so they stop firing no-op inserts entirely.
 //!
 //! The sweep used to run as a tokio interval task in each worker pod, invisible
-//! to the rest of kronos. It is now itself a kronos CRON job: each workspace is
+//! to the rest of invokr. It is now itself a invokr CRON job: each workspace is
 //! provisioned at creation time (see `db::workspaces::provision_reaper`) with
-//! an `INTERNAL` endpoint named `kronos.reaper` and a `* * * * *` job whose
+//! an `INTERNAL` endpoint named `invokr.reaper` and a `* * * * *` job whose
 //! pg_cron tick materializes an execution into the workspace's own
 //! `executions` table. The worker claims it via the normal `SKIP LOCKED` path
 //! and the [`crate::dispatcher::internal`] arm calls [`reap_schema`] — same
@@ -21,7 +21,7 @@
 //! so exactly one pod ends up running each sweep. The previous advisory lock
 //! is no longer needed.
 
-use kronos_common::{db, metrics as m};
+use invokr_common::{db, metrics as m};
 use sqlx::PgConnection;
 
 /// Retire expired CRON jobs in a single schema and unschedule their pg_cron

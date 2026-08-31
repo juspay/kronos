@@ -3,21 +3,21 @@ global:
   evaluation_interval: 5s
 
 scrape_configs:
-  - job_name: "kronos-api"
+  - job_name: "invokr-api"
     metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:8080"]
         labels:
           service: api
 
-  - job_name: "kronos-worker"
+  - job_name: "invokr-worker"
     metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:9090"]
         labels:
           service: worker
 
-  - job_name: "kronos-scheduler"
+  - job_name: "invokr-scheduler"
     metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:9091"]

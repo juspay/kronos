@@ -1,20 +1,20 @@
 [package]
-name = "kronos-api"
+name = "invokr-api"
 version.workspace = true
 edition.workspace = true
 
 [[bin]]
-name = "kronos-api"
+name = "invokr-api"
 path = "src/main.rs"
 
 [features]
 default = []
-kms = ["kronos-common/kms"]
+kms = ["invokr-common/kms"]
 pg_cron = []
 
 [dependencies]
-kronos-common = { path = "../common" }
-kronos-dashboard = { path = "../dashboard", features = ["ssr"] }
+invokr-common = { path = "../common" }
+invokr-dashboard = { path = "../dashboard", features = ["ssr"] }
 tokio.workspace = true
 actix-web.workspace = true
 actix-rt.workspace = true

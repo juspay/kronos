@@ -1,5 +1,5 @@
 use actix_web::{web, HttpResponse};
-use kronos_common::config::{AppConfig, ServerMode};
+use invokr_common::config::{AppConfig, ServerMode};
 use metrics_exporter_prometheus::PrometheusHandle;
 use sqlx::PgPool;
 

@@ -1,4 +1,4 @@
-# Kronos — Distributed Job Scheduling and Execution Engine
+# Invokr — Distributed Job Scheduling and Execution Engine
 
 set dotenv-load
 
@@ -8,9 +8,9 @@ default:
 
 # ─── Environment ──────────────────────────────────────────────
 
-export TE_DATABASE_URL := env("TE_DATABASE_URL", "postgresql://kronos:kronos@localhost:5432/taskexecutor")
-export TE_API_KEY := env("TE_API_KEY", "dev-api-key")
-export TE_ENCRYPTION_KEY := env("TE_ENCRYPTION_KEY", "0000000000000000000000000000000000000000000000000000000000000000")
+export INVOKR_DATABASE_URL := env("INVOKR_DATABASE_URL", "postgresql://invokr:invokr@localhost:5434/invokr_db")
+export INVOKR_API_KEY := env("INVOKR_API_KEY", "dev-api-key")
+export INVOKR_ENCRYPTION_KEY := env("INVOKR_ENCRYPTION_KEY", "0000000000000000000000000000000000000000000000000000000000000000")
 
 # ─── Setup ────────────────────────────────────────────────────
 
@@ -34,22 +34,25 @@ db-up:
 db-down:
     docker compose down
 
-# Run SQL migrations
+# Run SQL migrations.
+# Uses INVOKR_DATABASE_URL as the single source of connection details — the
+# host-published port differs between the dev and prod compose files, so
+# spelling out -h/-U/-d here would drift from whichever one you are running.
 db-migrate:
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260317000000_initial.sql
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260318000000_multi_tenancy.sql
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260322000000_txn_based_pickup.sql
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor < migrations/20260322000001_pg_cron.sql
+    psql "$INVOKR_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/20260317000000_initial.sql
+    psql "$INVOKR_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/20260318000000_multi_tenancy.sql
+    psql "$INVOKR_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/20260322000000_txn_based_pickup.sql
+    psql "$INVOKR_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/20260322000001_pg_cron.sql
 
 # Reset database (drop + recreate + migrate)
 db-reset:
-    sqlx database drop --database-url "$TE_DATABASE_URL" -y || true
-    sqlx database create --database-url "$TE_DATABASE_URL"
+    sqlx database drop --database-url "$INVOKR_DATABASE_URL" -y || true
+    sqlx database create --database-url "$INVOKR_DATABASE_URL"
     just db-migrate
 
 # Open a SQL shell
 db-shell:
-    PGPASSWORD=kronos psql -h localhost -U kronos -d taskexecutor
+    psql "$INVOKR_DATABASE_URL"
 
 # ─── Build ────────────────────────────────────────────────────
 
@@ -78,6 +81,10 @@ smithy-validate:
 # committed Rust SDK at sdks/rust/. Edit smithy/model/* → run this →
 # commit the resulting diff (model + sdks/rust/) in the same PR.
 smithy-build: smithy-validate
+    # `smithy build` writes into smithy/build/ without clearing it, so renaming
+    # a shape leaves the old artifact behind alongside the new one, and
+    # `build-sdk` compiles the whole directory into the published package.
+    rm -rf smithy/build
     cd smithy && smithy build
     rm -rf crates/client
     cp -R smithy/build/smithy/source/rust-client-codegen crates/client
@@ -100,19 +107,19 @@ sdk-refresh: build-sdk cli-install
 
 # Run the API server (port 8080)
 api:
-    cargo run -p kronos-api
+    cargo run -p invokr-api
 
 # Run the worker
 worker:
-    cargo run -p kronos-worker
+    cargo run -p invokr-worker
 
 # Run the scheduler (cron materializer, delayed promoter, stuck reclaimer)
 scheduler:
-    cargo run -p kronos-scheduler
+    cargo run -p invokr-scheduler
 
 # Run the mock HTTP server (port 9999)
 mock-server:
-    cargo run -p kronos-mock-server
+    cargo run -p invokr-mock-server
 
 # Run all services in parallel (API + worker + scheduler + mock-server)
 dev:
@@ -120,15 +127,15 @@ dev:
     set -e
     trap 'kill 0' EXIT
 
-    echo "Starting all Kronos services..."
+    echo "Starting all Invokr services..."
     echo "  API:       http://localhost:8080  (metrics at /metrics)"
     echo "  Worker:    metrics on :9090"
     echo "  Scheduler: metrics on :9091"
     echo "  Mock:      http://localhost:9999"
 
-    cargo run -p kronos-api &
-    TE_METRICS_PORT=9090 cargo run -p kronos-worker &
-    cargo run -p kronos-mock-server &
+    cargo run -p invokr-api &
+    INVOKR_METRICS_PORT=9090 cargo run -p invokr-worker &
+    cargo run -p invokr-mock-server &
 
     echo "All services starting. Press Ctrl+C to stop all."
     wait
@@ -137,15 +144,15 @@ dev:
 
 # Run HTTP dispatcher tests (requires mock-server running)
 test-http:
-    cargo test -p kronos-worker --lib dispatcher::http::tests
+    cargo test -p invokr-worker --lib dispatcher::http::tests
 
 # Run Kafka dispatcher tests (requires: docker compose --profile kafka up -d)
 test-kafka:
-    cargo test -p kronos-worker --features kafka --lib dispatcher::kafka::tests -- --test-threads=1
+    cargo test -p invokr-worker --features kafka --lib dispatcher::kafka::tests -- --test-threads=1
 
 # Run Redis stream dispatcher tests (requires: docker compose --profile redis up -d)
 test-redis:
-    cargo test -p kronos-worker --features redis-stream --lib dispatcher::redis_stream::tests -- --test-threads=1
+    cargo test -p invokr-worker --features redis-stream --lib dispatcher::redis_stream::tests -- --test-threads=1
 
 # Run all dispatcher tests (requires kafka, redis, and mock-server)
 test-dispatchers: test-http test-kafka test-redis
@@ -184,16 +191,16 @@ test-e2e: build
 
     echo "Starting services for e2e test..."
 
-    cargo run -p kronos-api &
+    cargo run -p invokr-api &
     API_PID=$!
 
-    cargo run -p kronos-worker &
+    cargo run -p invokr-worker &
     WORKER_PID=$!
 
-    cargo run -p kronos-scheduler &
+    cargo run -p invokr-scheduler &
     SCHEDULER_PID=$!
 
-    cargo run -p kronos-mock-server &
+    cargo run -p invokr-mock-server &
     MOCK_PID=$!
 
     # Wait for services to be ready
@@ -225,9 +232,9 @@ test-haskell: build
 
     echo "Starting services for Haskell e2e test..."
 
-    cargo run -p kronos-api &
-    cargo run -p kronos-worker &
-    cargo run -p kronos-mock-server &
+    cargo run -p invokr-api &
+    cargo run -p invokr-worker &
+    cargo run -p invokr-mock-server &
 
     echo "Waiting for services to start..."
     for i in $(seq 1 30); do
@@ -247,7 +254,7 @@ test-haskell: build
     cd haskell-example && nix-shell \
         -p "haskell.packages.ghc96.ghcWithPackages (p: with p; [aeson text network-uri http-client http-types bytestring mtl time containers http-date case-insensitive])" \
         cabal-install \
-        --run "cabal run kronos-example 2>&1"
+        --run "cabal run invokr-example 2>&1"
     EXIT_CODE=$?
 
     echo "Shutting down services..."
@@ -268,7 +275,7 @@ kms-down:
 
 # Create a KMS key on LocalStack + encrypt DB URL → .env.kms
 kms-init: kms-up
-    unset TE_DATABASE_URL TE_API_KEY TE_ENCRYPTION_KEY && ./scripts/kms-init.sh
+    unset INVOKR_DATABASE_URL INVOKR_API_KEY INVOKR_ENCRYPTION_KEY && ./scripts/kms-init.sh
 
 # Encrypt a plaintext value with the LocalStack KMS key
 kms-encrypt VALUE:
@@ -285,9 +292,9 @@ kms-dev:
     # cp .env.kms .env
     trap 'kill 0' EXIT
     echo "Starting KMS-enabled dev services..."
-    cargo run --features kms -p kronos-api &
-    TE_METRICS_PORT=9090 RUST_LOG=info cargo run --features kms -p kronos-worker &
-    cargo run -p kronos-mock-server &
+    cargo run --features kms -p invokr-api &
+    INVOKR_METRICS_PORT=9090 RUST_LOG=info cargo run --features kms -p invokr-worker &
+    cargo run -p invokr-mock-server &
     echo "All services starting with KMS. Press Ctrl+C to stop."
     wait
 
@@ -327,11 +334,11 @@ infra-down:
 
 # ─── Monitoring ─────────────────────────────────────────────
 
-# Start Prometheus + Grafana (Grafana at http://localhost:3001, admin/kronos)
+# Start Prometheus + Grafana (Grafana at http://localhost:3001, admin/invokr)
 monitoring-up:
     docker compose --profile monitoring up -d
     @echo "Prometheus: http://localhost:9099"
-    @echo "Grafana:    http://localhost:3001  (admin / kronos)"
+    @echo "Grafana:    http://localhost:3001  (admin / invokr)"
 
 # Stop monitoring stack
 monitoring-down:
@@ -342,7 +349,7 @@ all-up:
     docker compose --profile kafka --profile redis --profile monitoring up -d
     @echo "All infrastructure started."
     @echo "Prometheus: http://localhost:9099"
-    @echo "Grafana:    http://localhost:3001  (admin / kronos)"
+    @echo "Grafana:    http://localhost:3001  (admin / invokr)"
 
 # Stop everything
 all-down:
@@ -362,7 +369,7 @@ dashboard-build-dev:
 
 # Run the dashboard via the API server (SSR mode)
 dashboard:
-    TE_MODE=both TE_DASHBOARD_DIST_DIR=crates/dashboard/pkg cargo run -p kronos-api
+    INVOKR_MODE=both INVOKR_DASHBOARD_DIST_DIR=crates/dashboard/pkg cargo run -p invokr-api
 
 # Install dashboard build tools
 dashboard-setup:

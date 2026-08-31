@@ -6,7 +6,7 @@
 
 use actix_cors::Cors;
 use actix_web::{error::InternalError, web, App, HttpResponse, HttpServer};
-use kronos_common::config::{AppConfig, ServerMode};
+use invokr_common::config::{AppConfig, ServerMode};
 use tracing_subscriber::EnvFilter;
 
 /// Turn actix's default plaintext body-deserialization errors (e.g.
@@ -47,14 +47,14 @@ async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
 
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("kronos=debug".parse()?))
+        .with_env_filter(EnvFilter::from_default_env().add_directive("invokr=debug".parse()?))
         .json()
         .init();
 
     let config = AppConfig::from_env().await?;
-    let pool = kronos_common::db::connect_pool(&config.db.url, config.db.pool_size).await?;
+    let pool = invokr_common::db::connect_pool(&config.db.url, config.db.pool_size).await?;
 
-    let metrics_handle = kronos_common::metrics::install_recorder();
+    let metrics_handle = invokr_common::metrics::install_recorder();
 
     let listen_addr = config.server.listen_addr.clone();
     let path_prefix = config.server.path_prefix.clone();
@@ -81,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
             dashboard_dist_dir,
             dashboard_prefix
         );
-        Some(kronos_dashboard::config::DashboardConfig {
+        Some(invokr_dashboard::config::DashboardConfig {
             api_base_url: String::new(), // same-origin; server functions handle routing
             api_prefix: path_prefix.clone(),
             dashboard_prefix: dashboard_prefix.clone(),

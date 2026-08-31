@@ -10,7 +10,7 @@ use crate::config::DashboardConfig;
 fn get_config() -> DashboardConfig {
     use wasm_bindgen::JsValue;
     let window = web_sys::window().expect("no global window");
-    let config = js_sys::Reflect::get(&window, &JsValue::from_str("__KRONOS_CONFIG__"))
+    let config = js_sys::Reflect::get(&window, &JsValue::from_str("__INVOKR_CONFIG__"))
         .unwrap_or(JsValue::UNDEFINED);
     let get = |key: &str| -> String {
         if config.is_undefined() || config.is_null() {

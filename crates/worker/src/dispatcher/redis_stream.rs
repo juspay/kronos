@@ -1,5 +1,5 @@
 use super::DispatchResult;
-use kronos_common::metrics as m;
+use invokr_common::metrics as m;
 use serde_json::Value;
 
 pub async fn dispatch(spec: &Value) -> DispatchResult {
@@ -184,7 +184,7 @@ mod tests {
     /// Requires: `docker compose --profile redis up -d`
     #[tokio::test]
     async fn test_redis_stream_dispatch_success() {
-        let stream = format!("kronos_test:{}", uuid::Uuid::new_v4().simple());
+        let stream = format!("invokr_test:{}", uuid::Uuid::new_v4().simple());
         let spec = json!({
             "redis_url": redis_url(),
             "stream": stream,
@@ -207,7 +207,7 @@ mod tests {
     /// XADD with MAXLEN trimming.
     #[tokio::test]
     async fn test_redis_stream_dispatch_with_maxlen() {
-        let stream = format!("kronos_test:{}", uuid::Uuid::new_v4().simple());
+        let stream = format!("invokr_test:{}", uuid::Uuid::new_v4().simple());
         let spec = json!({
             "redis_url": redis_url(),
             "stream": stream,
@@ -225,7 +225,7 @@ mod tests {
     /// XADD with exact trimming (approximate_trimming = false).
     #[tokio::test]
     async fn test_redis_stream_dispatch_exact_trimming() {
-        let stream = format!("kronos_test:{}", uuid::Uuid::new_v4().simple());
+        let stream = format!("invokr_test:{}", uuid::Uuid::new_v4().simple());
         let spec = json!({
             "redis_url": redis_url(),
             "stream": stream,
@@ -280,7 +280,7 @@ mod tests {
     /// Multiple messages to the same stream should each get unique IDs.
     #[tokio::test]
     async fn test_redis_stream_dispatch_multiple_messages() {
-        let stream = format!("kronos_test:{}", uuid::Uuid::new_v4().simple());
+        let stream = format!("invokr_test:{}", uuid::Uuid::new_v4().simple());
         let mut message_ids = vec![];
 
         for i in 0..3 {
@@ -308,7 +308,7 @@ mod tests {
     /// Non-string field values should be serialized to JSON strings.
     #[tokio::test]
     async fn test_redis_stream_dispatch_mixed_field_types() {
-        let stream = format!("kronos_test:{}", uuid::Uuid::new_v4().simple());
+        let stream = format!("invokr_test:{}", uuid::Uuid::new_v4().simple());
         let spec = json!({
             "redis_url": redis_url(),
             "stream": stream,

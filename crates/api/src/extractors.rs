@@ -1,6 +1,6 @@
 use actix_web::{dev::Payload, web, Error, FromRequest, HttpMessage, HttpRequest, HttpResponse};
 use chrono::{DateTime, Utc};
-use kronos_common::{
+use invokr_common::{
     db,
     error::AppError,
     models::{
@@ -110,7 +110,7 @@ impl FromRequest for Workspace {
                 )
             })?;
 
-            let schema_name = kronos_common::db::workspaces::resolve_schema(
+            let schema_name = invokr_common::db::workspaces::resolve_schema(
                 &state.pool,
                 &org_id,
                 &workspace_id,
