@@ -422,7 +422,7 @@ fn EditPayloadSpecForm(
             </Show>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">"Name"</label>
-                <input type="text" disabled=true prop:value=move || spec_name()
+                <input type="text" disabled=true prop:value=spec_name
                     class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500" />
             </div>
             <div>
@@ -715,7 +715,7 @@ fn EditConfigForm(
             </Show>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">"Name"</label>
-                <input type="text" disabled=true prop:value=move || cfg_name()
+                <input type="text" disabled=true prop:value=cfg_name
                     class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500" />
             </div>
             <div>
@@ -978,7 +978,7 @@ fn UpdateSecretForm(
             </Show>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">"Name"</label>
-                <input type="text" disabled=true prop:value=move || secret_name()
+                <input type="text" disabled=true prop:value=secret_name
                     class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500" />
             </div>
             <div>
@@ -2625,7 +2625,7 @@ fn EditEndpointForm(
             </Show>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">"Name"</label>
-                <input type="text" disabled=true prop:value=move || ep_name()
+                <input type="text" disabled=true prop:value=ep_name
                     class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500" />
             </div>
             <div>

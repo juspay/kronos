@@ -50,29 +50,23 @@ pub async fn create(
     provision_reaper(pool, schema_name, reaper_cron_expression).await?;
 
     // Update schema_version
-    sqlx::query(
-        "UPDATE public.workspaces SET schema_version = 1 WHERE workspace_id = $1",
-    )
-    .bind(&workspace.workspace_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE public.workspaces SET schema_version = 1 WHERE workspace_id = $1")
+        .bind(&workspace.workspace_id)
+        .execute(pool)
+        .await?;
 
     // Re-fetch to get updated schema_version
-    Ok(sqlx::query_as::<_, Workspace>(
-        "SELECT * FROM public.workspaces WHERE workspace_id = $1",
-    )
-    .bind(&workspace.workspace_id)
-    .fetch_one(pool)
-    .await?)
+    sqlx::query_as::<_, Workspace>("SELECT * FROM public.workspaces WHERE workspace_id = $1")
+        .bind(&workspace.workspace_id)
+        .fetch_one(pool)
+        .await
 }
 
 pub async fn get(pool: &PgPool, workspace_id: &str) -> Result<Option<Workspace>, sqlx::Error> {
-    sqlx::query_as::<_, Workspace>(
-        "SELECT * FROM public.workspaces WHERE workspace_id = $1",
-    )
-    .bind(workspace_id)
-    .fetch_optional(pool)
-    .await
+    sqlx::query_as::<_, Workspace>("SELECT * FROM public.workspaces WHERE workspace_id = $1")
+        .bind(workspace_id)
+        .fetch_optional(pool)
+        .await
 }
 
 /// Resolve a workspace by its org reference and workspace reference, where each
@@ -98,10 +92,7 @@ pub async fn get_by_org_and_id(
 }
 
 /// List active workspaces for an org addressed by its `org_id` or its `slug`.
-pub async fn list_for_org(
-    pool: &PgPool,
-    org_ref: &str,
-) -> Result<Vec<Workspace>, sqlx::Error> {
+pub async fn list_for_org(pool: &PgPool, org_ref: &str) -> Result<Vec<Workspace>, sqlx::Error> {
     sqlx::query_as::<_, Workspace>(
         "SELECT w.* FROM public.workspaces w
          JOIN public.organizations o ON o.org_id = w.org_id
@@ -211,7 +202,7 @@ async fn provision_reaper(
 
     // Provisioning runs in schema-per-workspace mode with unprefixed tables, so
     // the table prefix is empty here.
-    register_pg_cron_conn(&mut *tx, "", schema_name, &job_id, cron_expression).await?;
+    register_pg_cron_conn(&mut tx, "", schema_name, &job_id, cron_expression).await?;
 
     tx.commit().await?;
 

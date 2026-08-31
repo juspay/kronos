@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 use leptos_router::components::A;
 
-use crate::app::prefixed;
 use crate::api::{self, CreateOrganization, Organization};
+use crate::app::prefixed;
 use crate::components::loading::{EmptyState, ErrorAlert, LoadingSpinner};
 use crate::components::modal::Modal;
 use crate::components::status_badge::StatusBadge;
@@ -186,5 +186,9 @@ fn auto_slug(name: &str) -> String {
 }
 
 fn format_date(s: &str) -> String {
-    if s.len() >= 10 { s[..10].to_string() } else { s.to_string() }
+    if s.len() >= 10 {
+        s[..10].to_string()
+    } else {
+        s.to_string()
+    }
 }

@@ -1,0 +1,199 @@
+name: E2E
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # Matches docker-compose.yml, which publishes postgres on 5434.
+  INVOKR_DATABASE_URL: postgresql://invokr:invokr@localhost:5434/invokr_db
+  INVOKR_API_KEY: dev-api-key
+  INVOKR_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+  INVOKR_LISTEN_ADDR: 0.0.0.0:8080
+  INVOKR_URL: http://localhost:8080
+  MOCK_URL: http://localhost:9999
+  RUST_LOG: info
+
+jobs:
+  e2e:
+    name: end-to-end (api + worker + pg_cron)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: cli/package-lock.json
+      # The Smithy CLI is a JVM application.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Smithy resolves its codegen plugins through Maven on every run.
+      - name: Cache Smithy Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: smithy-m2-${{ hashFiles('smithy/smithy-build.json') }}
+          restore-keys: smithy-m2-
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev cmake jq
+
+      # ── Build ────────────────────────────────────────────────────────
+
+      - name: Build binaries
+        run: cargo build --workspace --bins
+
+      # Same version pinned by nix/smithy-cli.nix so CI codegen matches dev.
+      - name: Install Smithy CLI
+        env:
+          SMITHY_VERSION: 1.55.0
+        run: |
+          curl -sSL -o /tmp/smithy.zip \
+            "https://github.com/smithy-lang/smithy/releases/download/${SMITHY_VERSION}/smithy-cli-linux-x86_64.zip"
+          unzip -q /tmp/smithy.zip -d /tmp
+          sudo /tmp/smithy-cli-linux-x86_64/install
+          smithy --version
+
+      # smithy-build.json also wires up the Haskell and Rust codegen plugins,
+      # whose codegen artifacts live in Juspay's Maven repo — and the pinned
+      # in.juspay.smithy.haskell:client-codegen:0.0.4 is not published there,
+      # so a full `smithy build` cannot resolve on a clean machine. The e2e
+      # tests only need the TypeScript SDK the CLI imports, so derive a
+      # CI-scoped config (Maven Central only) from the real one rather than
+      # maintaining a second copy that can drift.
+      - name: Derive CI Smithy config
+        working-directory: smithy
+        run: |
+          jq '{
+            version,
+            sources,
+            maven: { dependencies: [ .maven.dependencies[] | select(test("haskell|rust") | not) ] },
+            plugins: { "typescript-client-codegen": .plugins["typescript-client-codegen"] }
+          }' smithy-build.json > smithy-build.ci.json
+          cat smithy-build.ci.json
+
+      - name: Validate Smithy model
+        working-directory: smithy
+        env:
+          SMITHY_MAVEN_REPOS: https://repo.maven.apache.org/maven2
+        run: smithy validate -c smithy-build.ci.json
+
+      - name: Generate and build the TypeScript SDK
+        env:
+          SMITHY_MAVEN_REPOS: https://repo.maven.apache.org/maven2
+        run: |
+          cd smithy && smithy build -c smithy-build.ci.json
+          cd build/smithy/source/typescript-client-codegen
+          npm install && npm run build
+
+      - name: Install CLI dependencies
+        # Not `npm ci`: invokr-sdk is a `file:` dependency on the SDK generated
+        # in the previous step, which the lockfile cannot resolve on its own.
+        run: cd cli && npm install
+
+      # ── Infrastructure ───────────────────────────────────────────────
+
+      - name: Start PostgreSQL
+        run: docker compose up -d --build postgres
+
+      - name: Wait for PostgreSQL
+        run: |
+          for _ in $(seq 1 60); do
+            if docker compose exec -T postgres pg_isready -U invokr -d invokr_db > /dev/null 2>&1; then
+              echo "postgres ready"; exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres failed to start"; docker compose logs postgres; exit 1
+
+      - name: Apply migrations
+        run: |
+          # Glob order is lexicographic, which matches the datestamped
+          # filename order the justfile applies them in.
+          for f in migrations/*.sql; do
+            echo "==> $f"
+            docker compose exec -T postgres \
+              psql -v ON_ERROR_STOP=1 -U invokr -d invokr_db < "$f"
+          done
+
+      # ── Services ─────────────────────────────────────────────────────
+
+      - name: Start services
+        run: |
+          ./target/debug/invokr-mock-server > "$RUNNER_TEMP/mock-server.log" 2>&1 &
+          ./target/debug/invokr-api        > "$RUNNER_TEMP/api.log" 2>&1 &
+          INVOKR_METRICS_PORT=9090 ./target/debug/invokr-worker > "$RUNNER_TEMP/worker.log" 2>&1 &
+
+          for _ in $(seq 1 60); do
+            if curl -sf "$INVOKR_URL/health" > /dev/null 2>&1 \
+               && curl -sf "$MOCK_URL/health" > /dev/null 2>&1; then
+              echo "services ready"; exit 0
+            fi
+            sleep 1
+          done
+          echo "services failed to start"
+          tail -n 100 "$RUNNER_TEMP"/*.log
+          exit 1
+
+      # Creates the org + workspace (and thus the tenant schema) the CLI tests
+      # address via INVOKR_ORG_ID / INVOKR_WORKSPACE_ID.
+      - name: Provision tenant
+        run: |
+          INVOKR_BASE_URL="$INVOKR_URL" ./scripts/setup-dev-tenant.sh .env.ci
+          grep -E '^INVOKR_(ORG|WORKSPACE)_ID=' .env.ci >> "$GITHUB_ENV"
+
+      # ── Tests ────────────────────────────────────────────────────────
+
+      - name: Immediate execution
+        run: cd cli && npx tsx src/test-immediate.ts
+
+      - name: Delayed execution
+        run: cd cli && npx tsx src/test-delayed.ts
+
+      # Exercises the pg_cron materialization path end to end (jobs fire on a
+      # `* * * * *` schedule, so this step is minutes-long by nature).
+      - name: CRON execution
+        run: cd cli && npx tsx src/test-cron.ts
+
+      - name: INTERNAL job/endpoint guards
+        run: cd cli && npx tsx src/test-internal-guards.ts
+
+      - name: Smoke-test the metrics endpoint
+        run: |
+          curl -sf "$INVOKR_URL/metrics" > /dev/null
+          echo "metrics endpoint OK"
+
+      # ── Diagnostics ──────────────────────────────────────────────────
+
+      - name: Service logs
+        if: failure()
+        run: |
+          for f in "$RUNNER_TEMP"/api.log "$RUNNER_TEMP"/worker.log "$RUNNER_TEMP"/mock-server.log; do
+            echo "───── $f ─────"; tail -n 300 "$f" || true
+          done
+          docker compose logs postgres
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

@@ -108,22 +108,19 @@ pub struct ServerEnv {
 
 impl ServerEnv {
     async fn new(reader: &SensitiveEnvReader) -> Result<Self, String> {
-        let listen_addr =
-            get_from_env_or_default("INVOKR_LISTEN_ADDR", "0.0.0.0:8080".to_string());
+        let listen_addr = get_from_env_or_default("INVOKR_LISTEN_ADDR", "0.0.0.0:8080".to_string());
         let api_key = reader
             .read_or_default("INVOKR_API_KEY", "dev-api-key".to_string())
             .await;
-        let path_prefix = normalize_prefix(
-            get_from_env_or_default("INVOKR_PATH_PREFIX", String::new()),
-        );
+        let path_prefix =
+            normalize_prefix(get_from_env_or_default("INVOKR_PATH_PREFIX", String::new()));
         let mode = ServerMode::from_env();
-        let dashboard_prefix = normalize_prefix(
-            get_from_env_or_default("INVOKR_DASHBOARD_PATH_PREFIX", String::new()),
-        );
-        let dashboard_dist_dir = get_from_env_or_default(
-            "INVOKR_DASHBOARD_DIST_DIR",
-            "./dashboard-dist".to_string(),
-        );
+        let dashboard_prefix = normalize_prefix(get_from_env_or_default(
+            "INVOKR_DASHBOARD_PATH_PREFIX",
+            String::new(),
+        ));
+        let dashboard_dist_dir =
+            get_from_env_or_default("INVOKR_DASHBOARD_DIST_DIR", "./dashboard-dist".to_string());
         Ok(Self {
             listen_addr,
             api_key,
@@ -151,10 +148,7 @@ impl WorkerEnv {
             poll_interval_ms: get_from_env_or_default("INVOKR_WORKER_POLL_INTERVAL_MS", 200),
             config_cache_ttl_sec: get_from_env_or_default("INVOKR_CONFIG_CACHE_TTL_SEC", 60),
             secret_cache_ttl_sec: get_from_env_or_default("INVOKR_SECRET_CACHE_TTL_SEC", 300),
-            shutdown_timeout_sec: get_from_env_or_default(
-                "INVOKR_WORKER_SHUTDOWN_TIMEOUT_SEC",
-                30,
-            ),
+            shutdown_timeout_sec: get_from_env_or_default("INVOKR_WORKER_SHUTDOWN_TIMEOUT_SEC", 30),
         }
     }
 }
@@ -245,9 +239,7 @@ impl AppConfig {
             },
         };
 
-        let db = DbEnv::new(&reader)
-            .await
-            .map_err(|e| anyhow::anyhow!(e))?;
+        let db = DbEnv::new(&reader).await.map_err(|e| anyhow::anyhow!(e))?;
         let server = ServerEnv::new(&reader)
             .await
             .map_err(|e| anyhow::anyhow!(e))?;

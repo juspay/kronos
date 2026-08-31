@@ -1,4 +1,7 @@
-use crate::{db::{tbl, DbContext}, models::Execution};
+use crate::{
+    db::{tbl, DbContext},
+    models::Execution,
+};
 use sqlx::prelude::FromRow;
 
 #[derive(FromRow)]

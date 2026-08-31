@@ -52,8 +52,7 @@ mod inner {
                 resp.text().await.unwrap_or_default()
             ));
         }
-        let data: DataResponse<Vec<Organization>> =
-            resp.json().await.map_err(|e| e.to_string())?;
+        let data: DataResponse<Vec<Organization>> = resp.json().await.map_err(|e| e.to_string())?;
         Ok(data.data)
     }
 
@@ -291,8 +290,7 @@ mod inner {
                 resp.text().await.unwrap_or_default()
             ));
         }
-        let data: DataResponse<serde_json::Value> =
-            resp.json().await.map_err(|e| e.to_string())?;
+        let data: DataResponse<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
         Ok(data.data)
     }
 
@@ -601,8 +599,7 @@ mod inner {
                 resp.text().await.unwrap_or_default()
             ));
         }
-        let data: DataResponse<Vec<ExecutionLog>> =
-            resp.json().await.map_err(|e| e.to_string())?;
+        let data: DataResponse<Vec<ExecutionLog>> = resp.json().await.map_err(|e| e.to_string())?;
         Ok(data.data)
     }
 
@@ -730,8 +727,7 @@ mod inner {
                 resp.text().await.unwrap_or_default()
             ));
         }
-        let data: PaginatedResponse<PayloadSpec> =
-            resp.json().await.map_err(|e| e.to_string())?;
+        let data: PaginatedResponse<PayloadSpec> = resp.json().await.map_err(|e| e.to_string())?;
         Ok(data.data)
     }
 
@@ -816,10 +812,7 @@ mod inner {
 
     // -- Secrets API (workspace-scoped) --
 
-    pub async fn list_secrets(
-        org_id: String,
-        workspace_id: String,
-    ) -> Result<Vec<Secret>, String> {
+    pub async fn list_secrets(org_id: String, workspace_id: String) -> Result<Vec<Secret>, String> {
         let config = get_config();
         let base = config.api_base();
         let resp = Request::get(&format!("{base}/v1/secrets"))

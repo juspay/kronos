@@ -8,8 +8,7 @@ use leptos_router::{
 use crate::components::sidebar::Sidebar;
 use crate::config::DashboardConfig;
 use crate::pages::{
-    org_detail::OrgDetailPage,
-    organizations::OrganizationsPage,
+    org_detail::OrgDetailPage, organizations::OrganizationsPage,
     workspace_detail::WorkspaceDetailPage,
 };
 

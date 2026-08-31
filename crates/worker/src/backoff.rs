@@ -5,7 +5,8 @@ pub fn compute_backoff(policy: &RetryPolicy, attempt: i64) -> i64 {
     let delay = match policy.backoff.as_str() {
         "fixed" => policy.initial_delay_ms,
         "linear" => policy.initial_delay_ms * attempt,
-        "exponential" | _ => policy.initial_delay_ms * 2_i64.pow((attempt - 1).max(0) as u32),
+        // "exponential", and the fallback for any unrecognised policy.
+        _ => policy.initial_delay_ms * 2_i64.pow((attempt - 1).max(0) as u32),
     };
 
     // Add ±25% jitter

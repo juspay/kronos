@@ -1,4 +1,7 @@
-use crate::{db::{tbl, DbContext}, models::Endpoint};
+use crate::{
+    db::{tbl, DbContext},
+    models::Endpoint,
+};
 
 pub async fn create(
     db: &mut DbContext<'_>,
@@ -25,10 +28,7 @@ pub async fn create(
     .await
 }
 
-pub async fn get(
-    db: &mut DbContext<'_>,
-    name: &str,
-) -> Result<Option<Endpoint>, sqlx::Error> {
+pub async fn get(db: &mut DbContext<'_>, name: &str) -> Result<Option<Endpoint>, sqlx::Error> {
     let t = tbl(db.prefix, "endpoints");
     sqlx::query_as::<_, Endpoint>(&format!(
         "SELECT name, endpoint_type, payload_spec_ref, config_ref, spec, retry_policy, created_at, updated_at
@@ -96,10 +96,7 @@ pub async fn update(
     .await
 }
 
-pub async fn delete(
-    db: &mut DbContext<'_>,
-    name: &str,
-) -> Result<bool, sqlx::Error> {
+pub async fn delete(db: &mut DbContext<'_>, name: &str) -> Result<bool, sqlx::Error> {
     let t = tbl(db.prefix, "endpoints");
     let result = sqlx::query(&format!("DELETE FROM {t} WHERE name = $1"))
         .bind(name)
@@ -108,15 +105,13 @@ pub async fn delete(
     Ok(result.rows_affected() > 0)
 }
 
-pub async fn has_active_jobs(
-    db: &mut DbContext<'_>,
-    name: &str,
-) -> Result<bool, sqlx::Error> {
+pub async fn has_active_jobs(db: &mut DbContext<'_>, name: &str) -> Result<bool, sqlx::Error> {
     let tj = tbl(db.prefix, "jobs");
-    let row: (i64,) =
-        sqlx::query_as(&format!("SELECT COUNT(*) FROM {tj} WHERE endpoint = $1 AND status = 'ACTIVE'"))
-            .bind(name)
-            .fetch_one(&mut *db.conn)
-            .await?;
+    let row: (i64,) = sqlx::query_as(&format!(
+        "SELECT COUNT(*) FROM {tj} WHERE endpoint = $1 AND status = 'ACTIVE'"
+    ))
+    .bind(name)
+    .fetch_one(&mut *db.conn)
+    .await?;
     Ok(row.0 > 0)
 }

@@ -1,11 +1,7 @@
 use crate::models::organization::Organization;
 use sqlx::PgPool;
 
-pub async fn create(
-    pool: &PgPool,
-    name: &str,
-    slug: &str,
-) -> Result<Organization, sqlx::Error> {
+pub async fn create(pool: &PgPool, name: &str, slug: &str) -> Result<Organization, sqlx::Error> {
     sqlx::query_as::<_, Organization>(
         "INSERT INTO public.organizations (name, slug) VALUES ($1, $2)
          RETURNING *",

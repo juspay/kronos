@@ -25,7 +25,7 @@ pub async fn create(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
 
     let spec = db::payload_specs::create(&mut db, &body.name, &body.schema)
         .await
@@ -54,7 +54,7 @@ pub async fn list(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let limit = params.effective_limit();
     let cursor = params.decode_cursor();
     let items = db::payload_specs::list(&mut db, cursor.as_deref(), limit + 1).await?;
@@ -93,11 +93,11 @@ pub async fn get(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let name = path.into_inner();
     let spec = db::payload_specs::get(&mut db, &name)
         .await?
-        .ok_or_else(|| AppError::PayloadSpecNotFound(name))?;
+        .ok_or(AppError::PayloadSpecNotFound(name))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "name": spec.name, "schema": spec.schema_json,
@@ -122,12 +122,12 @@ pub async fn update(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let name = path.into_inner();
 
     let spec = db::payload_specs::update(&mut db, &name, &body.schema)
         .await?
-        .ok_or_else(|| AppError::PayloadSpecNotFound(name))?;
+        .ok_or(AppError::PayloadSpecNotFound(name))?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "name": spec.name, "schema": spec.schema_json,
@@ -145,7 +145,7 @@ pub async fn delete(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let name = path.into_inner();
     if db::payload_specs::has_dependent_endpoints(&mut db, &name).await? {
         return Err(AppError::Conflict(format!(

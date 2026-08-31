@@ -129,7 +129,7 @@ async fn claim_and_process(
         // Bundle connection + prefix into a DbContext.
         // NLL ensures the borrow of tx via db is released after the last use
         // of db (process_execution), allowing tx.commit() below.
-        let mut db = DbContext::new(&mut *tx, prefix);
+        let mut db = DbContext::new(&mut tx, prefix);
 
         let exec = match db::executions::claim(&mut db, worker_id).await {
             Ok(Some(exec)) => exec,
@@ -164,8 +164,7 @@ async fn claim_and_process(
 
         let idempotency_key: &str = job
             .idempotency_key
-            .as_ref()
-            .map(|v| v.as_str())
+            .as_deref()
             .unwrap_or(exec.execution_id.as_str());
 
         pipeline::process_execution(

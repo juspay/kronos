@@ -48,9 +48,8 @@ pub async fn decrypt_opt(client: &Client, key: &str) -> Option<String> {
 ///
 /// Reads `AWS_ENDPOINT_URL` to support LocalStack or other custom endpoints.
 pub async fn new_client() -> Client {
-    let region = Region::new(
-        std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
-    );
+    let region =
+        Region::new(std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string()));
     let endpoint = std::env::var("AWS_ENDPOINT_URL").ok();
 
     if let Some(ref ep) = endpoint {
@@ -62,8 +61,7 @@ pub async fn new_client() -> Client {
         std::env::var("AWS_ACCESS_KEY_ID"),
         std::env::var("AWS_SECRET_ACCESS_KEY"),
     ) {
-        let creds =
-            Credentials::new(access_key, secret_key, None, None, "env");
+        let creds = Credentials::new(access_key, secret_key, None, None, "env");
 
         let mut builder = aws_sdk_kms::config::Builder::new()
             .behavior_version(BehaviorVersion::latest())

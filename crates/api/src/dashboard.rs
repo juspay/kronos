@@ -1,8 +1,11 @@
 use actix_files::Files;
 use actix_web::web;
+use invokr_dashboard::{
+    app::{shell, App},
+    config::DashboardConfig,
+};
 use leptos::prelude::*;
 use leptos_actix::{generate_route_list, render_app_to_stream_with_context};
-use invokr_dashboard::{app::{App, shell}, config::DashboardConfig};
 
 pub fn configure(
     dashboard_prefix: &str,
@@ -41,11 +44,7 @@ pub fn configure(
                 };
                 cfg.route(
                     &full_path,
-                    render_app_to_stream_with_context(
-                        additional_context,
-                        || shell(App),
-                        method,
-                    ),
+                    render_app_to_stream_with_context(additional_context, || shell(App), method),
                 );
             }
         }

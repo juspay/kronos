@@ -1,4 +1,7 @@
-use crate::{db::{tbl, DbContext}, models::ExecutionLog};
+use crate::{
+    db::{tbl, DbContext},
+    models::ExecutionLog,
+};
 
 pub async fn insert(
     db: &mut DbContext<'_>,
