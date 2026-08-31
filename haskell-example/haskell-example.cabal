@@ -9,7 +9,7 @@ executable kronos-example
     default-language: Haskell2010
     build-depends:
         base             >= 4.14 && < 4.19,
-        SuperpositionSDK,
+        InvokrSDK,
         text             >= 1.2.3 && < 2.1,
         aeson            >= 2.0.0 && < 2.3.0,
         network-uri      >= 2.6   && < 2.7,

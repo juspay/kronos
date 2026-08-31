@@ -1,4 +1,4 @@
-# kronos_sdk (generated)
+# invokr_sdk (generated)
 
 **DO NOT EDIT FILES IN THIS DIRECTORY.**
 
@@ -26,10 +26,10 @@ git commit              # commit model + generated SDK in the same PR
 ## Why is this committed?
 
 Downstream Rust consumers (e.g. aarokya) depend on this crate via a Cargo
-`git` dep pinned to a kronos commit/tag. Committing the generated output
+`git` dep pinned to an invokr commit/tag. Committing the generated output
 means those consumers don't need the Smithy CLI, JVM, or Juspay's Maven
 mirror to build.
 
-This crate is excluded from the kronos workspace (`Cargo.toml` →
+This crate is excluded from the invokr workspace (`Cargo.toml` →
 `[workspace] exclude`) because it targets a different MSRV (1.82) and
 pulls a heavy AWS smithy runtime stack that the server crates don't need.

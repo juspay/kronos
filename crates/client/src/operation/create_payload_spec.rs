@@ -32,7 +32,7 @@ impl CreatePayloadSpec {
                         let input = ::aws_smithy_runtime_api::client::interceptors::context::Input::erase(input);
                         use ::tracing::Instrument;
                         ::aws_smithy_runtime::client::orchestrator::invoke_with_stop_point(
-                            "KronosService",
+                            "InvokrService",
                             "CreatePayloadSpec",
                             input,
                             runtime_plugins,
@@ -41,8 +41,8 @@ impl CreatePayloadSpec {
                         // Create a parent span for the entire operation. Includes a random, internal-only,
                         // seven-digit ID for the operation orchestration so that it can be correlated in the logs.
                         .instrument(::tracing::debug_span!(
-                                "KronosService.CreatePayloadSpec",
-                                "rpc.service" = "KronosService",
+                                "InvokrService.CreatePayloadSpec",
+                                "rpc.service" = "InvokrService",
                                 "rpc.method" = "CreatePayloadSpec",
                                 "sdk_invocation_id" = ::fastrand::u32(1_000_000..10_000_000),
                                 
@@ -81,7 +81,7 @@ impl ::aws_smithy_runtime_api::client::runtime_plugin::RuntimePlugin for CreateP
 
                     cfg.store_put(::aws_smithy_runtime_api::client::orchestrator::Metadata::new(
                             "CreatePayloadSpec",
-                            "KronosService",
+                            "InvokrService",
                         ));
 
                     ::std::option::Option::Some(cfg.freeze())

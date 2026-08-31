@@ -1,11 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Sample Haskell application demonstrating the Kronos SDK.
+-- | Sample Haskell application demonstrating the Invokr SDK.
 --
 -- This example mirrors the TypeScript CLI test (test-immediate.ts) and shows
--- the full lifecycle of a Kronos job:
+-- the full lifecycle of an Invokr job:
 --
---   1. Build a KronosServiceClient
+--   1. Build a InvokrServiceClient
 --   2. Create an HTTP endpoint pointing at the mock server
 --   3. Schedule an IMMEDIATE job targeting that endpoint
 --   4. Poll ListJobExecutions until the job reaches a terminal state
@@ -22,42 +22,42 @@ import qualified Network.URI as URI
 import System.Environment (lookupEnv)
 import System.Exit (exitFailure)
 
--- Kronos SDK – client
-import qualified Com.Kronos.KronosServiceClient as Client
+-- Invokr SDK – client
+import qualified Com.Invokr.InvokrServiceClient as Client
 
--- Kronos SDK – commands
-import qualified Com.Kronos.Command.CancelJob as CancelJob
-import qualified Com.Kronos.Command.CreateEndpoint as CreateEndpoint
-import qualified Com.Kronos.Command.CreateJob as CreateJob
-import qualified Com.Kronos.Command.DeleteEndpoint as DeleteEndpoint
-import qualified Com.Kronos.Command.ListJobExecutions as ListJobExecutions
+-- Invokr SDK – commands
+import qualified Com.Invokr.Command.CancelJob as CancelJob
+import qualified Com.Invokr.Command.CreateEndpoint as CreateEndpoint
+import qualified Com.Invokr.Command.CreateJob as CreateJob
+import qualified Com.Invokr.Command.DeleteEndpoint as DeleteEndpoint
+import qualified Com.Invokr.Command.ListJobExecutions as ListJobExecutions
 
--- Kronos SDK – input builders
-import qualified Com.Kronos.Model.CancelJobInput as CancelJobInput
-import qualified Com.Kronos.Model.CreateEndpointInput as CreateEndpointInput
-import qualified Com.Kronos.Model.CreateJobInput as CreateJobInput
-import qualified Com.Kronos.Model.DeleteEndpointInput as DeleteEndpointInput
-import qualified Com.Kronos.Model.ListJobExecutionsInput as ListJobExecutionsInput
+-- Invokr SDK – input builders
+import qualified Com.Invokr.Model.CancelJobInput as CancelJobInput
+import qualified Com.Invokr.Model.CreateEndpointInput as CreateEndpointInput
+import qualified Com.Invokr.Model.CreateJobInput as CreateJobInput
+import qualified Com.Invokr.Model.DeleteEndpointInput as DeleteEndpointInput
+import qualified Com.Invokr.Model.ListJobExecutionsInput as ListJobExecutionsInput
 
--- Kronos SDK – output accessors
-import qualified Com.Kronos.Model.CreateEndpointOutput as CreateEndpointOutput
-import qualified Com.Kronos.Model.CreateJobOutput as CreateJobOutput
-import qualified Com.Kronos.Model.ListJobExecutionsOutput as ListJobExecutionsOutput
+-- Invokr SDK – output accessors
+import qualified Com.Invokr.Model.CreateEndpointOutput as CreateEndpointOutput
+import qualified Com.Invokr.Model.CreateJobOutput as CreateJobOutput
+import qualified Com.Invokr.Model.ListJobExecutionsOutput as ListJobExecutionsOutput
 
--- Kronos SDK – models & enums
-import qualified Com.Kronos.Model.EndpointResource as EndpointResource
-import qualified Com.Kronos.Model.ExecutionResource as ExecutionResource
-import qualified Com.Kronos.Model.ExecutionStatusEnum as ExecutionStatusEnum
-import qualified Com.Kronos.Model.EndpointTypeEnum as EndpointTypeEnum
-import qualified Com.Kronos.Model.TriggerTypeEnum as TriggerTypeEnum
-import qualified Com.Kronos.Model.JobResource as JobResource
+-- Invokr SDK – models & enums
+import qualified Com.Invokr.Model.EndpointResource as EndpointResource
+import qualified Com.Invokr.Model.ExecutionResource as ExecutionResource
+import qualified Com.Invokr.Model.ExecutionStatusEnum as ExecutionStatusEnum
+import qualified Com.Invokr.Model.EndpointTypeEnum as EndpointTypeEnum
+import qualified Com.Invokr.Model.TriggerTypeEnum as TriggerTypeEnum
+import qualified Com.Invokr.Model.JobResource as JobResource
 
 -- ---------------------------------------------------------------------------
 -- Configuration
 -- ---------------------------------------------------------------------------
 
-kronosUrl :: String
-kronosUrl = "http://localhost:8080"
+invokrUrl :: String
+invokrUrl = "http://localhost:8080"
 
 mockUrl :: String
 mockUrl = "http://localhost:9999"
@@ -97,7 +97,7 @@ isTerminal _                             = False
 -- | Poll ListJobExecutions until the first execution reaches a terminal
 -- state, or until the timeout is exceeded.
 pollExecution
-    :: Client.KronosServiceClient
+    :: Client.InvokrServiceClient
     -> T.Text   -- job_id
     -> Int      -- remaining time in microseconds
     -> IO (Maybe ExecutionResource.ExecutionResource)
@@ -131,7 +131,7 @@ main = do
     manager <- HTTP.newManager HTTP.defaultManagerSettings
 
     let clientResult = Client.build $ do
-            Client.setEndpointuri (parseUri kronosUrl)
+            Client.setEndpointuri (parseUri invokrUrl)
             Client.setHttpmanager manager
             Client.setBearerauth (Just (Client.BearerAuth apiKey))
 
@@ -218,7 +218,7 @@ main = do
     cleanup client (Just jobId) (EndpointResource.name endpointResource)
 
 -- | Cancel a job (if provided) and delete the endpoint.
-cleanup :: Client.KronosServiceClient -> Maybe T.Text -> T.Text -> IO ()
+cleanup :: Client.InvokrServiceClient -> Maybe T.Text -> T.Text -> IO ()
 cleanup client mJobId epName = do
     case mJobId of
         Nothing    -> return ()

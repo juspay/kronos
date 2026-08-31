@@ -17,14 +17,14 @@
  */
 
 import {
-  KronosServiceClient,
+  InvokrServiceClient,
   CreateEndpointCommand,
   CreateJobCommand,
   ListJobExecutionsCommand,
   GetExecutionCommand,
   CancelJobCommand,
   DeleteEndpointCommand,
-} from "kronos-sdk";
+} from "invokr-sdk";
 
 // ─── Config ──────────────────────────────────────────────────────
 
@@ -91,7 +91,7 @@ async function pooled<T>(
 // ─── Main ────────────────────────────────────────────────────────
 
 async function main() {
-  const client = new KronosServiceClient({
+  const client = new InvokrServiceClient({
     endpoint: KRONOS_URL,
     token: { token: API_KEY },
   });
