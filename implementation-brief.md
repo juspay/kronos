@@ -1,5 +1,20 @@
 # Invokr — Implementation Brief for Rust + CockroachDB
 
+> **Historical document — do not follow as build instructions.**
+>
+> This is the original design brief written before implementation. The system as
+> built diverges from it in significant ways:
+>
+> - **PostgreSQL + `pg_cron`**, not CockroachDB. There are no `crdb_region`
+>   columns and no multi-region stubs; see `migrations/` for the real schema.
+> - **No separate scheduler process.** CRON materialization is done by `pg_cron`
+>   and delayed jobs are claimed directly by the worker's pickup query.
+> - Tenancy, endpoint, and job APIs have evolved past what is described here.
+>
+> For current behaviour see [`README.md`](README.md); for the current API
+> contract see [`spec.md`](spec.md) and the Smithy models in `smithy/model/`,
+> which are the source of truth for the generated SDKs.
+
 ## What to Build
 
 Build **Invokr** in Rust — a distributed job scheduling and execution engine that provides durable, exactly-once, retriable delivery of messages to HTTP endpoints, Kafka topics, and Redis Streams. Think of it as `setTimeout` and `setInterval` as a service.

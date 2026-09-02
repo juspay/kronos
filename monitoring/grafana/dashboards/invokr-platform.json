@@ -83,42 +83,7 @@
       "title": "Worker",
       "type": "stat"
     },
-    {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "red", "value": null },
-              { "color": "green", "value": 1 }
-            ]
-          },
-          "mappings": [
-            { "options": { "0": { "text": "DOWN", "color": "red" } }, "type": "value" },
-            { "options": { "1": { "text": "UP", "color": "green" } }, "type": "value" }
-          ]
-        }
-      },
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
-      "id": 3,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "textMode": "value_and_name",
-        "reduceOptions": { "calcs": ["lastNotNull"] }
-      },
-      "targets": [
-        {
-          "expr": "up{job=\"invokr-scheduler\"}",
-          "legendFormat": "Scheduler"
-        }
-      ],
-      "title": "Scheduler",
-      "type": "stat"
-    },
-    {
+{
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": {
@@ -131,7 +96,7 @@
           }
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
       "id": 4,
       "options": {
         "colorMode": "background_solid",
@@ -162,7 +127,7 @@
           }
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
       "id": 5,
       "options": {
         "colorMode": "background_solid",
@@ -193,7 +158,7 @@
           }
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
       "id": 6,
       "options": {
         "colorMode": "background_solid",
@@ -310,66 +275,8 @@
     {
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
-      "id": 103,
-      "title": "Scheduling Accuracy",
-      "type": "row"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "fieldConfig": {
-        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
-      "id": 30,
-      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi" } },
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.50, sum(rate(invokr_delayed_job_lag_seconds_bucket[5m])) by (le))",
-          "legendFormat": "Delayed p50"
-        },
-        {
-          "expr": "histogram_quantile(0.95, sum(rate(invokr_delayed_job_lag_seconds_bucket[5m])) by (le))",
-          "legendFormat": "Delayed p95"
-        },
-        {
-          "expr": "histogram_quantile(0.99, sum(rate(invokr_delayed_job_lag_seconds_bucket[5m])) by (le))",
-          "legendFormat": "Delayed p99"
-        }
-      ],
-      "title": "Delayed Job Lag (time past run_at when promoted)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "fieldConfig": {
-        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
-      "id": 31,
-      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi" } },
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.50, sum(rate(invokr_cron_tick_lag_seconds_bucket[5m])) by (le))",
-          "legendFormat": "Cron p50"
-        },
-        {
-          "expr": "histogram_quantile(0.95, sum(rate(invokr_cron_tick_lag_seconds_bucket[5m])) by (le))",
-          "legendFormat": "Cron p95"
-        },
-        {
-          "expr": "histogram_quantile(0.99, sum(rate(invokr_cron_tick_lag_seconds_bucket[5m])) by (le))",
-          "legendFormat": "Cron p99"
-        }
-      ],
-      "title": "Cron Tick Lag (time past expected fire when materialized)",
-      "type": "timeseries"
-    },
-
-    {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
       "id": 104,
-      "title": "Worker & Scheduler Internals",
+      "title": "Worker Internals",
       "type": "row"
     },
     {
@@ -377,7 +284,7 @@
       "fieldConfig": {
         "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20 } }
       },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 33 },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
       "id": 40,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
@@ -394,7 +301,7 @@
       "fieldConfig": {
         "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }
       },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 33 },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
       "id": 41,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
@@ -415,26 +322,22 @@
       "fieldConfig": {
         "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }
       },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 33 },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
       "id": 42,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "expr": "sum(rate(invokr_executions_promoted_total[1m]))",
-          "legendFormat": "Delayed promoted"
-        },
-        {
-          "expr": "sum(rate(invokr_cron_ticks_materialized_total[1m]))",
-          "legendFormat": "Cron materialized"
-        },
+          "expr": "sum(rate(invokr_cron_jobs_reaped_total[1m]))",
+          "legendFormat": "Cron jobs retired"
+        }
       ],
-      "title": "Scheduler Operations (rate/min)",
+      "title": "CRON Reaper (rate/min)",
       "type": "timeseries"
     },
 
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
       "id": 105,
       "title": "Dispatch Latency by Transport",
       "type": "row"
@@ -444,7 +347,7 @@
       "fieldConfig": {
         "defaults": { "unit": "s", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }
       },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 42 },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 33 },
       "id": 50,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
@@ -465,7 +368,7 @@
       "fieldConfig": {
         "defaults": { "unit": "s", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }
       },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 42 },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 33 },
       "id": 51,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
@@ -490,7 +393,7 @@
       "fieldConfig": {
         "defaults": { "unit": "s", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }
       },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 42 },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 33 },
       "id": 52,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [

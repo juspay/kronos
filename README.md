@@ -470,6 +470,9 @@ A pre-built Grafana dashboard is included at `monitoring/grafana/dashboards/invo
 | `invokr_dispatch_duration_seconds` | Histogram | Dispatcher-level latency |
 | `invokr_worker_inflight_executions` | Gauge | Currently in-flight executions per worker |
 | `invokr_worker_poll_idle_total` | Counter | Idle poll cycles (no work found) |
+| `invokr_cron_jobs_reaped_total` | Counter | Expired CRON jobs retired by the reaper, by schema |
+| `invokr_kafka_messages_produced_total` | Counter | Kafka messages produced, by status |
+| `invokr_redis_stream_messages_sent_total` | Counter | Redis Stream messages sent, by status |
 
 ---
 
