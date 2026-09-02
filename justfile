@@ -34,10 +34,11 @@ db-up:
 db-down:
     docker compose down
 
-# Run SQL migrations.
 # Uses INVOKR_DATABASE_URL as the single source of connection details — the
 # host-published port differs between the dev and prod compose files, so
 # spelling out -h/-U/-d here would drift from whichever one you are running.
+
+# Run SQL migrations
 db-migrate:
     psql "$INVOKR_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/20260317000000_initial.sql
     psql "$INVOKR_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/20260318000000_multi_tenancy.sql
@@ -72,14 +73,17 @@ check:
 
 export SMITHY_MAVEN_REPOS := "https://repo.maven.apache.org/maven2|https://sandbox.assets.juspay.in/smithy/m2"
 
-# Validate Smithy models. Run before regeneration to surface model errors
-# with clean messages instead of cryptic codegen failures.
+# Run before regeneration to surface model errors with clean messages
+# instead of cryptic codegen failures.
+
+# Validate Smithy models
 smithy-validate:
     cd smithy && smithy validate
 
-# Full regeneration: validate models, run smithy-build, then sync the
-# committed Rust SDK at sdks/rust/. Edit smithy/model/* → run this →
-# commit the resulting diff (model + sdks/rust/) in the same PR.
+# Edit smithy/model/* → run this → commit the resulting diff
+# (model + crates/client/) in the same PR.
+
+# Regenerate from Smithy models and sync the committed Rust SDK at crates/client/
 smithy-build: smithy-validate
     # `smithy build` writes into smithy/build/ without clearing it, so renaming
     # a shape leaves the old artifact behind alongside the new one, and
@@ -113,15 +117,11 @@ api:
 worker:
     cargo run -p invokr-worker
 
-# Run the scheduler (cron materializer, delayed promoter, stuck reclaimer)
-scheduler:
-    cargo run -p invokr-scheduler
-
 # Run the mock HTTP server (port 9999)
 mock-server:
     cargo run -p invokr-mock-server
 
-# Run all services in parallel (API + worker + scheduler + mock-server)
+# Run all services in parallel (API + worker + mock-server)
 dev:
     #!/usr/bin/env bash
     set -e
@@ -130,7 +130,6 @@ dev:
     echo "Starting all Invokr services..."
     echo "  API:       http://localhost:8080  (metrics at /metrics)"
     echo "  Worker:    metrics on :9090"
-    echo "  Scheduler: metrics on :9091"
     echo "  Mock:      http://localhost:9999"
 
     cargo run -p invokr-api &
@@ -170,16 +169,17 @@ load-test-nw N="10":
 test-immediate:
     cd cli && npx tsx src/test-immediate.ts
 
-# Run the delayed execution end-to-end test (requires scheduler running)
+# Run the delayed execution end-to-end test (requires worker running)
 test-delayed:
     cd cli && npx tsx src/test-delayed.ts
 
-# Run the CRON job end-to-end test (requires scheduler running)
+# Run the CRON job end-to-end test (requires worker running; pg_cron materializes ticks)
 test-cron:
     cd cli && npx tsx src/test-cron.ts
 
-# Verify public API guards for INTERNAL jobs/endpoints (dogfooded reaper).
-# API-only — no worker/scheduler required.
+# API-only — no worker required.
+
+# Verify public API guards for INTERNAL jobs/endpoints (dogfooded reaper)
 test-internal-guards:
     cd cli && npx tsx src/test-internal-guards.ts
 
@@ -196,9 +196,6 @@ test-e2e: build
 
     cargo run -p invokr-worker &
     WORKER_PID=$!
-
-    cargo run -p invokr-scheduler &
-    SCHEDULER_PID=$!
 
     cargo run -p invokr-mock-server &
     MOCK_PID=$!
