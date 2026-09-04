@@ -48,8 +48,8 @@ jobs:
         id: bump
         run: |
           set -euo pipefail
-          git config user.email "kronos-bot@juspay.in"
-          git config user.name "Kronos Bot"
+          git config user.email "invokr-bot@juspay.in"
+          git config user.name "Invokr Bot"
 
           cog bump --auto --skip-ci-override "[skip ci]"
 
