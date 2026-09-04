@@ -6,7 +6,7 @@ tag_prefix = "v"
 
 pre_bump_hooks = [
     "cargo set-version --workspace {{version}}",
-    "./scripts/set-sdk-version.sh {{version}}",
+    "cargo set-version --manifest-path crates/client/Cargo.toml --offline {{version}}",
     "cargo update --workspace --offline",
 ]
 

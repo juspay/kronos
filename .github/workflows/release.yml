@@ -57,6 +57,17 @@ jobs:
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
           echo "Released $tag"
 
+          # Built here rather than in github-release: cog and the full git
+          # history (fetch-depth: 0) are only available in this job.
+          cog changelog --at "$tag" > RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: RELEASE_NOTES.md
+          retention-days: 1
+
       - name: Push
         run: |
           set -euo pipefail
@@ -131,15 +142,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          ref: v${{ needs.tag-release.outputs.version }}
-
-      - name: Build release notes
-        run: |
-          ./scripts/changelog-section.sh "${{ needs.tag-release.outputs.version }}" \
-            > RELEASE_NOTES.md
-          cat RELEASE_NOTES.md
+          name: release-notes
 
       - uses: softprops/action-gh-release@v2
         with:
