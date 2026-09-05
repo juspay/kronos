@@ -1,0 +1,20 @@
+apiVersion: v2
+name: invokr
+description: A Helm chart for Invokr — a multi-tenant job scheduling and delivery service
+type: application
+
+# Chart version. Bumped manually until the semver release workflow lands, after
+# which CI syncs both fields from the release tag (see .github/workflows/release.yml).
+version: 0.1.0
+
+# Version of Invokr this chart deploys. Used as the default image tag.
+appVersion: "0.1.0"
+
+home: https://github.com/juspay/invokr
+sources:
+  - https://github.com/juspay/invokr
+keywords:
+  - scheduler
+  - cron
+  - jobs
+  - webhooks
