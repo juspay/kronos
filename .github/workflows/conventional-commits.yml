@@ -1,0 +1,55 @@
+name: Conventional Commits
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify commit messages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install cocogitto
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: cocogitto
+          version: "6.2.0"
+
+      - name: Verify commit messages
+        shell: bash
+        run: |
+          set -uo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+
+          failed=0
+          while IFS= read -r sha; do
+            [ -n "$sha" ] || continue
+            subject=$(git log -1 --format=%s "$sha")
+            if cog verify "$(git log -1 --format=%B "$sha")" >/dev/null 2>&1; then
+              echo "ok    ${sha:0:8}  $subject"
+            else
+              echo "::error::${sha:0:8} is not a conventional commit: $subject"
+              failed=1
+            fi
+          done < <(git rev-list --no-merges "$base..$head")
+
+          if [ "$failed" -ne 0 ]; then
+            cat <<'HELP'
+
+          Commit messages must look like:
+
+            feat(worker): add exponential retry backoff     -> minor bump
+            fix(api): handle async status code              -> patch bump
+            feat(common)!: rename job_id to task_id         -> major bump
+            chore: bump dependencies                        -> no bump
+          HELP
+            exit 1
+          fi

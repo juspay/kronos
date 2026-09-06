@@ -1,8 +1,11 @@
-name: Docker Publish
+name: Release
 
 on:
   workflow_dispatch:
-    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
@@ -10,12 +13,76 @@ env:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
-  build-and-push:
+  tag-release:
+    name: Bump, changelog and tag
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # If main gets branch protection, add a PAT secret and uncomment:
+          # token: ${{ secrets.KRONOS_RELEASE_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-edit
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: cargo-edit
+          version: "0.13.6"
+
+      - name: Install cocogitto
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: cocogitto
+          version: "6.2.0"
+
+      - name: Bump version, write changelog, tag
+        id: bump
+        run: |
+          set -euo pipefail
+          git config user.email "invokr-bot@juspay.in"
+          git config user.name "Invokr Bot"
+
+          cog bump --auto --skip-ci-override "[skip ci]"
+
+          tag=$(git describe --tags --abbrev=0)
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "Released $tag"
+
+          # Built here rather than in github-release: cog and the full git
+          # history (fetch-depth: 0) are only available in this job.
+          cog changelog --at "$tag" > RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: RELEASE_NOTES.md
+          retention-days: 1
+
+      - name: Push
+        run: |
+          set -euo pipefail
+          git push origin main
+          git push origin "v${{ steps.bump.outputs.version }}"
+
+  docker:
+    name: ${{ matrix.image_name || matrix.binary }}
+    needs: tag-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     strategy:
+      fail-fast: false
       matrix:
         include:
           - binary: invokr-api
@@ -34,12 +101,10 @@ jobs:
             include_dashboard: "false"
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.tag-release.outputs.version }}
 
       - uses: docker/setup-buildx-action@v3
-
-      - name: Generate calendar version tag
-        id: version
-        run: echo "tag=$(date -u +'%Y%m%d%H%M')" >> "$GITHUB_OUTPUT"
 
       - uses: docker/login-action@v3
         with:
@@ -53,7 +118,7 @@ jobs:
         with:
           images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image_name || matrix.binary }}
           tags: |
-            type=raw,value=${{ steps.version.outputs.tag }}
+            type=raw,value=${{ needs.tag-release.outputs.version }}
             type=raw,value=latest
 
       - name: Build and push
@@ -69,3 +134,20 @@ jobs:
             INCLUDE_DASHBOARD=${{ matrix.include_dashboard }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  github-release:
+    name: Publish GitHub release
+    needs: [tag-release, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.tag-release.outputs.version }}
+          name: v${{ needs.tag-release.outputs.version }}
+          body_path: RELEASE_NOTES.md
