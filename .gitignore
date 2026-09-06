@@ -1,6 +1,9 @@
 # Rust
 **/target
 **/*.rs.bk
+# Generated SDK is an excluded, published library crate - no committed lockfile.
+# `cargo set-version --manifest-path` creates one as a side effect.
+crates/client/Cargo.lock
 
 # Environment
 .env
