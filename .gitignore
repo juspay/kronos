@@ -39,3 +39,8 @@ docker-data/
 
 # SQLx offline query cache (regenerate with `cargo sqlx prepare`)
 .sqlx/
+
+# Docusaurus
+docs/node_modules/
+docs/build/
+docs/.docusaurus/
