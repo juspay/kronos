@@ -121,7 +121,11 @@ worker:
 mock-server:
     cargo run -p invokr-mock-server
 
-# Run all services in parallel (API + worker + mock-server)
+# Run the library-mode example (requires `just setup` + `just mock-server`)
+example-library-mode:
+    cargo run -p library-mode-example
+
+# Run all services in parallel (API + worker + scheduler + mock-server)
 dev:
     #!/usr/bin/env bash
     set -e
@@ -381,3 +385,27 @@ clean:
     rm -rf smithy/build
     rm -rf cli/node_modules cli/dist
     rm -rf crates/dashboard/pkg
+
+# ─── Documentation (Docusaurus) ──────────────────────────────
+
+# Start Docusaurus dev server (hot reload)
+docs-dev:
+    cd docs && npm start
+
+# Build the documentation site for production
+docs-build:
+    cd docs && npm run build
+
+# Serve the built documentation locally
+docs-serve:
+    cd docs && npm run serve
+
+# Regenerate API reference from OpenAPI spec (run after `just smithy-build`)
+docs-gen-api:
+    cp smithy/build/smithy/source/openapi/InvokrService.openapi.json docs/api/invokr-openapi.json
+    cd docs && npx docusaurus clean-api-docs all || true
+    cd docs && npx docusaurus gen-api-docs all
+
+# Install documentation dependencies (first-time setup)
+docs-install:
+    cd docs && npm install

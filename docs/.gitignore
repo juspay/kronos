@@ -1,0 +1,26 @@
+# Dependencies
+/node_modules
+
+# Production
+/build
+
+# Generated files
+.docusaurus
+.cache-loader
+
+# Auto-generated API MDX (regenerated via `just docs-gen-api`)
+# The OpenAPI spec source is tracked at api/invokr-openapi.json
+docs/api/invokr/*.mdx
+docs/api/invokr/*.json
+docs/api/invokr/sidebar.ts
+
+# Misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
