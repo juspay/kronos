@@ -5,7 +5,7 @@ title: Architecture Overview
 
 # Architecture Overview
 
-Kronos is a distributed job scheduling and execution engine built in Rust. It provides durable, exactly-once, retriable delivery of jobs to HTTP endpoints, Kafka topics, and Redis Streams — with type-safety guarantees.
+Invokr is a distributed job scheduling and execution engine built in Rust. It provides durable, exactly-once, retriable delivery of jobs to HTTP endpoints, Kafka topics, and Redis Streams — with type-safety guarantees.
 
 ## System Architecture
 
@@ -48,7 +48,7 @@ Kronos is a distributed job scheduling and execution engine built in Rust. It pr
 
 ## Process Topology
 
-Kronos consists of four primary components:
+Invokr consists of four primary components:
 
 | Component | Technology | Port | Description |
 |-----------|-----------|------|-------------|
@@ -77,33 +77,33 @@ The dashboard is a single-page application built with [Leptos](https://leptos.rs
 
 ```
                     ┌─────────────────┐
-                    │  kronos-common   │
+                    │  invokr-common   │
                     │  (models, DB,    │
                     │   config, tenant,│
                     │   cache, metrics)│
                     └────┬────────┬────┘
                          │        │
               ┌──────────▼──┐  ┌──▼──────────┐
-              │  kronos-api  │  │ kronos-worker │
+              │  invokr-api  │  │ invokr-worker │
               │  (actix-web) │  │ (tokio)      │
               └──────────────┘  └───────────────┘
 
               ┌─────────────────┐
-              │ kronos-dashboard │  (standalone, excluded from workspace)
+              │ invokr-dashboard │  (standalone, excluded from workspace)
               │  (Leptos/WASM)   │
               └─────────────────┘
 ```
 
 | Crate | Description |
 |-------|-------------|
-| `kronos-common` | Shared library — models, DB layer, config, tenant management, caching, metrics, template resolution, crypto, pagination |
-| `kronos-api` | REST API server (actix-web). CRUD for all resources, job invocation, Prometheus metrics at `/metrics` |
-| `kronos-worker` | Execution engine. Polls DB for QUEUED/RETRYING/PENDING executions, resolves templates, dispatches to endpoints. Exposes metrics via HTTP listener |
-| `kronos-mock-server` | Test fixture — HTTP server on port 9999 for integration tests |
-| `kronos-dashboard` | Web UI — Leptos/WASM, shows jobs, executions, attempts. Excluded from workspace build |
-| `kronos-sdk` | Generated Rust SDK from Smithy models. Excluded from workspace build (different MSRV 1.82) |
+| `invokr-common` | Shared library — models, DB layer, config, tenant management, caching, metrics, template resolution, crypto, pagination |
+| `invokr-api` | REST API server (actix-web). CRUD for all resources, job invocation, Prometheus metrics at `/metrics` |
+| `invokr-worker` | Execution engine. Polls DB for QUEUED/RETRYING/PENDING executions, resolves templates, dispatches to endpoints. Exposes metrics via HTTP listener |
+| `invokr-mock-server` | Test fixture — HTTP server on port 9999 for integration tests |
+| `invokr-dashboard` | Web UI — Leptos/WASM, shows jobs, executions, attempts. Excluded from workspace build |
+| `invokr-sdk` | Generated Rust SDK from Smithy models. Excluded from workspace build (different MSRV 1.82) |
 
-Both `kronos-api` and `kronos-worker` depend on `kronos-common`. The dashboard and SDK are standalone — they communicate with Kronos exclusively through the REST API.
+Both `invokr-api` and `invokr-worker` depend on `invokr-common`. The dashboard and SDK are standalone — they communicate with Invokr exclusively through the REST API.
 
 ## Data Flow
 
@@ -148,7 +148,7 @@ Finalize: SUCCESS / RETRYING (backoff) / FAILED → Commit transaction
 
 ## How Scheduling Works
 
-Kronos uses **PostgreSQL pg_cron** for CRON materialization and **transaction-based pickup** for all job types. There is no separate scheduler process:
+Invokr uses **PostgreSQL pg_cron** for CRON materialization and **transaction-based pickup** for all job types. There is no separate scheduler process:
 
 - **IMMEDIATE** jobs: Execution created as `QUEUED` in the same transaction as the job. Workers pick it up directly.
 - **DELAYED** jobs: Execution created as `PENDING` with a `run_at` timestamp. Workers pick up PENDING executions once `run_at <= now()` — no promoter loop needed.
@@ -164,7 +164,7 @@ See [Database-Driven Scheduling](./db-driven-scheduling) for details.
 
 ## Multi-Tenancy Architecture
 
-Kronos uses **schema-per-tenant** isolation. Each workspace gets its own PostgreSQL schema with isolated tables. Shared tables live in the `public` schema:
+Invokr uses **schema-per-tenant** isolation. Each workspace gets its own PostgreSQL schema with isolated tables. Shared tables live in the `public` schema:
 
 ```
 public schema:        organizations, workspaces
@@ -190,24 +190,24 @@ The worker crate supports optional features that can be enabled at compile time:
 
 | Feature | Description | Enable With |
 |---------|-------------|-------------|
-| `kafka` | Kafka dispatcher support via `rdkafka` | `--features kronos-worker/kafka` |
-| `redis-stream` | Redis Stream dispatcher support via `redis` | `--features kronos-worker/redis-stream` |
-| `kms` | AWS KMS integration for secret encryption (in `kronos-common`) | `--features kronos-worker/kms` |
+| `kafka` | Kafka dispatcher support via `rdkafka` | `--features invokr-worker/kafka` |
+| `redis-stream` | Redis Stream dispatcher support via `redis` | `--features invokr-worker/redis-stream` |
+| `kms` | AWS KMS integration for secret encryption (in `invokr-common`) | `--features invokr-worker/kms` |
 | `pg_cron` | pg_cron extension for CRON scheduling (database-level) | Enabled via migration |
 
 ```bash
 # Build with Kafka support
-cargo build --workspace --features kronos-worker/kafka
+cargo build --workspace --features invokr-worker/kafka
 
 # Build with Redis Stream support
-cargo build --workspace --features kronos-worker/redis-stream
+cargo build --workspace --features invokr-worker/redis-stream
 
 # Build with all features
-cargo build --workspace --features kronos-worker/kafka,kronos-worker/redis-stream,kronos-worker/kms
+cargo build --workspace --features invokr-worker/kafka,invokr-worker/redis-stream,invokr-worker/kms
 ```
 
 Kafka and Redis Stream dispatchers are conditionally compiled. When not enabled, the pipeline returns an `UNSUPPORTED_TYPE` error for those endpoint types. The `pg_cron` extension is installed at the database level via migration and is always available.
 
 :::note
-The `kronos-sdk` crate (generated Rust SDK) is excluded from the workspace build because it targets a different MSRV (1.82) and pulls a heavy AWS smithy runtime stack that the server crates don't need. See [Rust SDK](../sdks/rust) for details.
+The `invokr-sdk` crate (generated Rust SDK) is excluded from the workspace build because it targets a different MSRV (1.82) and pulls a heavy AWS smithy runtime stack that the server crates don't need. See [Rust SDK](../sdks/rust) for details.
 :::

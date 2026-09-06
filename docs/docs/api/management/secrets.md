@@ -28,7 +28,7 @@ Secret endpoints are tenant-scoped. Requests without `X-Org-Id` and `X-Workspace
 
 ### At-rest encryption
 
-Secrets are encrypted using AES-256-GCM before being stored in the database. The encryption key is provided via `TE_ENCRYPTION_KEY` (a 64-character hex string representing a 32-byte key).
+Secrets are encrypted using AES-256-GCM before being stored in the database. The encryption key is provided via `INVOKR_ENCRYPTION_KEY` (a 64-character hex string representing a 32-byte key).
 
 The encryption process:
 1. A 12-byte random nonce is generated for each encryption
@@ -38,12 +38,12 @@ The encryption process:
 
 ### In-memory decryption
 
-The worker decrypts secrets at execution time when resolving `{{secret.*}}` templates. Decrypted values are held in memory and cached for a configurable TTL (default: 300 seconds, controlled by `TE_SECRET_CACHE_TTL_SEC`).
+The worker decrypts secrets at execution time when resolving `{{secret.*}}` templates. Decrypted values are held in memory and cached for a configurable TTL (default: 300 seconds, controlled by `INVOKR_SECRET_CACHE_TTL_SEC`).
 
 After the cache TTL expires, the decrypted value is evicted and the next request triggers a fresh decrypt from the database.
 
 :::danger
-**Never use the default encryption key in production.** The default `TE_ENCRYPTION_KEY` is 64 zeros (`0000...0000`), which provides no security. Always set `TE_ENCRYPTION_KEY` to a strong, random 32-byte key. If the key is rotated, existing secrets encrypted with the old key cannot be decrypted.
+**Never use the default encryption key in production.** The default `INVOKR_ENCRYPTION_KEY` is 64 zeros (`0000...0000`), which provides no security. Always set `INVOKR_ENCRYPTION_KEY` to a strong, random 32-byte key. If the key is rotated, existing secrets encrypted with the old key cannot be decrypted.
 :::
 
 ## Write-only design
@@ -158,7 +158,7 @@ Notice that the `value` field is absent from the response. The plaintext value i
 | Status | Error | Description |
 |--------|-------|-------------|
 | `409` | `Conflict` | Secret with name already exists |
-| `500` | `Internal` | Encryption failed (check `TE_ENCRYPTION_KEY` is valid) |
+| `500` | `Internal` | Encryption failed (check `INVOKR_ENCRYPTION_KEY` is valid) |
 
 ---
 
@@ -300,7 +300,7 @@ curl -X PUT http://localhost:8080/v1/secrets/email_api_key \
 | `500` | `Internal` | Encryption failed |
 
 :::tip
-Secret value updates take effect after the worker's cache TTL expires (`TE_SECRET_CACHE_TTL_SEC`, default 300 seconds). To force an immediate update, restart the worker.
+Secret value updates take effect after the worker's cache TTL expires (`INVOKR_SECRET_CACHE_TTL_SEC`, default 300 seconds). To force an immediate update, restart the worker.
 :::
 
 ---
@@ -342,15 +342,15 @@ You cannot delete a secret that is referenced by any endpoint. The `has_dependen
 | Aspect | Implementation |
 |--------|----------------|
 | **Encryption algorithm** | AES-256-GCM (authenticated encryption) |
-| **Key** | 32-byte key from `TE_ENCRYPTION_KEY` (hex string) |
+| **Key** | 32-byte key from `INVOKR_ENCRYPTION_KEY` (hex string) |
 | **Nonce** | 12-byte random nonce per encryption, prepended to ciphertext |
 | **Storage** | `encrypted_value` column (BYTEA) in the `secrets` table |
 | **API responses** | `SecretResponse` struct — never includes `value` or `encrypted_value` |
-| **In-memory cache** | Decrypted values cached for `TE_SECRET_CACHE_TTL_SEC` (default 300s) |
-| **KMS integration** | `TE_ENCRYPTION_KEY` itself can be KMS-encrypted (see [KMS](../../deployment/kms)) |
+| **In-memory cache** | Decrypted values cached for `INVOKR_SECRET_CACHE_TTL_SEC` (default 300s) |
+| **KMS integration** | `INVOKR_ENCRYPTION_KEY` itself can be KMS-encrypted (see [KMS](../../deployment/kms)) |
 
 :::tip
-For defense in depth, enable [AWS KMS integration](../../deployment/kms) to encrypt `TE_ENCRYPTION_KEY` itself at rest. This means the encryption key is never stored in plaintext in the environment — it's decrypted from KMS ciphertext at startup.
+For defense in depth, enable [AWS KMS integration](../../deployment/kms) to encrypt `INVOKR_ENCRYPTION_KEY` itself at rest. This means the encryption key is never stored in plaintext in the environment — it's decrypted from KMS ciphertext at startup.
 :::
 
 ## See also
@@ -359,5 +359,5 @@ For defense in depth, enable [AWS KMS integration](../../deployment/kms) to encr
 - [Organizations](./organizations) — top-level tenant entity
 - [Workspaces](./workspaces) — workspace creation and schema provisioning
 - [Template resolution](../../core-concepts/templates) — how `{{secret.*}}` templates are resolved
-- [AWS KMS Integration](../../deployment/kms) — encrypting `TE_ENCRYPTION_KEY` via KMS
-- [Environment Variables](../../configuration/environment-variables) — `TE_ENCRYPTION_KEY`, `TE_SECRET_CACHE_TTL_SEC`
+- [AWS KMS Integration](../../deployment/kms) — encrypting `INVOKR_ENCRYPTION_KEY` via KMS
+- [Environment Variables](../../configuration/environment-variables) — `INVOKR_ENCRYPTION_KEY`, `INVOKR_SECRET_CACHE_TTL_SEC`

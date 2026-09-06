@@ -5,7 +5,7 @@ title: Development Setup
 
 # Development Setup
 
-This page covers setting up a local development environment for Kronos.
+This page covers setting up a local development environment for Invokr.
 
 ## Prerequisites
 
@@ -51,7 +51,7 @@ The Nix flake (`flake.nix`) provides a complete development environment with all
 The shell also sets `DATABASE_URL` for `sqlx` compile-time checking:
 
 ```bash
-export DATABASE_URL="postgresql://kronos:kronos@localhost:5432/taskexecutor"
+export DATABASE_URL="postgresql://invokr:invokr@localhost:5434/invokr_db"
 ```
 
 ### direnv integration
@@ -76,7 +76,7 @@ just setup
 This runs four steps in sequence:
 
 1. **`just db-up`** — Starts the PostgreSQL container (with `pg_cron`) and waits for it to be ready
-2. **`just db-migrate`** — Applies all four SQL migrations to the `taskexecutor` database
+2. **`just db-migrate`** — Applies all four SQL migrations to the `invokr_db` database
 3. **`just build-sdk`** — Validates Smithy models, generates SDKs, builds the TypeScript SDK
 4. **`just cli-install`** — Installs CLI dependencies (links to the built SDK)
 
@@ -139,15 +139,15 @@ If you prefer to drive each step yourself (e.g., to run with a path prefix and t
 docker compose up -d postgres
 ```
 
-The container is named `kronos-postgres-1` with host port **5434** mapped to the container's `5432`.
+The container is named `invokr-postgres-1` with host port **5434** mapped to the container's `5432`.
 
 ### 2. (Re)create the database
 
 ```bash
-docker exec -i kronos-postgres-1 psql -U kronos -d postgres -c \
-  "DROP DATABASE IF EXISTS taskexecutor WITH (FORCE);"
-docker exec -i kronos-postgres-1 psql -U kronos -d postgres -c \
-  "CREATE DATABASE taskexecutor;"
+docker exec -i invokr-postgres-1 psql -U invokr -d postgres -c \
+  "DROP DATABASE IF EXISTS invokr_db WITH (FORCE);"
+docker exec -i invokr-postgres-1 psql -U invokr -d postgres -c \
+  "CREATE DATABASE invokr_db;"
 ```
 
 ### 3. Apply migrations
@@ -158,24 +158,24 @@ for f in migrations/20260317000000_initial.sql \
          migrations/20260322000000_txn_based_pickup.sql \
          migrations/20260322000001_pg_cron.sql; do
   echo ">> applying $f"
-  docker exec -i kronos-postgres-1 psql -U kronos -d taskexecutor -v ON_ERROR_STOP=1 < "$f"
+  docker exec -i invokr-postgres-1 psql -U invokr -d invokr_db -v ON_ERROR_STOP=1 < "$f"
 done
 ```
 
 ### 4. Run the API server
 
 ```bash
-TE_DATABASE_URL="postgres://kronos:kronos@localhost:5434/taskexecutor" \
-TE_LISTEN_ADDR="0.0.0.0:8090" \
-TE_MODE="both" \
-TE_PATH_PREFIX="/api" \
-TE_DASHBOARD_PATH_PREFIX="/dashboard" \
-TE_DASHBOARD_DIST_DIR="crates/dashboard/pkg" \
-cargo run -p kronos-api
+INVOKR_DATABASE_URL="postgres://invokr:invokr@localhost:5434/invokr_db" \
+INVOKR_LISTEN_ADDR="0.0.0.0:8090" \
+INVOKR_MODE="both" \
+INVOKR_PATH_PREFIX="/api" \
+INVOKR_DASHBOARD_PATH_PREFIX="/dashboard" \
+INVOKR_DASHBOARD_DIST_DIR="crates/dashboard/pkg" \
+cargo run -p invokr-api
 ```
 
 :::tip
-Building the dashboard bundle first (`just dashboard-build`) is required for `TE_MODE=both` to serve `crates/dashboard/pkg`.
+Building the dashboard bundle first (`just dashboard-build`) is required for `INVOKR_MODE=both` to serve `crates/dashboard/pkg`.
 :::
 
 ### 5. Run the worker
@@ -183,9 +183,9 @@ Building the dashboard bundle first (`just dashboard-build`) is required for `TE
 In a separate shell:
 
 ```bash
-TE_DATABASE_URL="postgres://kronos:kronos@localhost:5434/taskexecutor" \
-TE_METRICS_PORT="9090" \
-cargo run -p kronos-worker
+INVOKR_DATABASE_URL="postgres://invokr:invokr@localhost:5434/invokr_db" \
+INVOKR_METRICS_PORT="9090" \
+cargo run -p invokr-worker
 ```
 
 ### Verify
@@ -228,7 +228,7 @@ Applies all four migration files in order:
 just db-reset
 ```
 
-Drops and recreates the `taskexecutor` database, then runs all migrations. Uses `sqlx database drop` and `sqlx database create`.
+Drops and recreates the `invokr_db` database, then runs all migrations. Uses `sqlx database drop` and `sqlx database create`.
 
 ### Open a SQL shell
 
@@ -236,13 +236,13 @@ Drops and recreates the `taskexecutor` database, then runs all migrations. Uses 
 just db-shell
 ```
 
-Opens a `psql` shell connected to the `taskexecutor` database:
+Opens a `psql` shell connected to the `invokr_db` database:
 
 ```
 psql (16.x)
 Type "help" for help.
 
-taskexecutor=#
+invokr_db=#
 ```
 
 ## Infrastructure services
@@ -266,7 +266,7 @@ After `just all-up`:
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | Prometheus | `http://localhost:9099` | — |
-| Grafana | `http://localhost:3001` | `admin` / `kronos` |
+| Grafana | `http://localhost:3001` | `admin` / `invokr` |
 
 ### Individual services
 
@@ -304,12 +304,12 @@ Key defaults for local development:
 
 | Variable | Default | Notes |
 |----------|---------|-------|
-| `TE_DATABASE_URL` | `postgresql://kronos:kronos@localhost:5432/taskexecutor` | Note: port 5432 in .env.example, but Docker maps to 5434. The justfile overrides this to `localhost:5432`. |
-| `TE_API_KEY` | `dev-api-key` | Development API key |
-| `TE_ENCRYPTION_KEY` | 64 zeros | Development encryption key (no security) |
+| `INVOKR_DATABASE_URL` | `postgresql://invokr:invokr@localhost:5434/invokr_db` | Host port 5434 is the Docker mapping for the container’s 5432 |
+| `INVOKR_API_KEY` | `dev-api-key` | Development API key |
+| `INVOKR_ENCRYPTION_KEY` | 64 zeros | Development encryption key (no security) |
 
-:::warning
-The `docker-compose.yml` maps PostgreSQL host port **5434** to container port **5432**. If you use `just db-up` and the justfile defaults, the database is accessible at `localhost:5432` (the justfile sets `TE_DATABASE_URL` to port 5432). If you manually configure the connection string, use port **5434** for the host-side mapping: `postgresql://kronos:kronos@localhost:5434/taskexecutor`.
+:::note
+The `docker-compose.yml` maps PostgreSQL host port **5434** to container port **5432**. Connect from the host on `localhost:5434` — that is what `.env.example`, the justfile, and the Nix dev shell all default to.
 :::
 
 ## See also

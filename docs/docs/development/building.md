@@ -5,7 +5,7 @@ title: Building
 
 # Building
 
-This page covers build commands, feature flags, and Docker builds for Kronos.
+This page covers build commands, feature flags, and Docker builds for Invokr.
 
 ## Build commands
 
@@ -35,39 +35,39 @@ cargo fmt --all -- --check                 # Format check
 
 ## Feature flags
 
-Kronos uses Cargo feature flags to conditionally compile optional functionality. Features are defined per-crate and can be enabled selectively.
+Invokr uses Cargo feature flags to conditionally compile optional functionality. Features are defined per-crate and can be enabled selectively.
 
 | Feature | Crate | Dependency | Description |
 |---------|-------|------------|-------------|
-| `kafka` | `kronos-worker` | `rdkafka` | Kafka dispatcher — enables dispatching jobs to Kafka topics |
-| `redis-stream` | `kronos-worker` | `redis` | Redis Stream dispatcher — enables dispatching jobs to Redis Streams |
-| `kms` | `kronos-common` | `aws-sdk-kms` | AWS KMS integration — enables transparent decryption of sensitive env vars |
-| `pg_cron` | `kronos-common` | `pg_cron` extension | pg_cron extension support — required for CRON job scheduling (enabled by default in the database) |
+| `kafka` | `invokr-worker` | `rdkafka` | Kafka dispatcher — enables dispatching jobs to Kafka topics |
+| `redis-stream` | `invokr-worker` | `redis` | Redis Stream dispatcher — enables dispatching jobs to Redis Streams |
+| `kms` | `invokr-common` | `aws-sdk-kms` | AWS KMS integration — enables transparent decryption of sensitive env vars |
+| `pg_cron` | `invokr-common` | `pg_cron` extension | pg_cron extension support — required for CRON job scheduling (enabled by default in the database) |
 
 ### Building with features
 
 ```bash
 # Build with Kafka support
-cargo build --workspace --features kronos-worker/kafka
+cargo build --workspace --features invokr-worker/kafka
 
 # Build with Redis Stream support
-cargo build --workspace --features kronos-worker/redis-stream
+cargo build --workspace --features invokr-worker/redis-stream
 
 # Build with KMS support
 cargo build --workspace --features kms
 
 # Build with all worker features
-cargo build --workspace --features kronos-worker/kafka,kronos-worker/redis-stream
+cargo build --workspace --features invokr-worker/kafka,invokr-worker/redis-stream
 
 # Build worker with Kafka + KMS
-cargo build -p kronos-worker --features kafka,kms
+cargo build -p invokr-worker --features kafka,kms
 
 # Build API with KMS + dashboard
-cargo build -p kronos-api --features kms
+cargo build -p invokr-api --features kms
 ```
 
 :::note
-Feature flags use `crate-name/feature-name` syntax when targeting a specific crate. The `kms` feature is defined in `kronos-common` but can be enabled from the workspace level since it propagates to dependent crates.
+Feature flags use `crate-name/feature-name` syntax when targeting a specific crate. The `kms` feature is defined in `invokr-common` but can be enabled from the workspace level since it propagates to dependent crates.
 :::
 
 ### Starting infrastructure for features
@@ -104,7 +104,7 @@ See [Docker](../deployment/docker) for full details on the Dockerfile stages and
 
 | Arg | Default | Description |
 |-----|---------|-------------|
-| `BINARY` | *(required)* | Which binary to build: `kronos-api`, `kronos-worker`, or `kronos-mock-server` |
+| `BINARY` | *(required)* | Which binary to build: `invokr-api`, `invokr-worker`, or `invokr-mock-server` |
 | `FEATURES` | *(empty)* | Cargo feature flags (e.g. `kafka`, `redis-stream`, `kms`) |
 | `INCLUDE_DASHBOARD` | `false` | When `true`, builds the dashboard WASM bundle |
 
@@ -112,23 +112,23 @@ See [Docker](../deployment/docker) for full details on the Dockerfile stages and
 
 ```bash
 # API server (no features)
-docker build --build-arg BINARY=kronos-api -t kronos-api .
+docker build --build-arg BINARY=invokr-api -t invokr-api .
 
 # Worker with Kafka + Redis Stream
 docker build \
-  --build-arg BINARY=kronos-worker \
+  --build-arg BINARY=invokr-worker \
   --build-arg FEATURES=kafka,redis-stream \
-  -t kronos-worker .
+  -t invokr-worker .
 
 # API with KMS + dashboard
 docker build \
-  --build-arg BINARY=kronos-api \
+  --build-arg BINARY=invokr-api \
   --build-arg FEATURES=kms \
   --build-arg INCLUDE_DASHBOARD=true \
-  -t kronos-api-full .
+  -t invokr-api-full .
 
 # Mock server
-docker build --build-arg BINARY=kronos-mock-server -t kronos-mock-server .
+docker build --build-arg BINARY=invokr-mock-server -t invokr-mock-server .
 ```
 
 ### cargo-chef dependency caching
@@ -181,15 +181,15 @@ The build process runs two commands:
    cd crates/dashboard && tailwindcss -i input.css -o pkg/tailwind-output.css --minify
    ```
 
-The output is placed in `crates/dashboard/pkg/`. Point `TE_DASHBOARD_DIST_DIR` to this directory when running the API server in `both` mode.
+The output is placed in `crates/dashboard/pkg/`. Point `INVOKR_DASHBOARD_DIST_DIR` to this directory when running the API server in `both` mode.
 
 ### Building with path prefix
 
 The dashboard uses compile-time environment variables baked into the WASM binary. Set them before building:
 
 ```bash
-TE_DASHBOARD_PATH_PREFIX=/dashboard \
-TE_API_BASE_URL=http://localhost:8080/kronos \
+INVOKR_DASHBOARD_PATH_PREFIX=/dashboard \
+INVOKR_API_BASE_URL=http://localhost:8080/invokr \
   just dashboard-build
 ```
 

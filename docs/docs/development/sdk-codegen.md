@@ -5,11 +5,11 @@ title: SDK Code Generation
 
 # SDK Code Generation
 
-Kronos generates client SDKs from [Smithy](https://smithy.io/) IDL models. This ensures that all SDKs (TypeScript, Rust, Haskell) and the OpenAPI spec are always in sync with the API definition. This page covers the code generation workflow.
+Invokr generates client SDKs from [Smithy](https://smithy.io/) IDL models. This ensures that all SDKs (TypeScript, Rust, Haskell) and the OpenAPI spec are always in sync with the API definition. This page covers the code generation workflow.
 
 ## Smithy models
 
-The Smithy IDL models live in `smithy/model/` and define the Kronos API surface:
+The Smithy IDL models live in `smithy/model/` and define the Invokr API surface:
 
 | Model file | Description |
 |------------|-------------|
@@ -114,7 +114,7 @@ This is equivalent to `just build-sdk && just cli-install` and ensures everythin
 
 ## Adding new API operations
 
-To add a new operation to the Kronos API:
+To add a new operation to the Invokr API:
 
 ### 1. Edit the Smithy model
 

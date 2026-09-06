@@ -5,7 +5,7 @@ title: Retry Policy
 
 # Retry Policy
 
-The retry policy defines how Kronos retries failed executions. It is configurable per endpoint and supports three backoff strategies with jitter to prevent thundering herd effects.
+The retry policy defines how Invokr retries failed executions. It is configurable per endpoint and supports three backoff strategies with jitter to prevent thundering herd effects.
 
 ---
 
@@ -194,7 +194,7 @@ If a worker crashes while an execution is `RUNNING`, the stuck execution reclaim
 3. Reset `worker_id = NULL` and `run_at = now()` so they can be re-claimed
 
 :::info
-The stuck execution timeout is configurable via `TE_STUCK_EXECUTION_TIMEOUT_SEC` (default: 300 seconds / 5 minutes). The reclaim interval is configurable via `TE_RECLAIM_INTERVAL_SEC` (default: 30 seconds).
+The stuck execution timeout is configurable via `INVOKR_STUCK_EXECUTION_TIMEOUT_SEC` (default: 300 seconds / 5 minutes). The reclaim interval is configurable via `INVOKR_RECLAIM_INTERVAL_SEC` (default: 30 seconds).
 :::
 
 ---

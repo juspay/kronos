@@ -5,7 +5,7 @@ title: The Three-Step Workflow
 
 # The Three-Step Workflow
 
-Kronos organizes work into a three-step model: **Setup**, **Register**, and **Invoke**. Each step builds on the previous one, creating a clean separation between defining contracts, configuring delivery targets, and firing jobs.
+Invokr organizes work into a three-step model: **Setup**, **Register**, and **Invoke**. Each step builds on the previous one, creating a clean separation between defining contracts, configuring delivery targets, and firing jobs.
 
 ---
 
@@ -21,7 +21,7 @@ Kronos organizes work into a three-step model: **Setup**, **Register**, and **In
 
 ## How resources reference each other
 
-Resources in Kronos form a dependency chain. An **endpoint** references a **payload spec** (for input validation), a **config** (for static variables), and optionally **secrets** (referenced within endpoint spec templates). A **job** references an **endpoint** by name.
+Resources in Invokr form a dependency chain. An **endpoint** references a **payload spec** (for input validation), a **config** (for static variables), and optionally **secrets** (referenced within endpoint spec templates). A **job** references an **endpoint** by name.
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐

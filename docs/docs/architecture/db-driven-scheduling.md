@@ -5,13 +5,13 @@ title: Database-Driven Scheduling
 
 # Database-Driven Scheduling
 
-Kronos eliminates the need for a separate scheduler process by delegating all scheduling concerns to PostgreSQL. This is achieved through two mechanisms: the `pg_cron` extension for CRON materialization and transaction-based pickup for all job types.
+Invokr eliminates the need for a separate scheduler process by delegating all scheduling concerns to PostgreSQL. This is achieved through two mechanisms: the `pg_cron` extension for CRON materialization and transaction-based pickup for all job types.
 
 ## No Separate Scheduler Process
 
-Traditional job scheduling systems require a dedicated scheduler process that polls for due jobs, materializes CRON ticks, and promotes delayed jobs. Kronos replaces all of this with database-native mechanisms:
+Traditional job scheduling systems require a dedicated scheduler process that polls for due jobs, materializes CRON ticks, and promotes delayed jobs. Invokr replaces all of this with database-native mechanisms:
 
-| Concern | Traditional Approach | Kronos Approach |
+| Concern | Traditional Approach | Invokr Approach |
 |---------|---------------------|-----------------|
 | CRON tick materialization | Scheduler loop (every 1s) | pg_cron extension (native to PostgreSQL) |
 | Delayed job promotion | Promoter loop (every 500ms) | Transaction-based pickup (worker reads PENDING directly) |
@@ -22,7 +22,7 @@ This eliminates an entire class of failure modes: scheduler crashes, missed tick
 
 ## pg_cron Extension
 
-The `pg_cron` extension is a PostgreSQL extension that provides cron-based job scheduling natively within the database. Kronos uses it to materialize CRON job executions.
+The `pg_cron` extension is a PostgreSQL extension that provides cron-based job scheduling natively within the database. Invokr uses it to materialize CRON job executions.
 
 ### Installation
 
@@ -38,7 +38,7 @@ When a CRON job is created via `POST /v1/jobs { trigger: CRON }`, the API regist
 
 ```sql
 SELECT cron.schedule(
-    'kronos_{schema_name}_{job_id}',
+    'invokr_{schema_name}_{job_id}',
     '{cron_expression}',
     '{insert_command}'
 );
@@ -79,7 +79,7 @@ BEGIN
             ws.schema_name
         ) LOOP
             PERFORM cron.schedule(
-                'kronos_' || ws.schema_name || '_' || job.job_id,
+                'invokr_' || ws.schema_name || '_' || job.job_id,
                 job.cron_expression,
                 '{insert_command}'
             );

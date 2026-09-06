@@ -5,19 +5,19 @@ title: Dual Deployment Modes
 
 # Dual Deployment Modes
 
-Kronos supports two deployment modes: **library mode** (embedded in-process, also called "embedded mode") and **service mode** (standalone REST API). Both modes expose the same API through the `KronosClient` trait, so call sites are transparent to the deployment mode — switching requires a change only at the construction site; call sites that use the `KronosClient` trait are unchanged.
+Invokr supports two deployment modes: **library mode** (embedded in-process, also called "embedded mode") and **service mode** (standalone REST API). Both modes expose the same API through the `InvokrClient` trait, so call sites are transparent to the deployment mode — switching requires a change only at the construction site; call sites that use the `InvokrClient` trait are unchanged.
 
 :::tip
 For a step-by-step setup guide for library mode, see [Library Mode Setup](../deployment/library-mode). For service mode setup, see [Quickstart](../quickstart) and [Docker](../deployment/docker).
 :::
 
-## KronosClient Trait
+## InvokrClient Trait
 
-The `KronosClient` trait abstracts over both deployment modes. It defines the full set of operations for managing Kronos resources:
+The `InvokrClient` trait abstracts over both deployment modes. It defines the full set of operations for managing Invokr resources:
 
 ```rust
 #[async_trait]
-pub trait KronosClient: Send + Sync {
+pub trait InvokrClient: Send + Sync {
     async fn upsert_secret(&self, schema_name: &str, name: &str, plaintext: &str) -> anyhow::Result<()>;
     async fn delete_secret(&self, schema_name: &str, name: &str) -> anyhow::Result<()>;
     async fn register_endpoint(&self, schema_name: &str, name: &str, endpoint_type: &str, spec: serde_json::Value, retry_policy: Option<serde_json::Value>) -> anyhow::Result<()>;
@@ -61,16 +61,16 @@ pub enum JobTrigger {
 }
 ```
 
-## Library Mode (KronosLibraryClient)
+## Library Mode (InvokrLibraryClient)
 
-Library mode embeds Kronos directly into your application process. It holds a caller-provided `PgPool` and accesses the database directly — no HTTP overhead.
+Library mode embeds Invokr directly into your application process. It holds a caller-provided `PgPool` and accesses the database directly — no HTTP overhead.
 
 ### Creating a Library Client
 
 ```rust
-use kronos_worker::KronosLibraryClient;
+use invokr_worker::InvokrLibraryClient;
 
-let client = KronosLibraryClient::new(
+let client = InvokrLibraryClient::new(
     pool,                    // caller-owned sqlx PgPool
     "sched_",                // table prefix (e.g. "sched_" → sched_jobs); "" for no prefix
     "64_hex_chars...",       // AES encryption key for secrets
@@ -81,7 +81,7 @@ let client = KronosLibraryClient::new(
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `pool` | `PgPool` | Caller-owned connection pool pointing at the same PostgreSQL instance |
-| `table_prefix` | `&str` | Prefix for all Kronos tables. Pass the full prefix including trailing underscore (e.g. `"sched_"` → `sched_jobs`). `""` means no prefix. Only alphanumeric and underscore allowed. |
+| `table_prefix` | `&str` | Prefix for all Invokr tables. Pass the full prefix including trailing underscore (e.g. `"sched_"` → `sched_jobs`). `""` means no prefix. Only alphanumeric and underscore allowed. |
 | `encryption_key` | `&str` | 64 hex-char AES-256 key for secrets; pass zeros if not using secrets |
 | `http_client` | `Option<Client>` | Optional reqwest client to reuse the caller's connection pool |
 
@@ -104,10 +104,10 @@ In library mode, `provision_workspace()` only creates the tenant schema and tabl
 The library client can start a background worker directly via `start_worker()`, which returns a `WorkerHandle`:
 
 ```rust
-use kronos_worker::{KronosLibraryClient, WorkerConfig};
-use kronos_common::tenant::SchemaRegistry;
+use invokr_worker::{InvokrLibraryClient, WorkerConfig};
+use invokr_common::tenant::SchemaRegistry;
 
-let client = KronosLibraryClient::new(pool, "sched_", &key, None)?;
+let client = InvokrLibraryClient::new(pool, "sched_", &key, None)?;
 
 let schema_provider = SchemaRegistry::new(client.pool().clone(), 30);
 
@@ -142,14 +142,14 @@ pub struct WorkerConfig {
 }
 ```
 
-## Service Mode (KronosHttpClient)
+## Service Mode (InvokrHttpClient)
 
-Service mode communicates with Kronos via the REST API. It's used when Kronos runs as a standalone service:
+Service mode communicates with Invokr via the REST API. It's used when Invokr runs as a standalone service:
 
 ```rust
-use kronos_worker::KronosHttpClient;
+use invokr_worker::InvokrHttpClient;
 
-let client = KronosHttpClient::new(
+let client = InvokrHttpClient::new(
     "http://localhost:8080".to_string(),  // base URL
     "dev-api-key".to_string(),            // API key
     "org_id".to_string(),                 // org ID
@@ -167,11 +167,11 @@ fn with_workspace(&self, req: reqwest::RequestBuilder, schema_name: &str) -> req
 }
 ```
 
-Kronos resolves the workspace by slug (the `schema_name` is used as the workspace slug). The `resolve_schema` function in `db/workspaces.rs` accepts both slug and workspace UUID.
+Invokr resolves the workspace by slug (the `schema_name` is used as the workspace slug). The `resolve_schema` function in `db/workspaces.rs` accepts both slug and workspace UUID.
 
 ### Provisioning in Service Mode
 
-In service mode, `provision_workspace()` registers the workspace with Kronos by creating it via the API. The org must already exist (created by the operator):
+In service mode, `provision_workspace()` registers the workspace with Invokr by creating it via the API. The org must already exist (created by the operator):
 
 ```rust
 async fn provision_workspace(&self, schema_name: &str) -> anyhow::Result<()> {
@@ -199,18 +199,18 @@ For service-mode setup guides, see [Quickstart](../quickstart), [Docker](../depl
 | **Latency** | Lowest (no HTTP overhead) | Higher (HTTP round-trip) |
 | **Isolation** | Shared process with your app | Fully isolated service |
 | **Scalability** | Scales with your app | Scales independently |
-| **DB access** | Direct (shared pool) | Via API (Kronos owns its DB) |
+| **DB access** | Direct (shared pool) | Via API (Invokr owns its DB) |
 | **Deployment** | Embedded in your binary | Separate process/container |
-| **Multi-app** | Each app embeds Kronos | Single Kronos serves multiple apps |
-| **Worker** | Started in-process via `start_worker()` | Kronos runs its own workers |
+| **Multi-app** | Each app embeds Invokr | Single Invokr serves multiple apps |
+| **Worker** | Started in-process via `start_worker()` | Invokr runs its own workers |
 
 :::tip
-**Library mode** is ideal when you want to add durable job scheduling to a single Rust application with minimal infrastructure. **Service mode** is better when multiple applications need to share a single Kronos deployment, or when you want to decouple Kronos's operational lifecycle from your application.
+**Library mode** is ideal when you want to add durable job scheduling to a single Rust application with minimal infrastructure. **Service mode** is better when multiple applications need to share a single Invokr deployment, or when you want to decouple Invokr's operational lifecycle from your application.
 :::
 
 ## SchemaProvider Trait
 
-The `SchemaProvider` trait tells the worker where to find the list of active workspace schemas. Kronos ships `SchemaRegistry` as the default implementation:
+The `SchemaProvider` trait tells the worker where to find the list of active workspace schemas. Invokr ships `SchemaRegistry` as the default implementation:
 
 ```rust
 #[async_trait]
@@ -221,7 +221,7 @@ pub trait SchemaProvider: Send + Sync + 'static {
 
 ### SchemaRegistry (Default)
 
-`SchemaRegistry` queries Kronos's own `public.workspaces` table with a 30-second TTL cache:
+`SchemaRegistry` queries Invokr's own `public.workspaces` table with a 30-second TTL cache:
 
 ```rust
 let schemas: Vec<(String,)> = sqlx::query_as(
@@ -249,7 +249,7 @@ impl SchemaProvider for MyAppSchemaProvider {
 
 ## Table Prefix System
 
-Both deployment modes support a table prefix to avoid collisions when Kronos tables share a schema with other application tables.
+Both deployment modes support a table prefix to avoid collisions when Invokr tables share a schema with other application tables.
 
 ### The `tbl()` Function
 
@@ -290,7 +290,7 @@ The table prefix is validated to contain only alphanumeric characters and unders
 
 ## Related Pages
 
-- [Library Mode Setup](../deployment/library-mode) — Step-by-step guide for embedding Kronos
+- [Library Mode Setup](../deployment/library-mode) — Step-by-step guide for embedding Invokr
 - [Architecture Overview](./overview) — System architecture and process topology
 - [Worker Pipeline](./worker-pipeline) — How the worker poller operates (used by `start_worker()`)
 - [Database Schema](./database-schema) — Full schema layout including the table prefix system

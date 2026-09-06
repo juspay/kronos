@@ -5,7 +5,7 @@ title: Monitoring & Observability
 
 # Monitoring & Observability
 
-Kronos exposes Prometheus metrics from both the API server and the worker. A pre-built Grafana dashboard provides visualization of job creation, execution throughput, dispatch latency, and worker health.
+Invokr exposes Prometheus metrics from both the API server and the worker. A pre-built Grafana dashboard provides visualization of job creation, execution throughput, dispatch latency, and worker health.
 
 ## Metrics endpoints
 
@@ -16,12 +16,12 @@ Kronos exposes Prometheus metrics from both the API server and the worker. A pre
 | Scheduler | `GET /metrics` (separate HTTP listener) | 9091 |
 
 :::note
-The API server serves metrics on the same port as the API (at `/metrics`). The worker and scheduler expose metrics on separate HTTP listeners, configured via `TE_METRICS_PORT`.
+The API server serves metrics on the same port as the API (at `/metrics`). The worker and scheduler expose metrics on separate HTTP listeners, configured via `INVOKR_METRICS_PORT`.
 :::
 
 ## Starting the monitoring stack
 
-Kronos includes Docker Compose configurations for Prometheus and Grafana:
+Invokr includes Docker Compose configurations for Prometheus and Grafana:
 
 ```bash
 # Start Prometheus + Grafana
@@ -33,7 +33,7 @@ This starts:
 | Service | URL | Credentials |
 |---------|-----|------------|
 | Prometheus | http://localhost:9099 | — |
-| Grafana | http://localhost:3001 | admin / kronos |
+| Grafana | http://localhost:3001 | admin / invokr |
 
 :::info
 Prometheus runs on host port **9099** (mapped to container port 9090) to avoid conflicts with the worker's metrics port.
@@ -61,21 +61,21 @@ global:
   evaluation_interval: 5s
 
 scrape_configs:
-  - job_name: "kronos-api"
+  - job_name: "invokr-api"
     metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:8080"]
         labels:
           service: api
 
-  - job_name: "kronos-worker"
+  - job_name: "invokr-worker"
     metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:9090"]
         labels:
           service: worker
 
-  - job_name: "kronos-scheduler"
+  - job_name: "invokr-scheduler"
     metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:9091"]
@@ -91,31 +91,31 @@ Prometheus scrapes all three components every 5 seconds. The `host.docker.intern
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `kronos_jobs_created_total` | Counter | Jobs created, labeled by `trigger_type`, `endpoint`, `schema` |
-| `kronos_executions_claimed_total` | Counter | Executions claimed by workers |
-| `kronos_executions_completed_total` | Counter | Executions completed, labeled by `status` (`SUCCESS` / `FAILED`) |
-| `kronos_execution_duration_seconds` | Histogram | End-to-end execution duration (claim to completion) |
+| `invokr_jobs_created_total` | Counter | Jobs created, labeled by `trigger_type`, `endpoint`, `schema` |
+| `invokr_executions_claimed_total` | Counter | Executions claimed by workers |
+| `invokr_executions_completed_total` | Counter | Executions completed, labeled by `status` (`SUCCESS` / `FAILED`) |
+| `invokr_execution_duration_seconds` | Histogram | End-to-end execution duration (claim to completion) |
 
 ### Dispatch metrics
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `kronos_dispatch_total` | Counter | Dispatch attempts, labeled by `endpoint_type`, `status`, `error_type` |
-| `kronos_dispatch_duration_seconds` | Histogram | Dispatcher-level latency (time to send and receive response) |
+| `invokr_dispatch_total` | Counter | Dispatch attempts, labeled by `endpoint_type`, `status`, `error_type` |
+| `invokr_dispatch_duration_seconds` | Histogram | Dispatcher-level latency (time to send and receive response) |
 
 ### Worker metrics
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `kronos_worker_inflight_executions` | Gauge | Currently in-flight executions per worker |
-| `kronos_worker_poll_idle_total` | Counter | Idle poll cycles (no work found) |
+| `invokr_worker_inflight_executions` | Gauge | Currently in-flight executions per worker |
+| `invokr_worker_poll_idle_total` | Counter | Idle poll cycles (no work found) |
 
 ### Transport-specific metrics
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `kronos_kafka_messages_produced_total` | Counter | Kafka messages produced, labeled by `topic`, `status` |
-| `kronos_redis_stream_messages_sent_total` | Counter | Redis Stream messages sent, labeled by `stream`, `status` |
+| `invokr_kafka_messages_produced_total` | Counter | Kafka messages produced, labeled by `topic`, `status` |
+| `invokr_redis_stream_messages_sent_total` | Counter | Redis Stream messages sent, labeled by `stream`, `status` |
 
 ## Metric labels
 
@@ -133,7 +133,7 @@ The dispatch and completion metrics use consistent labels for filtering and grou
 A pre-built Grafana dashboard is included at:
 
 ```
-monitoring/grafana/dashboards/kronos-platform.json
+monitoring/grafana/dashboards/invokr-platform.json
 ```
 
 Grafana is automatically provisioned with this dashboard on startup via the provisioning configuration at `monitoring/grafana/provisioning/`. The dashboard includes panels for:
@@ -147,7 +147,7 @@ Grafana is automatically provisioned with this dashboard on startup via the prov
 - Worker idle poll rate
 
 :::tip
-Access Grafana at http://localhost:3001 and log in with `admin` / `kronos`. The dashboard appears under **Dashboards → Kronos Platform**.
+Access Grafana at http://localhost:3001 and log in with `admin` / `invokr`. The dashboard appears under **Dashboards → Invokr Platform**.
 :::
 
 ## Useful PromQL queries
@@ -155,45 +155,45 @@ Access Grafana at http://localhost:3001 and log in with `admin` / `kronos`. The 
 ### Success rate by endpoint type
 
 ```promql
-sum(rate(kronos_dispatch_total{status="SUCCESS"}[5m])) by (endpoint_type)
+sum(rate(invokr_dispatch_total{status="SUCCESS"}[5m])) by (endpoint_type)
 /
-sum(rate(kronos_dispatch_total[5m])) by (endpoint_type)
+sum(rate(invokr_dispatch_total[5m])) by (endpoint_type)
 ```
 
 ### Execution duration p99
 
 ```promql
-histogram_quantile(0.99, sum(rate(kronos_execution_duration_seconds_bucket[5m])) by (le))
+histogram_quantile(0.99, sum(rate(invokr_execution_duration_seconds_bucket[5m])) by (le))
 ```
 
 ### Dispatch error breakdown
 
 ```promql
-sum(rate(kronos_dispatch_total{status="FAILURE"}[5m])) by (error_type)
+sum(rate(invokr_dispatch_total{status="FAILURE"}[5m])) by (error_type)
 ```
 
 ### Worker utilization
 
 ```promql
-kronos_worker_inflight_executions
+invokr_worker_inflight_executions
 ```
 
 ### Idle poll rate (worker busyness indicator)
 
 ```promql
-rate(kronos_worker_poll_idle_total[1m])
+rate(invokr_worker_poll_idle_total[1m])
 ```
 
 A high idle rate means the worker has spare capacity. A rate near zero means the worker is constantly finding work.
 
 ## Path prefix considerations
 
-When running the API server with a path prefix (`TE_PATH_PREFIX`), update the Prometheus scrape config to match:
+When running the API server with a path prefix (`INVOKR_PATH_PREFIX`), update the Prometheus scrape config to match:
 
 ```yaml
 scrape_configs:
-  - job_name: "kronos-api"
-    metrics_path: /kronos/metrics    # was /metrics
+  - job_name: "invokr-api"
+    metrics_path: /invokr/metrics    # was /metrics
     static_configs:
       - targets: ["host.docker.internal:8080"]
 ```
@@ -206,7 +206,7 @@ Similarly, update Docker healthcheck URLs if using `docker-compose.prod.yml`:
 
 ```yaml
 healthcheck:
-  test: ["CMD", "curl", "-f", "http://localhost:8080/kronos/health"]
+  test: ["CMD", "curl", "-f", "http://localhost:8080/invokr/health"]
 ```
 
 ## Running with monitoring in development
@@ -224,7 +224,7 @@ just dev
 Then:
 
 - **Prometheus**: http://localhost:9099 — view raw metrics, check scrape targets
-- **Grafana**: http://localhost:3001 — view pre-built dashboard (admin / kronos)
+- **Grafana**: http://localhost:3001 — view pre-built dashboard (admin / invokr)
 - **API metrics**: http://localhost:8080/metrics — raw API Prometheus metrics
 - **Worker metrics**: http://localhost:9090/metrics — raw worker Prometheus metrics
 
@@ -237,18 +237,18 @@ Check that Prometheus is successfully scraping all targets:
 curl -s http://localhost:9099/api/v1/targets | python3 -m json.tool
 ```
 
-All three targets (`kronos-api`, `kronos-worker`, `kronos-scheduler`) should show `"health": "up"`.
+All three targets (`invokr-api`, `invokr-worker`, `invokr-scheduler`) should show `"health": "up"`.
 
 Query a metric directly:
 
 ```bash
 # Total jobs created
-curl -s "http://localhost:9099/api/v1/query?query=kronos_jobs_created_total" | python3 -m json.tool
+curl -s "http://localhost:9099/api/v1/query?query=invokr_jobs_created_total" | python3 -m json.tool
 ```
 
 ## See also
 
-- [Configuration](../configuration/environment-variables) — `TE_METRICS_PORT` and other env vars
+- [Configuration](../configuration/environment-variables) — `INVOKR_METRICS_PORT` and other env vars
 - [HTTP endpoints](./http-endpoints) — endpoint configuration
 - [CRON jobs](./cron-jobs) — monitoring CRON job health via `/status`
 - [Pagination](./pagination) — listing jobs and executions

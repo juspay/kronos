@@ -5,7 +5,7 @@ title: Pagination
 
 # Pagination
 
-All list endpoints in Kronos use **cursor-based pagination**. This provides stable, consistent results even as new records are inserted concurrently — unlike offset-based pagination, which can skip or duplicate records when data changes between page fetches.
+All list endpoints in Invokr use **cursor-based pagination**. This provides stable, consistent results even as new records are inserted concurrently — unlike offset-based pagination, which can skip or duplicate records when data changes between page fetches.
 
 ## Query parameters
 
@@ -148,9 +148,9 @@ done
 ## Example: iterating with the TypeScript SDK
 
 ```typescript
-import { KronosServiceClient, ListJobsCommand } from "kronos-sdk";
+import { InvokrServiceClient, ListJobsCommand } from "invokr-sdk";
 
-const client = new KronosServiceClient({
+const client = new InvokrServiceClient({
   endpoint: "http://localhost:8080",
   token: { token: "dev-api-key" },
 });
@@ -204,7 +204,7 @@ curl "http://localhost:8080/v1/jobs?trigger=CRON&status=ACTIVE&limit=20" \
 | **Offset-based** (`?offset=50`) | New inserts between page fetches cause items to shift, leading to skipped or duplicated records | Inconsistent |
 | **Cursor-based** (`?cursor=...`) | Cursor is based on the last item's sort key. New inserts before the cursor do not affect subsequent pages | Consistent |
 
-Kronos sorts records by `created_at DESC` (and by ID as a tiebreaker). The cursor encodes the last seen `created_at` + `id`, ensuring stable iteration even as new records are created.
+Invokr sorts records by `created_at DESC` (and by ID as a tiebreaker). The cursor encodes the last seen `created_at` + `id`, ensuring stable iteration even as new records are created.
 
 :::tip
 Always use the maximum `limit` (200) when bulk-exporting data to minimize the number of round trips. Each page request is a separate HTTP call.

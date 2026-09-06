@@ -5,25 +5,25 @@ title: AWS KMS Integration
 
 # AWS KMS Integration
 
-Kronos supports encrypting sensitive environment variables at rest using AWS Key Management Service (KMS). When KMS is enabled, the database URL, API key, and encryption key are stored as base64-encoded KMS ciphertext and transparently decrypted at startup.
+Invokr supports encrypting sensitive environment variables at rest using AWS Key Management Service (KMS). When KMS is enabled, the database URL, API key, and encryption key are stored as base64-encoded KMS ciphertext and transparently decrypted at startup.
 
 ## How it works
 
-When `TE_KMS_ENABLED=true` and the `kms` Cargo feature is compiled in, Kronos's `SensitiveEnvReader` intercepts reads of three environment variables:
+When `INVOKR_KMS_ENABLED=true` and the `kms` Cargo feature is compiled in, Invokr's `SensitiveEnvReader` intercepts reads of three environment variables:
 
 | Variable | Description |
 |----------|-------------|
-| `TE_DATABASE_URL` | PostgreSQL connection string |
-| `TE_API_KEY` | Bearer token for API authentication |
-| `TE_ENCRYPTION_KEY` | AES-256 key for secret encryption |
+| `INVOKR_DATABASE_URL` | PostgreSQL connection string |
+| `INVOKR_API_KEY` | Bearer token for API authentication |
+| `INVOKR_ENCRYPTION_KEY` | AES-256 key for secret encryption |
 
 Instead of reading plaintext values, the reader calls `aws kms decrypt` on the base64-encoded ciphertext stored in the environment variable and uses the decrypted plaintext value in memory.
 
 :::info
-The `kms` feature must be compiled into the binary. If `TE_KMS_ENABLED=true` but the binary was built without `--features kms`, Kronos will fail to start with an error:
+The `kms` feature must be compiled into the binary. If `INVOKR_KMS_ENABLED=true` but the binary was built without `--features kms`, Invokr will fail to start with an error:
 
 ```
-TE_KMS_ENABLED=true but kronos was compiled without the 'kms' feature
+INVOKR_KMS_ENABLED=true but invokr was compiled without the 'kms' feature
 ```
 :::
 
@@ -31,10 +31,10 @@ TE_KMS_ENABLED=true but kronos was compiled without the 'kms' feature
 
 ```bash
 # API server with KMS
-cargo build --release -p kronos-api --features kms
+cargo build --release -p invokr-api --features kms
 
 # Worker with KMS
-cargo build --release -p kronos-worker --features kms
+cargo build --release -p invokr-worker --features kms
 
 # Both with KMS
 cargo build --workspace --features kms
@@ -43,7 +43,7 @@ cargo build --workspace --features kms
 For Docker builds, pass the `FEATURES` build arg:
 
 ```bash
-docker build --build-arg BINARY=kronos-api --build-arg FEATURES=kms -t kronos-api-kms .
+docker build --build-arg BINARY=invokr-api --build-arg FEATURES=kms -t invokr-api-kms .
 ```
 
 ## AWS environment variables
@@ -63,7 +63,7 @@ In production, omit `AWS_ENDPOINT_URL` to use the real AWS KMS endpoint. Use IAM
 
 ## Local development with LocalStack
 
-Kronos uses [LocalStack](https://localstack.cloud/) to emulate AWS KMS locally. The `docker-compose.yml` includes a LocalStack service under the `kms` profile.
+Invokr uses [LocalStack](https://localstack.cloud/) to emulate AWS KMS locally. The `docker-compose.yml` includes a LocalStack service under the `kms` profile.
 
 ### Step 1: Start LocalStack
 
@@ -81,28 +81,28 @@ just kms-init
 
 This runs `scripts/kms-init.sh`, which:
 
-1. Creates a KMS key on LocalStack with the description "Kronos dev encryption key"
-2. Creates an alias `alias/kronos-dev` for the key
+1. Creates a KMS key on LocalStack with the description "Invokr dev encryption key"
+2. Creates an alias `alias/invokr-dev` for the key
 3. Saves the key ID to `.kms-key-id`
 4. Encrypts the three sensitive env vars:
-   - `TE_DATABASE_URL`
-   - `TE_API_KEY`
-   - `TE_ENCRYPTION_KEY`
+   - `INVOKR_DATABASE_URL`
+   - `INVOKR_API_KEY`
+   - `INVOKR_ENCRYPTION_KEY`
 5. Writes a complete `.env.kms` file with encrypted values + plaintext non-sensitive config + AWS config
 
 The script reads plaintext values from the current environment or falls back to defaults:
 
 ```bash
 # Defaults used by kms-init.sh:
-TE_DATABASE_URL=postgresql://kronos:kronos@localhost:5432/taskexecutor
-TE_API_KEY=dev-api-key
-TE_ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000
+INVOKR_DATABASE_URL=postgresql://invokr:invokr@localhost:5434/invokr_db
+INVOKR_API_KEY=dev-api-key
+INVOKR_ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000
 ```
 
 To encrypt custom values, set them before running `just kms-init`:
 
 ```bash
-TE_API_KEY=my-secret-api-key TE_DATABASE_URL=postgresql://user:pass@db:5432/mydb just kms-init
+INVOKR_API_KEY=my-secret-api-key INVOKR_DATABASE_URL=postgresql://user:pass@db:5432/mydb just kms-init
 ```
 
 ### Step 3: Run with KMS
@@ -114,7 +114,7 @@ just kms-dev
 This starts the API server and worker with the `kms` feature enabled, using the `.env.kms` file. The script verifies `.env.kms` exists before starting.
 
 :::note
-`just kms-dev` unsets the plaintext `TE_DATABASE_URL`, `TE_API_KEY`, and `TE_ENCRYPTION_KEY` from the environment before starting, ensuring only the KMS-encrypted versions are used.
+`just kms-dev` unsets the plaintext `INVOKR_DATABASE_URL`, `INVOKR_API_KEY`, and `INVOKR_ENCRYPTION_KEY` from the environment before starting, ensuring only the KMS-encrypted versions are used.
 :::
 
 ### Encrypting additional values
@@ -140,21 +140,21 @@ The `kms-init.sh` script generates a file like this:
 ```bash
 # Generated by scripts/kms-init.sh — KMS-enabled dev environment
 
-TE_KMS_ENABLED=true
+INVOKR_KMS_ENABLED=true
 
 # Encrypted values (base64-encoded KMS ciphertext)
-TE_DATABASE_URL=AQICAHh...base64...
-TE_API_KEY=AQICAHh...base64...
-TE_ENCRYPTION_KEY=AQICAHh...base64...
+INVOKR_DATABASE_URL=AQICAHh...base64...
+INVOKR_API_KEY=AQICAHh...base64...
+INVOKR_ENCRYPTION_KEY=AQICAHh...base64...
 
 # Non-sensitive values (plaintext)
-TE_LISTEN_ADDR=0.0.0.0:8080
-TE_DB_POOL_SIZE=20
-TE_WORKER_MAX_CONCURRENT=50
-TE_WORKER_POLL_INTERVAL_MS=200
-TE_CONFIG_CACHE_TTL_SEC=60
-TE_SECRET_CACHE_TTL_SEC=300
-TE_WORKER_SHUTDOWN_TIMEOUT_SEC=30
+INVOKR_LISTEN_ADDR=0.0.0.0:8080
+INVOKR_DB_POOL_SIZE=20
+INVOKR_WORKER_MAX_CONCURRENT=50
+INVOKR_WORKER_POLL_INTERVAL_MS=200
+INVOKR_CONFIG_CACHE_TTL_SEC=60
+INVOKR_SECRET_CACHE_TTL_SEC=300
+INVOKR_WORKER_SHUTDOWN_TIMEOUT_SEC=30
 
 # AWS / LocalStack
 AWS_ENDPOINT_URL=http://localhost:4566
@@ -177,13 +177,13 @@ In production, you use a real AWS KMS key instead of LocalStack.
 
 ```bash
 aws kms create-key \
-  --description "Kronos production encryption key" \
+  --description "Invokr production encryption key" \
   --region us-east-1
 
 # Note the KeyId from the output
 
 aws kms create-alias \
-  --alias-name alias/kronos-prod \
+  --alias-name alias/invokr-prod \
   --target-key-id <key-id>
 ```
 
@@ -192,25 +192,25 @@ aws kms create-alias \
 ```bash
 aws kms encrypt \
   --key-id <key-id> \
-  --plaintext "postgresql://user:pass@prod-db:5432/kronos" \
+  --plaintext "postgresql://user:pass@prod-db:5432/invokr" \
   --cli-binary-format raw-in-base64-out \
   --query 'CiphertextBlob' \
   --output text
 ```
 
-Repeat for `TE_API_KEY` and `TE_ENCRYPTION_KEY`.
+Repeat for `INVOKR_API_KEY` and `INVOKR_ENCRYPTION_KEY`.
 
 ### 3. Configure the environment
 
 Set the following environment variables in your production deployment:
 
 ```bash
-TE_KMS_ENABLED=true
+INVOKR_KMS_ENABLED=true
 
 # Encrypted values (base64-encoded KMS ciphertext from step 2)
-TE_DATABASE_URL=<encrypted-db-url>
-TE_API_KEY=<encrypted-api-key>
-TE_ENCRYPTION_KEY=<encrypted-encryption-key>
+INVOKR_DATABASE_URL=<encrypted-db-url>
+INVOKR_API_KEY=<encrypted-api-key>
+INVOKR_ENCRYPTION_KEY=<encrypted-encryption-key>
 
 # AWS configuration (omit AWS_ENDPOINT_URL for real AWS)
 AWS_REGION=us-east-1
@@ -224,8 +224,8 @@ AWS_REGION=us-east-1
 Ensure your production binaries are built with `--features kms`. For Docker:
 
 ```bash
-docker build --build-arg BINARY=kronos-api --build-arg FEATURES=kms -t kronos-api:prod .
-docker build --build-arg BINARY=kronos-worker --build-arg FEATURES=kms -t kronos-worker:prod .
+docker build --build-arg BINARY=invokr-api --build-arg FEATURES=kms -t invokr-api:prod .
+docker build --build-arg BINARY=invokr-worker --build-arg FEATURES=kms -t invokr-worker:prod .
 ```
 
 :::danger
@@ -240,7 +240,7 @@ The `scripts/docker-prod.sh` script automates the full prod-like KMS setup in Do
 2. Starts PostgreSQL and LocalStack
 3. Runs database migrations
 4. Creates a KMS key on LocalStack via `awslocal`
-5. Encrypts `TE_DATABASE_URL` (using Docker-internal hostname `postgres:5432`), `TE_API_KEY`, and `TE_ENCRYPTION_KEY`
+5. Encrypts `INVOKR_DATABASE_URL` (using Docker-internal hostname `postgres:5432`), `INVOKR_API_KEY`, and `INVOKR_ENCRYPTION_KEY`
 6. Writes `.env.prod.kms` with the encrypted values
 7. Starts the API server and worker
 8. Waits for health checks
@@ -258,14 +258,14 @@ env_file:
 | Aspect | Dev (LocalStack) | Production |
 |--------|-------------------|------------|
 | Key creation | `just kms-init` | `aws kms create-key` |
-| Key alias | `alias/kronos-dev` | `alias/kronos-prod` |
+| Key alias | `alias/invokr-dev` | `alias/invokr-prod` |
 | Key ID storage | `.kms-key-id` file | AWS KMS console / IaC |
 | Endpoint | `http://localhost:4566` | AWS (default endpoint) |
 | Credentials | `test` / `test` | IAM role or explicit keys |
 | Key rotation | Manual (re-run `kms-init`) | Enable automatic key rotation in AWS |
 
 :::tip
-Enable [automatic key rotation](https://docs.aws.amazon.com/kms/latest/developerguide/rotate-keys.html) on your production KMS key for an additional layer of security. Kronos will transparently handle rotated keys — the key ID in the ciphertext blob identifies which key to use for decryption.
+Enable [automatic key rotation](https://docs.aws.amazon.com/kms/latest/developerguide/rotate-keys.html) on your production KMS key for an additional layer of security. Invokr will transparently handle rotated keys — the key ID in the ciphertext blob identifies which key to use for decryption.
 :::
 
 ## See also

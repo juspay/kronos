@@ -4,15 +4,15 @@ import type {Config} from '@docusaurus/types';
 import type * as OpenApiPlugin from 'docusaurus-plugin-openapi-docs';
 
 const config: Config = {
-  title: 'Kronos',
+  title: 'Invokr',
   tagline: 'Durable job scheduling — setTimeout and setInterval as a service',
   favicon: 'img/favicon.ico',
 
-  url: 'https://kronos.example.com',
+  url: 'https://invokr.example.com',
   baseUrl: '/',
 
   organizationName: 'juspay',
-  projectName: 'kronos',
+  projectName: 'invokr',
 
   onBrokenLinks: 'throw',
 
@@ -42,9 +42,9 @@ const config: Config = {
         id: 'api',
         docsPluginId: 'classic',
         config: {
-          kronos: {
-            specPath: 'api/kronos-openapi.json',
-            outputDir: 'docs/api/kronos',
+          invokr: {
+            specPath: 'api/invokr-openapi.json',
+            outputDir: 'docs/api/invokr',
             sidebarOptions: {
               groupPathsBy: 'tag',
             },
@@ -63,9 +63,9 @@ const config: Config = {
       respectPrefersColorScheme: true,
     },
     navbar: {
-      title: 'Kronos',
+      title: 'Invokr',
       logo: {
-        alt: 'Kronos Logo',
+        alt: 'Invokr Logo',
         src: 'img/logo.svg',
       },
       items: [
@@ -82,7 +82,7 @@ const config: Config = {
           label: 'API',
         },
         {
-          href: 'https://github.com/juspay/kronos',
+          href: 'https://github.com/juspay/invokr',
           label: 'GitHub',
           position: 'right',
         },
@@ -104,7 +104,7 @@ const config: Config = {
             },
             {
               label: 'API Reference',
-              to: '/docs/api/kronos/kronos-task-executor-api',
+              to: '/docs/api/invokr/invokr-api',
             },
           ],
         },
@@ -113,7 +113,7 @@ const config: Config = {
           items: [
             {
               label: 'GitHub',
-              href: 'https://github.com/juspay/kronos',
+              href: 'https://github.com/juspay/invokr',
             },
           ],
         },
@@ -131,7 +131,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright ${new Date().getFullYear()} Kronos. Built with Docusaurus.`,
+      copyright: `Copyright ${new Date().getFullYear()} Invokr. Built with Docusaurus.`,
     },
     prism: {
       theme: prismThemes.github,

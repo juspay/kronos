@@ -5,7 +5,7 @@ title: Docker
 
 # Docker
 
-Kronos ships with a multi-stage Dockerfile and a set of Docker Compose files for development and production-like environments. This page covers building custom images, the development compose stack, and the custom PostgreSQL image with `pg_cron`.
+Invokr ships with a multi-stage Dockerfile and a set of Docker Compose files for development and production-like environments. This page covers building custom images, the development compose stack, and the custom PostgreSQL image with `pg_cron`.
 
 ## Multi-stage Dockerfile
 
@@ -23,7 +23,7 @@ The `Dockerfile` at the repository root uses four stages to produce a minimal ru
 
 | Arg | Default | Description |
 |-----|---------|-------------|
-| `BINARY` | *(required)* | Which binary to build: `kronos-api`, `kronos-worker`, or `kronos-mock-server` |
+| `BINARY` | *(required)* | Which binary to build: `invokr-api`, `invokr-worker`, or `invokr-mock-server` |
 | `FEATURES` | *(empty)* | Cargo feature flags to enable (e.g. `kafka`, `redis-stream`, `kms`) |
 | `INCLUDE_DASHBOARD` | `false` | When `true`, builds the dashboard WASM bundle and copies it into the runtime image |
 
@@ -35,21 +35,21 @@ Build caches are mounted via `--mount=type=cache` for both the Cargo registry an
 
 ### Runtime image
 
-The final stage is `debian:bookworm-slim` with `ca-certificates`, `curl`, and `libssl3` installed. The compiled binary is placed at `/usr/local/bin/app` and set as the `ENTRYPOINT`. When `INCLUDE_DASHBOARD=true`, the dashboard WASM bundle is copied to `/app/dashboard-dist` and `TE_DASHBOARD_DIST_DIR` is set accordingly.
+The final stage is `debian:bookworm-slim` with `ca-certificates`, `curl`, and `libssl3` installed. The compiled binary is placed at `/usr/local/bin/app` and set as the `ENTRYPOINT`. When `INCLUDE_DASHBOARD=true`, the dashboard WASM bundle is copied to `/app/dashboard-dist` and `INVOKR_DASHBOARD_DIST_DIR` is set accordingly.
 
 ## Building custom images
 
 ### API server (default)
 
 ```bash
-docker build -t kronos-api --build-arg BINARY=kronos-api .
+docker build -t invokr-api --build-arg BINARY=invokr-api .
 ```
 
 ### Worker with Kafka and Redis Stream support
 
 ```bash
-docker build -t kronos-worker \
-  --build-arg BINARY=kronos-worker \
+docker build -t invokr-worker \
+  --build-arg BINARY=invokr-worker \
   --build-arg FEATURES=kafka,redis-stream \
   .
 ```
@@ -57,8 +57,8 @@ docker build -t kronos-worker \
 ### API server with KMS and dashboard
 
 ```bash
-docker build -t kronos-api-full \
-  --build-arg BINARY=kronos-api \
+docker build -t invokr-api-full \
+  --build-arg BINARY=invokr-api \
   --build-arg FEATURES=kms \
   --build-arg INCLUDE_DASHBOARD=true \
   .
@@ -80,7 +80,7 @@ PostgreSQL is the only service that starts by default (no profile needed):
 docker compose up -d postgres
 ```
 
-It uses a custom image (see [Custom PostgreSQL image](#custom-postgresql-image)) that includes the `pg_cron` extension. The container maps host port **5434** to container port **5432** and creates a database named `taskexecutor` with user `kronos`.
+It uses a custom image (see [Custom PostgreSQL image](#custom-postgresql-image)) that includes the `pg_cron` extension. The container maps host port **5434** to container port **5432** and creates a database named `invokr_db` with user `invokr`.
 
 ```yaml
 services:
@@ -89,15 +89,15 @@ services:
     ports:
       - "5434:5432"
     environment:
-      POSTGRES_USER: kronos
-      POSTGRES_PASSWORD: kronos
-      POSTGRES_DB: taskexecutor
+      POSTGRES_USER: invokr
+      POSTGRES_PASSWORD: invokr
+      POSTGRES_DB: invokr_db
     command:
       - "postgres"
       - "-c"
       - "shared_preload_libraries=pg_cron"
       - "-c"
-      - "cron.database_name=taskexecutor"
+      - "cron.database_name=invokr_db"
     volumes:
       - postgres-data:/var/lib/postgresql/data
 ```
@@ -110,7 +110,7 @@ services:
 | `redis` | `redis` | 6379 | Redis 7 Alpine for Redis Stream dispatcher testing |
 | `localstack` | `kms` | 4566 | LocalStack KMS for local KMS encryption testing |
 | `prometheus` | `monitoring` | 9099 | Prometheus metrics scraper (5s interval, 7d retention) |
-| `grafana` | `monitoring` | 3001 | Grafana with pre-provisioned dashboards (admin/kronos) |
+| `grafana` | `monitoring` | 3001 | Grafana with pre-provisioned dashboards (admin/invokr) |
 
 ### Starting optional services
 
@@ -145,12 +145,12 @@ The Prometheus container mounts `monitoring/prometheus.yml` from the repository.
 
 | Job name | Target | Metrics path |
 |----------|--------|-------------|
-| `kronos-api` | `host.docker.internal:8080` | `/metrics` |
-| `kronos-worker` | `host.docker.internal:9090` | `/metrics` |
-| `kronos-scheduler` | `host.docker.internal:9091` | `/metrics` |
+| `invokr-api` | `host.docker.internal:8080` | `/metrics` |
+| `invokr-worker` | `host.docker.internal:9090` | `/metrics` |
+| `invokr-scheduler` | `host.docker.internal:9091` | `/metrics` |
 
 :::tip
-When using a path prefix (e.g. `TE_PATH_PREFIX=/kronos`), update `metrics_path` in `monitoring/prometheus.yml` from `/metrics` to `/kronos/metrics`.
+When using a path prefix (e.g. `INVOKR_PATH_PREFIX=/invokr`), update `metrics_path` in `monitoring/prometheus.yml` from `/metrics` to `/invokr/metrics`.
 :::
 
 ### Grafana dashboards
@@ -158,9 +158,9 @@ When using a path prefix (e.g. `TE_PATH_PREFIX=/kronos`), update `metrics_path` 
 Grafana is pre-provisioned with:
 - **Provisioning:** `monitoring/grafana/provisioning/` (mounted read-only)
 - **Dashboards:** `monitoring/grafana/dashboards/` (mounted read-only)
-- A pre-built platform dashboard at `monitoring/grafana/dashboards/kronos-platform.json`
+- A pre-built platform dashboard at `monitoring/grafana/dashboards/invokr-platform.json`
 
-Access Grafana at `http://localhost:3001` with credentials `admin` / `kronos`.
+Access Grafana at `http://localhost:3001` with credentials `admin` / `invokr`.
 
 ## Custom PostgreSQL image
 
@@ -177,18 +177,18 @@ RUN apt-get update \
 `pg_cron` is loaded as a shared preload library via the container command:
 
 ```
-postgres -c shared_preload_libraries=pg_cron -c cron.database_name=taskexecutor
+postgres -c shared_preload_libraries=pg_cron -c cron.database_name=invokr_db
 ```
 
-This is required because Kronos delegates all CRON job materialization to `pg_cron` — there is no separate scheduler process for CRON tick insertion. See [Database-driven scheduling](../architecture/db-driven-scheduling) for details.
+This is required because Invokr delegates all CRON job materialization to `pg_cron` — there is no separate scheduler process for CRON tick insertion. See [Database-driven scheduling](../architecture/db-driven-scheduling) for details.
 
 :::warning
-The `pg_cron` extension must be preloaded at server startup. If you use a different PostgreSQL image, ensure `shared_preload_libraries=pg_cron` is set in your PostgreSQL configuration before starting Kronos.
+The `pg_cron` extension must be preloaded at server startup. If you use a different PostgreSQL image, ensure `shared_preload_libraries=pg_cron` is set in your PostgreSQL configuration before starting Invokr.
 :::
 
 ## Running the full dev stack with Docker
 
-For a production-like Docker setup that builds all Kronos services and runs them with KMS encryption, see [Production Deployment](./production). For local development without Docker (using `nix develop` + `just dev`), see [Development Setup](../development/setup).
+For a production-like Docker setup that builds all Invokr services and runs them with KMS encryption, see [Production Deployment](./production). For local development without Docker (using `nix develop` + `just dev`), see [Development Setup](../development/setup).
 
 ## See also
 

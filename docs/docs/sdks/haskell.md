@@ -5,7 +5,7 @@ title: Haskell SDK
 
 # Haskell SDK
 
-The Haskell SDK is generated from Smithy IDL models via the `in.juspay.smithy.haskell` codegen plugin. It provides a typed client for the Kronos REST API using Haskell's `Network.HTTP.Client` for transport.
+The Haskell SDK is generated from Smithy IDL models via the `in.juspay.smithy.haskell` codegen plugin. It provides a typed client for the Invokr REST API using Haskell's `Network.HTTP.Client` for transport.
 
 ## Package
 
@@ -21,7 +21,7 @@ The Haskell SDK is generated from Smithy IDL models via the `in.juspay.smithy.ha
     "packageName": "SuperpositionSDK",
     "edition": "2010",
     "version": "0.0.1",
-    "service": "com.kronos#KronosService"
+    "service": "com.invokr#InvokrService"
   }
 }
 ```
@@ -54,9 +54,9 @@ cabal run haskell-example
 
 ## Example Client
 
-The example at `haskell-example/app/Main.hs` mirrors the TypeScript CLI test (`test-immediate.ts`) and demonstrates the full lifecycle of a Kronos job:
+The example at `haskell-example/app/Main.hs` mirrors the TypeScript CLI test (`test-immediate.ts`) and demonstrates the full lifecycle of a Invokr job:
 
-1. Build a `KronosServiceClient`
+1. Build a `InvokrServiceClient`
 2. Create an HTTP endpoint pointing at the mock server
 3. Schedule an `IMMEDIATE` job targeting that endpoint
 4. Poll `ListJobExecutions` until the job reaches a terminal state
@@ -66,7 +66,7 @@ The example at `haskell-example/app/Main.hs` mirrors the TypeScript CLI test (`t
 ### Client Setup
 
 ```haskell
-import qualified Com.Kronos.KronosServiceClient as Client
+import qualified Com.Invokr.InvokrServiceClient as Client
 import qualified Network.HTTP.Client as HTTP
 import qualified Network.URI as URI
 
@@ -87,9 +87,9 @@ main = do
 ### Creating an Endpoint
 
 ```haskell
-import qualified Com.Kronos.Command.CreateEndpoint as CreateEndpoint
-import qualified Com.Kronos.Model.CreateEndpointInput as CreateEndpointInput
-import qualified Com.Kronos.Model.EndpointTypeEnum as EndpointTypeEnum
+import qualified Com.Invokr.Command.CreateEndpoint as CreateEndpoint
+import qualified Com.Invokr.Model.CreateEndpointInput as CreateEndpointInput
+import qualified Com.Invokr.Model.EndpointTypeEnum as EndpointTypeEnum
 
 let endpointSpec :: Value
     endpointSpec = object ["url" .= ("http://localhost:9999/success" :: String)]
@@ -103,9 +103,9 @@ endpointResult <- CreateEndpoint.createEndpoint client $ do
 ### Creating a Job
 
 ```haskell
-import qualified Com.Kronos.Command.CreateJob as CreateJob
-import qualified Com.Kronos.Model.CreateJobInput as CreateJobInput
-import qualified Com.Kronos.Model.TriggerTypeEnum as TriggerTypeEnum
+import qualified Com.Invokr.Command.CreateJob as CreateJob
+import qualified Com.Invokr.Model.CreateJobInput as CreateJobInput
+import qualified Com.Invokr.Model.TriggerTypeEnum as TriggerTypeEnum
 
 let jobPayload :: Value
     jobPayload = object
@@ -123,8 +123,8 @@ jobResult <- CreateJob.createJob client $ do
 ### Polling for Execution
 
 ```haskell
-import qualified Com.Kronos.Command.ListJobExecutions as ListJobExecutions
-import qualified Com.Kronos.Model.ExecutionStatusEnum as ExecutionStatusEnum
+import qualified Com.Invokr.Command.ListJobExecutions as ListJobExecutions
+import qualified Com.Invokr.Model.ExecutionStatusEnum as ExecutionStatusEnum
 
 isTerminal :: ExecutionStatusEnum.ExecutionStatusEnum -> Bool
 isTerminal ExecutionStatusEnum.SUCCESS   = True
@@ -132,7 +132,7 @@ isTerminal ExecutionStatusEnum.FAILED    = True
 isTerminal ExecutionStatusEnum.CANCELLED = True
 isTerminal _                             = False
 
-pollExecution :: Client.KronosServiceClient -> T.Text -> Int -> IO (Maybe ExecutionResource)
+pollExecution :: Client.InvokrServiceClient -> T.Text -> Int -> IO (Maybe ExecutionResource)
 pollExecution client jobId remaining
     | remaining <= 0 = return Nothing
     | otherwise = do
@@ -152,10 +152,10 @@ pollExecution client jobId remaining
 ### Cleanup
 
 ```haskell
-import qualified Com.Kronos.Command.CancelJob as CancelJob
-import qualified Com.Kronos.Command.DeleteEndpoint as DeleteEndpoint
+import qualified Com.Invokr.Command.CancelJob as CancelJob
+import qualified Com.Invokr.Command.DeleteEndpoint as DeleteEndpoint
 
-cleanup :: Client.KronosServiceClient -> Maybe T.Text -> T.Text -> IO ()
+cleanup :: Client.InvokrServiceClient -> Maybe T.Text -> T.Text -> IO ()
 cleanup client mJobId epName = do
     case mJobId of
         Just jobId -> do
@@ -175,12 +175,12 @@ The generated Haskell SDK organizes modules by concern:
 
 | Module Pattern | Description |
 |----------------|-------------|
-| `Com.Kronos.KronosServiceClient` | Main client type and builder |
-| `Com.Kronos.Command.*` | Operation functions (e.g., `CreateJob.createJob`) |
-| `Com.Kronos.Model.*Input` | Input builders for each operation |
-| `Com.Kronos.Model.*Output` | Output accessors for each operation |
-| `Com.Kronos.Model.*Resource` | Resource types (e.g., `JobResource`, `ExecutionResource`) |
-| `Com.Kronos.Model.*Enum` | Enum types (e.g., `EndpointTypeEnum`, `TriggerTypeEnum`, `ExecutionStatusEnum`) |
+| `Com.Invokr.InvokrServiceClient` | Main client type and builder |
+| `Com.Invokr.Command.*` | Operation functions (e.g., `CreateJob.createJob`) |
+| `Com.Invokr.Model.*Input` | Input builders for each operation |
+| `Com.Invokr.Model.*Output` | Output accessors for each operation |
+| `Com.Invokr.Model.*Resource` | Resource types (e.g., `JobResource`, `ExecutionResource`) |
+| `Com.Invokr.Model.*Enum` | Enum types (e.g., `EndpointTypeEnum`, `TriggerTypeEnum`, `ExecutionStatusEnum`) |
 
 ## Configuration
 
@@ -188,7 +188,7 @@ The example uses hardcoded defaults that match the local development environment
 
 | Setting | Value | Description |
 |---------|-------|-------------|
-| `kronosUrl` | `http://localhost:8080` | Kronos API base URL |
+| `invokrUrl` | `http://localhost:8080` | Invokr API base URL |
 | `mockUrl` | `http://localhost:9999` | Mock server URL (for endpoint target) |
 | `apiKey` | `dev-api-key` | Bearer token for authentication |
 | `endpointName` | `haskell-example-endpoint` | Name for the test endpoint |
@@ -197,7 +197,7 @@ The example uses hardcoded defaults that match the local development environment
 
 ## Prerequisites
 
-The Haskell example requires all Kronos services to be running:
+The Haskell example requires all Invokr services to be running:
 
 ```bash
 # Start all services
@@ -205,9 +205,9 @@ just dev
 
 # Or individually:
 docker compose up -d postgres    # PostgreSQL
-cargo run -p kronos-api           # API server (port 8080)
-cargo run -p kronos-worker        # Worker (metrics on :9090)
-cargo run -p kronos-mock-server   # Mock server (port 9999)
+cargo run -p invokr-api           # API server (port 8080)
+cargo run -p invokr-worker        # Worker (metrics on :9090)
+cargo run -p invokr-mock-server   # Mock server (port 9999)
 ```
 
 :::tip

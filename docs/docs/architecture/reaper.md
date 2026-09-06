@@ -5,18 +5,18 @@ title: Reaper
 
 # Reaper
 
-The reaper is Kronos's internal garbage collector for expired CRON jobs. It retires CRON jobs whose `cron_ends_at` window has passed and unschedules their pg_cron entries, preventing them from firing no-op inserts forever.
+The reaper is Invokr's internal garbage collector for expired CRON jobs. It retires CRON jobs whose `cron_ends_at` window has passed and unschedules their pg_cron entries, preventing them from firing no-op inserts forever.
 
 ## What Is the Reaper?
 
 pg_cron drives CRON execution materialization, but it has no concept of a job's `cron_ends_at` window — left alone it fires forever. While the `cron_ends_at` guard in the pg_cron command stops *new executions* past the window (the `WHERE j.status = 'ACTIVE'` clause in the insert command returns no rows), the reaper handles the *lifecycle*: it periodically flips expired CRON jobs to `RETIRED` and removes their pg_cron entry so they stop firing no-op inserts entirely.
 
-## Dogfooded as a Kronos INTERNAL CRON Job
+## Dogfooded as a Invokr INTERNAL CRON Job
 
-The reaper is itself a Kronos job. Instead of running as a hidden tokio interval task inside each worker pod, it runs through the same execution pipeline as any user-created job:
+The reaper is itself a Invokr job. Instead of running as a hidden tokio interval task inside each worker pod, it runs through the same execution pipeline as any user-created job:
 
-1. Each workspace is provisioned at creation time with an `INTERNAL` endpoint named `kronos.reaper` and a CRON job
-2. The CRON schedule is controlled by `TE_REAPER_CRON_EXPRESSION` (default: `*/15 * * * *`)
+1. Each workspace is provisioned at creation time with an `INTERNAL` endpoint named `invokr.reaper` and a CRON job
+2. The CRON schedule is controlled by `INVOKR_REAPER_CRON_EXPRESSION` (default: `*/15 * * * *`)
 3. pg_cron ticks materialize an execution into the workspace's own `executions` table
 4. The worker claims it via the normal `SKIP LOCKED` path
 5. The `INTERNAL` dispatcher's `reaper` task calls `reap_schema()`
@@ -31,21 +31,21 @@ This means the reaper gets for free:
 
 ## Configuration
 
-The reaper's schedule is read from `TE_REAPER_CRON_EXPRESSION` at workspace creation time and baked into the workspace's pg_cron entry:
+The reaper's schedule is read from `INVOKR_REAPER_CRON_EXPRESSION` at workspace creation time and baked into the workspace's pg_cron entry:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TE_REAPER_CRON_EXPRESSION` | `*/15 * * * *` | 5-field pg_cron expression controlling how often the reaper fires per workspace |
+| `INVOKR_REAPER_CRON_EXPRESSION` | `*/15 * * * *` | 5-field pg_cron expression controlling how often the reaper fires per workspace |
 
 :::warning
-Changing `TE_REAPER_CRON_EXPRESSION` only affects workspaces created **after** the change. Existing workspaces keep their original reaper schedule. To update an existing workspace's reaper schedule, you would need to unschedule and reschedule the pg_cron entry manually.
+Changing `INVOKR_REAPER_CRON_EXPRESSION` only affects workspaces created **after** the change. Existing workspaces keep their original reaper schedule. To update an existing workspace's reaper schedule, you would need to unschedule and reschedule the pg_cron entry manually.
 :::
 
 ## Baked into Workspace Creation
 
 When a workspace is provisioned, the reaper's `INTERNAL` endpoint and CRON job are created as part of the workspace setup. This is done by `db::workspaces::provision_reaper()`, which:
 
-1. Creates an `INTERNAL` endpoint named `kronos.reaper` with a `task: "reaper"` spec
+1. Creates an `INTERNAL` endpoint named `invokr.reaper` with a `task: "reaper"` spec
 2. Creates a `CRON` job targeting that endpoint with the configured schedule
 3. Registers the job with pg_cron via `cron.schedule()`
 
@@ -139,9 +139,9 @@ No advisory locks or leader election needed. The previous implementation used a 
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `kronos_cron_jobs_reaped_total` | Counter | CRON jobs retired by the reaper, by schema |
+| `invokr_cron_jobs_reaped_total` | Counter | CRON jobs retired by the reaper, by schema |
 
-Each reaper execution also emits the standard execution metrics (`kronos_executions_claimed_total`, `kronos_executions_completed_total`, `kronos_execution_duration_seconds`).
+Each reaper execution also emits the standard execution metrics (`invokr_executions_claimed_total`, `invokr_executions_completed_total`, `invokr_execution_duration_seconds`).
 
 ## Related Pages
 

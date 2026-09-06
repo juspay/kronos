@@ -5,7 +5,7 @@ title: Delayed Jobs
 
 # Delayed Jobs
 
-Delayed jobs fire once at a specific future time — the `setTimeout` of Kronos. When you create a delayed job, Kronos inserts an execution with `PENDING` status and a `run_at` timestamp. Workers pick it up automatically when `run_at <= now()` — no separate promoter process is needed.
+Delayed jobs fire once at a specific future time — the `setTimeout` of Invokr. When you create a delayed job, Invokr inserts an execution with `PENDING` status and a `run_at` timestamp. Workers pick it up automatically when `run_at <= now()` — no separate promoter process is needed.
 
 ## Creating a delayed job
 
@@ -115,7 +115,7 @@ Always specify a timezone. A datetime without an offset may be interpreted in th
 
 ## Timing accuracy
 
-Delayed jobs fire within approximately **200ms** of the specified `run_at` time. This is bounded by the worker's poll interval (`TE_WORKER_POLL_INTERVAL_MS`, default 200ms):
+Delayed jobs fire within approximately **200ms** of the specified `run_at` time. This is bounded by the worker's poll interval (`INVOKR_WORKER_POLL_INTERVAL_MS`, default 200ms):
 
 | Component | Delay |
 |-----------|-------|
@@ -127,7 +127,7 @@ Delayed jobs fire within approximately **200ms** of the specified `run_at` time.
 To reduce latency, decrease the poll interval:
 
 ```bash
-TE_WORKER_POLL_INTERVAL_MS=100 cargo run -p kronos-worker
+INVOKR_WORKER_POLL_INTERVAL_MS=100 cargo run -p invokr-worker
 ```
 
 :::info

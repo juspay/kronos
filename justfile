@@ -402,7 +402,7 @@ docs-serve:
 
 # Regenerate API reference from OpenAPI spec (run after `just smithy-build`)
 docs-gen-api:
-    cp smithy/build/smithy/source/openapi/KronosService.openapi.json docs/api/kronos-openapi.json
+    cp smithy/build/smithy/source/openapi/InvokrService.openapi.json docs/api/invokr-openapi.json
     cd docs && npx docusaurus clean-api-docs all || true
     cd docs && npx docusaurus gen-api-docs all
 

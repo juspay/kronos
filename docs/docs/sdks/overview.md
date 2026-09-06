@@ -5,7 +5,7 @@ title: SDK Overview
 
 # SDK Overview
 
-Kronos provides SDKs in multiple languages, all generated from a single source of truth: Smithy IDL models. This ensures API consistency across languages and eliminates the need for manual SDK maintenance.
+Invokr provides SDKs in multiple languages, all generated from a single source of truth: Smithy IDL models. This ensures API consistency across languages and eliminates the need for manual SDK maintenance.
 
 ## Smithy IDL Models
 
@@ -42,14 +42,14 @@ The `smithy/smithy-build.json` file configures code generation for three languag
   },
   "plugins": {
     "typescript-client-codegen": {
-      "package": "kronos-sdk",
+      "package": "invokr-sdk",
       "packageVersion": "0.1.0"
     },
     "haskell-client-codegen": {
       "packageName": "SuperpositionSDK",
       "edition": "2010",
       "version": "0.0.1",
-      "service": "com.kronos#KronosService"
+      "service": "com.invokr#InvokrService"
     },
     "rust-client-codegen": {
       "runtimeConfig": { "version": "1.2.5" },
@@ -58,14 +58,14 @@ The `smithy/smithy-build.json` file configures code generation for three languag
         "renameErrors": true,
         "enableNewSmithyRuntime": "orchestrator"
       },
-      "service": "com.kronos#KronosService",
-      "module": "kronos_sdk",
+      "service": "com.invokr#InvokrService",
+      "module": "invokr_sdk",
       "moduleVersion": "0.1.0",
       "minimumSupportedRustVersion": "1.82.0",
-      "moduleDescription": "Rust SDK for Kronos job scheduling service"
+      "moduleDescription": "Rust SDK for Invokr job scheduling service"
     },
     "openapi": {
-      "service": "com.kronos#KronosService",
+      "service": "com.invokr#InvokrService",
       "protocol": "aws.protocols#restJson1"
     }
   }
@@ -74,8 +74,8 @@ The `smithy/smithy-build.json` file configures code generation for three languag
 
 | Plugin | Output | Package Name |
 |--------|--------|-------------|
-| `typescript-client-codegen` | TypeScript SDK | `kronos-sdk` |
-| `rust-client-codegen` | Rust SDK | `kronos_sdk` |
+| `typescript-client-codegen` | TypeScript SDK | `invokr-sdk` |
+| `rust-client-codegen` | Rust SDK | `invokr_sdk` |
 | `haskell-client-codegen` | Haskell SDK | `SuperpositionSDK` |
 | `openapi` | OpenAPI spec | — |
 
@@ -104,7 +104,7 @@ There is no CI guard for drift right now. smithy-rs codegen emits some `pub use`
 
 ### TypeScript SDK
 
-- **Package**: `kronos-sdk` (npm)
+- **Package**: `invokr-sdk` (npm)
 - **Generated to**: `smithy/build/smithy/source/typescript-client-codegen/`
 - **Used by**: CLI test scripts, dashboard integration
 - **Build**: `just build-sdk`
@@ -113,7 +113,7 @@ See [TypeScript SDK](./typescript) for details.
 
 ### Rust SDK
 
-- **Module**: `kronos_sdk`
+- **Module**: `invokr_sdk`
 - **Location**: `crates/client/` (committed to repo)
 - **MSRV**: 1.82 (excluded from workspace build)
 - **Runtime**: AWS smithy runtime (orchestrator)
@@ -134,7 +134,7 @@ See [Haskell SDK](./haskell) for details.
 | Recipe | Description |
 |--------|-------------|
 | `just smithy-build` | Validate Smithy model, regenerate Rust SDK into `crates/client/` |
-| `just build-sdk` | Generate and compile the TypeScript SDK (`kronos-sdk` npm package) |
+| `just build-sdk` | Generate and compile the TypeScript SDK (`invokr-sdk` npm package) |
 | `just sdk-refresh` | Regenerate + rebuild + reinstall CLI |
 | `just cli-install` | Install CLI dependencies (links to built SDK) |
 | `just test-haskell` | Run the Haskell SDK example |
@@ -145,7 +145,7 @@ When you change the API (add an operation, modify a shape, etc.):
 
 ```bash
 # 1. Update Smithy models
-vim smithy/model/kronos.smithy
+vim smithy/model/invokr.smithy
 
 # 2. Regenerate Rust SDK
 just smithy-build

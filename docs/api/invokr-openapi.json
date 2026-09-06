@@ -1,9 +1,9 @@
 {
     "openapi": "3.0.2",
     "info": {
-        "title": "Kronos Task Executor API",
+        "title": "Invokr API",
         "version": "2026-03-17",
-        "description": "Kronos — Distributed Job Scheduling and Execution Engine.\nProvides durable, retriable delivery of messages to HTTP endpoints,\nKafka topics, and Redis Streams."
+        "description": "Invokr — Distributed Job Scheduling and Execution Engine.\nProvides durable, retriable delivery of messages to HTTP endpoints,\nKafka topics, and Redis Streams."
     },
     "paths": {
         "/v1/endpoints": {

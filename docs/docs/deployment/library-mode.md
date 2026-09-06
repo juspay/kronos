@@ -5,7 +5,7 @@ title: Library Mode Setup
 
 # Library Mode Setup
 
-Library mode (also called **embedded mode**) embeds Kronos directly into your Rust application process. Your code holds a `PgPool` and accesses the database directly — no HTTP overhead, no separate API server. A background worker task runs inside your process via `start_worker()`.
+Library mode (also called **embedded mode**) embeds Invokr directly into your Rust application process. Your code holds a `PgPool` and accesses the database directly — no HTTP overhead, no separate API server. A background worker task runs inside your process via `start_worker()`.
 
 This is the fastest way to add durable job scheduling to a single Rust application. For the conceptual model and a comparison with service mode, see [Dual Deployment Modes](../architecture/dual-deployment).
 
@@ -20,7 +20,7 @@ This is the fastest way to add durable job scheduling to a single Rust applicati
            migrations/20260318000000_multi_tenancy.sql \
            migrations/20260322000000_txn_based_pickup.sql \
            migrations/20260322000001_pg_cron.sql; do
-    psql -U kronos -d taskexecutor -v ON_ERROR_STOP=1 < "$f"
+    psql -U invokr -d invokr_db -v ON_ERROR_STOP=1 < "$f"
   done
   ```
 - **Rust toolchain** (stable). The workspace MSRV is 1.75.
@@ -33,11 +33,11 @@ For local development, `just setup` starts PostgreSQL and applies all migrations
 
 ## Add the dependency
 
-`kronos-worker` is not published to crates.io. Add it as a git dependency:
+`invokr-worker` is not published to crates.io. Add it as a git dependency:
 
 ```toml
 [dependencies]
-kronos-worker = { git = "https://github.com/juspay/kronos", branch = "main" }
+invokr-worker = { git = "https://github.com/juspay/invokr", branch = "main" }
 ```
 
 ### Feature flags
@@ -50,10 +50,10 @@ kronos-worker = { git = "https://github.com/juspay/kronos", branch = "main" }
 
 ```toml
 # Example: Kafka + Redis Stream dispatchers
-kronos-worker = { git = "https://github.com/juspay/kronos", branch = "main", features = ["kafka", "redis-stream"] }
+invokr-worker = { git = "https://github.com/juspay/invokr", branch = "main", features = ["kafka", "redis-stream"] }
 
 # Example: KMS-encrypted secrets at rest
-kronos-worker = { git = "https://github.com/juspay/kronos", branch = "main", features = ["kms"] }
+invokr-worker = { git = "https://github.com/juspay/invokr", branch = "main", features = ["kms"] }
 ```
 
 Without a feature, the corresponding endpoint type returns an `UNSUPPORTED_TYPE` error at dispatch time.
@@ -62,7 +62,7 @@ Without a feature, the corresponding endpoint type returns an `UNSUPPORTED_TYPE`
 
 ## Generate an encryption key
 
-Kronos encrypts secret values at rest using AES-256-GCM. The key is a 64-character hex string (32 bytes). Generate one with:
+Invokr encrypts secret values at rest using AES-256-GCM. The key is a 64-character hex string (32 bytes). Generate one with:
 
 ```bash
 openssl rand -hex 32
@@ -73,19 +73,19 @@ openssl rand -hex 32
 **In production, always use a strong, randomly generated key.** The default all-zeros key (`0000...0000`) provides no security. If the key is rotated, existing secrets encrypted with the old key cannot be decrypted.
 :::
 
-For local development without secrets, passing 64 zeros is acceptable. See [Environment Variables](../configuration/environment-variables) (`TE_ENCRYPTION_KEY`) and [AWS KMS Integration](./kms) for production key management.
+For local development without secrets, passing 64 zeros is acceptable. See [Environment Variables](../configuration/environment-variables) (`INVOKR_ENCRYPTION_KEY`) and [AWS KMS Integration](./kms) for production key management.
 
 ---
 
 ## Construct the client
 
-`KronosLibraryClient::new` takes a caller-owned `PgPool` and accesses the database directly:
+`InvokrLibraryClient::new` takes a caller-owned `PgPool` and accesses the database directly:
 
 ```rust
-use kronos_worker::{KronosClient, KronosLibraryClient};
+use invokr_worker::{InvokrClient, InvokrLibraryClient};
 
 let pool = sqlx::PgPool::connect(&database_url).await?;
-let client = KronosLibraryClient::new(
+let client = InvokrLibraryClient::new(
     pool,                    // caller-owned PgPool
     "",                      // table prefix ("" = no prefix; "sched_" = sched_jobs)
     "64_hex_chars...",       // AES-256 encryption key
@@ -96,12 +96,12 @@ let client = KronosLibraryClient::new(
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `pool` | `PgPool` | Caller-owned connection pool pointing at the same PostgreSQL instance |
-| `table_prefix` | `&str` | Prefix for all Kronos tables. Pass the full prefix including trailing underscore (e.g. `"sched_"` → `sched_jobs`). `""` means no prefix. Only alphanumeric and underscore allowed. |
+| `table_prefix` | `&str` | Prefix for all Invokr tables. Pass the full prefix including trailing underscore (e.g. `"sched_"` → `sched_jobs`). `""` means no prefix. Only alphanumeric and underscore allowed. |
 | `encryption_key` | `&str` | 64 hex-char AES-256 key for secrets; pass zeros if not using secrets |
 | `http_client` | `Option<Client>` | Optional reqwest client to reuse the caller's connection pool |
 
 :::note
-For convenience, `KronosLibraryClient::from_database_url(database_url, max_connections, ...)` builds an internal pool. Use `client.pool()` to access it for a `SchemaProvider`.
+For convenience, `InvokrLibraryClient::from_database_url(database_url, max_connections, ...)` builds an internal pool. Use `client.pool()` to access it for a `SchemaProvider`.
 :::
 
 ---
@@ -127,7 +127,7 @@ In library mode, `provision_workspace()` only creates the tenant schema and tabl
 Register an HTTP endpoint (upsert — safe to call on every startup):
 
 ```rust
-use kronos_worker::JobTrigger;
+use invokr_worker::JobTrigger;
 
 client.register_endpoint(
     "my_schema",
@@ -167,8 +167,8 @@ See [HTTP Endpoints](../guides/http-endpoints) for template variables, [Payload 
 The worker runs as a background tokio task. `start_worker()` takes a `SchemaProvider` (which tells the worker which workspace schemas to poll) and a `WorkerConfig`:
 
 ```rust
-use kronos_worker::WorkerConfig;
-use kronos_common::tenant::SchemaProvider;
+use invokr_worker::WorkerConfig;
+use invokr_common::tenant::SchemaProvider;
 use std::future::Future;
 
 // A minimal SchemaProvider that returns a fixed list of schemas.
@@ -265,7 +265,7 @@ Set `shutdown_timeout_sec` high enough for your longest-running job. If a job ta
 
 ## Complete runnable example
 
-A full runnable example lives at [`examples/library-mode/`](https://github.com/juspay/kronos/tree/main/examples/library-mode) in the repository. It provisions a workspace, registers an HTTP endpoint pointing at the mock server, fires an immediate job, starts the worker, waits for the execution to complete, and shuts down gracefully.
+A full runnable example lives at [`examples/library-mode/`](https://github.com/juspay/invokr/tree/main/examples/library-mode) in the repository. It provisions a workspace, registers an HTTP endpoint pointing at the mock server, fires an immediate job, starts the worker, waits for the execution to complete, and shuts down gracefully.
 
 ### Prerequisites
 
@@ -302,7 +302,7 @@ The full flow: connect pool → construct client → provision workspace → reg
 
 ```rust
 let pool = sqlx::PgPool::connect(&database_url).await?;
-let client = KronosLibraryClient::new(pool, "", ENCRYPTION_KEY, None)?;
+let client = InvokrLibraryClient::new(pool, "", ENCRYPTION_KEY, None)?;
 
 client.provision_workspace("library_example").await?;
 client.register_endpoint("library_example", "ping", "HTTP", /* ... */, None).await?;
@@ -322,29 +322,29 @@ handle.shutdown();
 handle.join().await?;
 ```
 
-See [`examples/library-mode/src/main.rs`](https://github.com/juspay/kronos/blob/main/examples/library-mode/src/main.rs) for the complete source.
+See [`examples/library-mode/src/main.rs`](https://github.com/juspay/invokr/blob/main/examples/library-mode/src/main.rs) for the complete source.
 
 ---
 
 ## Switching to service mode
 
-If you later need to run Kronos as a standalone service (e.g. multiple apps sharing one Kronos deployment), swap `KronosLibraryClient` for `KronosHttpClient` at the construction site:
+If you later need to run Invokr as a standalone service (e.g. multiple apps sharing one Invokr deployment), swap `InvokrLibraryClient` for `InvokrHttpClient` at the construction site:
 
 ```rust
-use kronos_worker::KronosHttpClient;
+use invokr_worker::InvokrHttpClient;
 
 // Before (library mode):
-// let client = KronosLibraryClient::new(pool, "", &key, None)?;
+// let client = InvokrLibraryClient::new(pool, "", &key, None)?;
 
 // After (service mode):
-let client = KronosHttpClient::new(
+let client = InvokrHttpClient::new(
     "http://localhost:8080".to_string(),  // base URL
     "your-api-key".to_string(),           // API key
     "org_id".to_string(),                 // org ID
 );
 ```
 
-Call sites that use the `KronosClient` trait are unchanged — the trait abstracts over both modes. This is a code change at the construction site only, not a per-call-site change.
+Call sites that use the `InvokrClient` trait are unchanged — the trait abstracts over both modes. This is a code change at the construction site only, not a per-call-site change.
 
 See [Dual Deployment Modes](../architecture/dual-deployment) for the full comparison and [Docker](./docker) / [Production Deployment](./production) for service-mode setup.
 

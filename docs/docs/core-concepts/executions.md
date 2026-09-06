@@ -5,13 +5,13 @@ title: Executions
 
 # Executions
 
-An execution is a materialized instance of a job. When a job fires, Kronos creates an execution row in the database representing a single delivery attempt to the endpoint. Each execution has a lifecycle, can be retried, and produces one or more attempt records.
+An execution is a materialized instance of a job. When a job fires, Invokr creates an execution row in the database representing a single delivery attempt to the endpoint. Each execution has a lifecycle, can be retried, and produces one or more attempt records.
 
 ---
 
 ## What is an execution?
 
-Every time a job fires — whether immediately, on a delay, or on a CRON tick — Kronos creates an **execution**. The execution represents the full lifecycle of delivering the job to its endpoint, from initial creation through to final success or failure.
+Every time a job fires — whether immediately, on a delay, or on a CRON tick — Invokr creates an **execution**. The execution represents the full lifecycle of delivering the job to its endpoint, from initial creation through to final success or failure.
 
 - A one-shot job (`IMMEDIATE` or `DELAYED`) produces exactly one execution.
 - A `CRON` job produces a new execution on each tick of its schedule.

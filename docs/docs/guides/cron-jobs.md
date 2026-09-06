@@ -5,7 +5,7 @@ title: CRON Jobs
 
 # CRON Jobs
 
-CRON jobs are recurring schedules — the `setInterval` of Kronos. When you create a CRON job, Kronos registers it with PostgreSQL's `pg_cron` extension. On each scheduled tick, pg_cron inserts a new `QUEUED` execution directly into the database, which workers pick up and dispatch. No external scheduler process is required.
+CRON jobs are recurring schedules — the `setInterval` of Invokr. When you create a CRON job, Invokr registers it with PostgreSQL's `pg_cron` extension. On each scheduled tick, pg_cron inserts a new `QUEUED` execution directly into the database, which workers pick up and dispatch. No external scheduler process is required.
 
 ## Creating a CRON job
 
@@ -44,7 +44,7 @@ Response (`201 Created`):
 
 ## CRON expression format
 
-Kronos uses standard **5-field cron expressions**:
+Invokr uses standard **5-field cron expressions**:
 
 ```
 ┌───────────── minute (0-59)
@@ -133,7 +133,7 @@ When `cron_ends_at` is reached, the CRON job stops generating new executions. In
 
 ## How pg_cron materializes executions
 
-Kronos delegates CRON scheduling to PostgreSQL's `pg_cron` extension. No separate scheduler process is needed.
+Invokr delegates CRON scheduling to PostgreSQL's `pg_cron` extension. No separate scheduler process is needed.
 
 ### Registration
 
@@ -141,7 +141,7 @@ When a CRON job is created, the API server calls `cron.schedule()` to register t
 
 ```sql
 SELECT cron.schedule(
-  'kronos_job_{job_id}',
+  'invokr_job_{job_id}',
   '{cron_expression}',
   $$SELECT materialize_cron_execution('{job_id}')$$
 );

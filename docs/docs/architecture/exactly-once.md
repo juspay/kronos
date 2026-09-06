@@ -5,7 +5,7 @@ title: Exactly-Once Guarantees
 
 # Exactly-Once Guarantees
 
-Kronos provides exactly-once execution semantics through a combination of durability, idempotency keys, database unique constraints, and transaction-based claiming. This means every job fires exactly once — no duplicates, no missed executions, even under crashes and concurrent access.
+Invokr provides exactly-once execution semantics through a combination of durability, idempotency keys, database unique constraints, and transaction-based claiming. This means every job fires exactly once — no duplicates, no missed executions, even under crashes and concurrent access.
 
 ## Durability
 

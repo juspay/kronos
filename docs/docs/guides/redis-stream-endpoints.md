@@ -13,10 +13,10 @@ Redis Stream support is behind a compile-time feature flag. Build the worker wit
 
 ```bash
 # Build with Redis Stream support
-cargo build --features kronos-worker/redis-stream
+cargo build --features invokr-worker/redis-stream
 
 # Or build the entire workspace with Redis Stream
-cargo build --workspace --features kronos-worker/redis-stream
+cargo build --workspace --features invokr-worker/redis-stream
 ```
 
 :::warning
@@ -148,7 +148,7 @@ Error shapes:
 
 :::info Prerequisites
 - API server running at `http://localhost:8080`
-- Worker running with Redis Stream feature: `cargo run --features kronos-worker/redis-stream -p kronos-worker`
+- Worker running with Redis Stream feature: `cargo run --features invokr-worker/redis-stream -p invokr-worker`
 - Redis running: `docker compose --profile redis up -d`
 - Replace `<org_id>` and `<workspace_id>` with your values
 :::

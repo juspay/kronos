@@ -5,7 +5,7 @@ title: Testing
 
 # Testing
 
-Kronos has several layers of tests: end-to-end (E2E) integration tests, dispatcher unit tests, Rust inline unit tests, and load tests. This page covers how to run each.
+Invokr has several layers of tests: end-to-end (E2E) integration tests, dispatcher unit tests, Rust inline unit tests, and load tests. This page covers how to run each.
 
 ## End-to-end (E2E) tests
 
@@ -54,10 +54,10 @@ E2E tests require:
 - The SDK to be built (`just build-sdk`)
 - The CLI to be installed (`just cli-install`)
 - Environment variables set in `.env`:
-  - `KRONOS_URL` — API base URL (e.g. `http://localhost:8080`)
-  - `KRONOS_API_KEY` — API key (e.g. `dev-api-key`)
-  - `KRONOS_ORG_ID` — Organization UUID (created via the API)
-  - `KRONOS_WORKSPACE_ID` — Workspace UUID (created via the API)
+  - `INVOKR_URL` — API base URL (e.g. `http://localhost:8080`)
+  - `INVOKR_API_KEY` — API key (e.g. `dev-api-key`)
+  - `INVOKR_ORG_ID` — Organization UUID (created via the API)
+  - `INVOKR_WORKSPACE_ID` — Workspace UUID (created via the API)
 
 :::info
 `just test-e2e` and `just test-haskell` both run `just build` first, so you don't need to build manually. For the individual test commands (`just test-immediate`, etc.), ensure the services are running via `just dev`.
@@ -77,7 +77,7 @@ Runs the Haskell SDK example (`haskell-example/`). This:
 4. Uses Nix to build and run the Haskell example (installs GHC 9.6 and required packages)
 5. Shuts down all services
 
-This test verifies that the generated Haskell SDK works correctly against the Kronos API.
+This test verifies that the generated Haskell SDK works correctly against the Invokr API.
 
 ## Dispatcher unit tests
 
@@ -131,7 +131,7 @@ Kafka and Redis dispatcher tests use `--test-threads=1` to avoid race conditions
 
 ## Rust unit tests
 
-In addition to the dispatcher tests, Kronos has inline `#[cfg(test)]` unit tests throughout the codebase. These run without external infrastructure.
+In addition to the dispatcher tests, Invokr has inline `#[cfg(test)]` unit tests throughout the codebase. These run without external infrastructure.
 
 ### Running all Rust unit tests
 
@@ -154,18 +154,18 @@ cargo test --workspace
 
 ```bash
 # Run tests in a specific crate
-cargo test -p kronos-common
+cargo test -p invokr-common
 
 # Run tests in a specific module
-cargo test -p kronos-common --lib crypto::tests
+cargo test -p invokr-common --lib crypto::tests
 
 # Run a specific test by name
-cargo test -p kronos-common --lib crypto::tests::test_encrypt_decrypt
+cargo test -p invokr-common --lib crypto::tests::test_encrypt_decrypt
 ```
 
 ## Load testing
 
-Kronos includes load testing scripts that create batches of jobs and track completion.
+Invokr includes load testing scripts that create batches of jobs and track completion.
 
 ### Creating load
 
@@ -200,12 +200,12 @@ Use `just load-test-nw` for high-throughput testing where you want to saturate t
 
 Load tests require:
 - All services running (`just dev`)
-- CLI environment variables set (`KRONOS_URL`, `KRONOS_API_KEY`, `KRONOS_ORG_ID`, `KRONOS_WORKSPACE_ID`)
+- CLI environment variables set (`INVOKR_URL`, `INVOKR_API_KEY`, `INVOKR_ORG_ID`, `INVOKR_WORKSPACE_ID`)
 - An endpoint configured (the test scripts create their own test endpoint pointing at the mock server)
 
 ## Mock server
 
-The mock HTTP server (`kronos-mock-server` crate) is a test fixture that provides predefined HTTP responses on port 9999.
+The mock HTTP server (`invokr-mock-server` crate) is a test fixture that provides predefined HTTP responses on port 9999.
 
 ### Starting the mock server
 

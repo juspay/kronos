@@ -5,7 +5,7 @@ title: Idempotency
 
 # Idempotency
 
-Idempotency is the mechanism that ensures Kronos never fires the same job twice. Every job has an idempotency key, and the database enforces uniqueness constraints that prevent duplicate executions.
+Idempotency is the mechanism that ensures Invokr never fires the same job twice. Every job has an idempotency key, and the database enforces uniqueness constraints that prevent duplicate executions.
 
 ---
 
@@ -26,7 +26,7 @@ Idempotency keys are **required** for `IMMEDIATE` and `DELAYED` jobs. They are o
 
 ## DB unique constraints
 
-Kronos enforces idempotency at the database level with two unique indexes:
+Invokr enforces idempotency at the database level with two unique indexes:
 
 ### `idx_jobs_idempotency` — Job-level dedup
 

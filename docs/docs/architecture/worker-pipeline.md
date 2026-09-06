@@ -5,7 +5,7 @@ title: Worker Pipeline
 
 # Worker Pipeline
 
-The worker pipeline is the core execution engine of Kronos. It polls the database for actionable executions, claims them via `SELECT FOR UPDATE SKIP LOCKED`, resolves templates, dispatches to the target endpoint, and records the outcome — all within a scoped transaction.
+The worker pipeline is the core execution engine of Invokr. It polls the database for actionable executions, claims them via `SELECT FOR UPDATE SKIP LOCKED`, resolves templates, dispatches to the target endpoint, and records the outcome — all within a scoped transaction.
 
 ## The Poller
 
@@ -13,7 +13,7 @@ The poller is the main loop of the worker process. It runs as a single tokio tas
 
 ### Semaphore-Gated Concurrency
 
-The poller uses a `tokio::sync::Semaphore` to limit the number of concurrent in-flight executions. The default is 50 concurrent jobs, configurable via `TE_WORKER_MAX_CONCURRENT`.
+The poller uses a `tokio::sync::Semaphore` to limit the number of concurrent in-flight executions. The default is 50 concurrent jobs, configurable via `INVOKR_WORKER_MAX_CONCURRENT`.
 
 ```rust
 let semaphore = Arc::new(Semaphore::new(config.worker.max_concurrent));
@@ -69,7 +69,7 @@ RETURNING execution_id, job_id, endpoint, endpoint_type, input, attempt_count, m
 
 ### Idle Backoff
 
-When no work is found across all schemas, the poller enters idle mode. An `AtomicBool` flag tracks whether the previous iteration found work. If idle, the poller sleeps for the configured poll interval (default 200ms via `TE_WORKER_POLL_INTERVAL_MS`) before trying again:
+When no work is found across all schemas, the poller enters idle mode. An `AtomicBool` flag tracks whether the previous iteration found work. If idle, the poller sleeps for the configured poll interval (default 200ms via `INVOKR_WORKER_POLL_INTERVAL_MS`) before trying again:
 
 ```rust
 if idle.load(Ordering::Relaxed) {
@@ -89,7 +89,7 @@ While work is available, the poller spins freely (no sleep), only blocking on se
 On shutdown (triggered by `CancellationToken`), the poller:
 
 1. Stops accepting new work (breaks out of the poll loop)
-2. Waits for all in-flight tasks to complete, up to a configurable timeout (default 30s via `TE_WORKER_SHUTDOWN_TIMEOUT_SEC`)
+2. Waits for all in-flight tasks to complete, up to a configurable timeout (default 30s via `INVOKR_WORKER_SHUTDOWN_TIMEOUT_SEC`)
 3. Acquires all permits from the semaphore to ensure all spawned tasks have finished
 
 ```rust
@@ -304,12 +304,12 @@ The pipeline emits Prometheus metrics at each stage:
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `kronos_executions_claimed_total` | Counter | Executions claimed by workers, by schema and endpoint type |
-| `kronos_executions_completed_total` | Counter | Executions completed, by status (SUCCESS/FAILED) |
-| `kronos_execution_duration_seconds` | Histogram | End-to-end execution duration |
-| `kronos_dispatch_total` | Counter | Dispatch attempts by endpoint type |
-| `kronos_dispatch_duration_seconds` | Histogram | Dispatcher-level latency |
-| `kronos_worker_inflight_executions` | Gauge | Currently in-flight executions per worker |
-| `kronos_worker_poll_idle_total` | Counter | Idle poll cycles (no work found) |
+| `invokr_executions_claimed_total` | Counter | Executions claimed by workers, by schema and endpoint type |
+| `invokr_executions_completed_total` | Counter | Executions completed, by status (SUCCESS/FAILED) |
+| `invokr_execution_duration_seconds` | Histogram | End-to-end execution duration |
+| `invokr_dispatch_total` | Counter | Dispatch attempts by endpoint type |
+| `invokr_dispatch_duration_seconds` | Histogram | Dispatcher-level latency |
+| `invokr_worker_inflight_executions` | Gauge | Currently in-flight executions per worker |
+| `invokr_worker_poll_idle_total` | Counter | Idle poll cycles (no work found) |
 
 See [Architecture Overview](./overview) for the full metrics reference.

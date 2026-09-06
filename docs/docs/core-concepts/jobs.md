@@ -5,13 +5,13 @@ title: Jobs
 
 # Jobs
 
-A job is an invocation of an endpoint. Creating a job triggers execution — either immediately, at a scheduled time, or on a recurring schedule. Jobs are the core primitive of Kronos: they map directly to the JavaScript `setTimeout` and `setInterval` concepts, but with durability, retries, and observability built in.
+A job is an invocation of an endpoint. Creating a job triggers execution — either immediately, at a scheduled time, or on a recurring schedule. Jobs are the core primitive of Invokr: they map directly to the JavaScript `setTimeout` and `setInterval` concepts, but with durability, retries, and observability built in.
 
 ---
 
 ## Trigger types
 
-Kronos supports three trigger types, each corresponding to a familiar JavaScript primitive:
+Invokr supports three trigger types, each corresponding to a familiar JavaScript primitive:
 
 | Trigger | JavaScript equivalent | Behavior |
 |---------|----------------------|----------|

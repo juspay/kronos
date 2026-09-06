@@ -87,7 +87,7 @@ Configs are cached in the worker process to avoid hitting the database on every 
 | Property | Value |
 |----------|-------|
 | Cache implementation | `DashMap<String, (Config, Instant)>` |
-| TTL | 60 seconds (configurable via `TE_CONFIG_CACHE_TTL_SEC`) |
+| TTL | 60 seconds (configurable via `INVOKR_CONFIG_CACHE_TTL_SEC`) |
 | Eviction | Lazy — entries are refreshed on next access after TTL expires |
 | Storage | In-memory per worker process |
 
@@ -152,7 +152,7 @@ When a template is the **entire** string value (e.g. `"{{config.api_base_url}}"`
 | `DELETE` | `/v1/configs/{name}` | Delete (fails if endpoints reference it) |
 
 :::note
-Config updates take effect for future executions. In-flight executions use the config snapshot from when they started. Due to caching, there may be a delay of up to `TE_CONFIG_CACHE_TTL_SEC` (default: 60s) before updates are visible to the worker.
+Config updates take effect for future executions. In-flight executions use the config snapshot from when they started. Due to caching, there may be a delay of up to `INVOKR_CONFIG_CACHE_TTL_SEC` (default: 60s) before updates are visible to the worker.
 :::
 
 ---
@@ -162,5 +162,5 @@ Config updates take effect for future executions. In-flight executions use the c
 - [Endpoints](./endpoints) — how configs are referenced
 - [Secrets](./secrets) — encrypted counterpart to configs
 - [Templates](./templates) — the template resolution engine
-- [Environment Variables](../configuration/environment-variables) — `TE_CONFIG_CACHE_TTL_SEC`
+- [Environment Variables](../configuration/environment-variables) — `INVOKR_CONFIG_CACHE_TTL_SEC`
 - [The Three-Step Workflow](./overview) — where configs fit in the model

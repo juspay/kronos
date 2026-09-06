@@ -5,13 +5,13 @@ title: Multi-Tenancy
 
 # Multi-Tenancy
 
-Kronos uses **schema-per-tenant** isolation. Each workspace gets its own PostgreSQL schema with isolated tables. Shared tables live in the `public` schema. This provides complete isolation between tenants — jobs, executions, endpoints, and all resources are scoped to the workspace's own database schema.
+Invokr uses **schema-per-tenant** isolation. Each workspace gets its own PostgreSQL schema with isolated tables. Shared tables live in the `public` schema. This provides complete isolation between tenants — jobs, executions, endpoints, and all resources are scoped to the workspace's own database schema.
 
 ---
 
 ## Organizations and workspaces
 
-Kronos has a two-level tenant hierarchy:
+Invokr has a two-level tenant hierarchy:
 
 | Entity | Schema | Description |
 |--------|--------|-------------|
@@ -176,7 +176,7 @@ curl -X POST http://localhost:8080/v1/orgs/{org_id}/workspaces \
 ```
 
 :::note
-The reaper is Kronos's own dogfooded CRON sweep that retires expired CRON jobs and unschedules their pg_cron entries. The reaper's schedule is controlled by `TE_REAPER_CRON_EXPRESSION` (default: `*/15 * * * *` — every 15 minutes). This expression is baked into each workspace's pg_cron entry at creation time, so changing it only affects workspaces created afterward.
+The reaper is Invokr's own dogfooded CRON sweep that retires expired CRON jobs and unschedules their pg_cron entries. The reaper's schedule is controlled by `INVOKR_REAPER_CRON_EXPRESSION` (default: `*/15 * * * *` — every 15 minutes). This expression is baked into each workspace's pg_cron entry at creation time, so changing it only affects workspaces created afterward.
 :::
 
 ---
@@ -203,5 +203,5 @@ While schemas provide logical isolation, all workspaces share the same PostgreSQ
 - [The Three-Step Workflow](./overview) — how multi-tenancy fits into the overall model
 - [Jobs](./jobs) — tenant-scoped job creation
 - [Endpoints](./endpoints) — tenant-scoped endpoint registration
-- [Environment Variables](../configuration/environment-variables) — `TE_REAPER_CRON_EXPRESSION`, `TE_DB_POOL_SIZE`
+- [Environment Variables](../configuration/environment-variables) — `INVOKR_REAPER_CRON_EXPRESSION`, `INVOKR_DB_POOL_SIZE`
 - [Quickstart](../quickstart) — creating an org and workspace

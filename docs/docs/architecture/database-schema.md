@@ -5,7 +5,7 @@ title: Database Schema
 
 # Database Schema
 
-Kronos uses a schema-per-tenant architecture backed by PostgreSQL. Each workspace gets its own isolated schema with a complete set of tables for job scheduling and execution. Shared tables that manage tenant discovery live in the `public` schema.
+Invokr uses a schema-per-tenant architecture backed by PostgreSQL. Each workspace gets its own isolated schema with a complete set of tables for job scheduling and execution. Shared tables that manage tenant discovery live in the `public` schema.
 
 ## Schema-Per-Tenant Architecture
 
@@ -263,7 +263,7 @@ CREATE TABLE execution_logs (
 
 ## Table Prefix System
 
-When Kronos tables share a PostgreSQL schema with other application tables, a table prefix prevents name collisions. The `tbl()` function in `DbContext` applies the prefix to all table references.
+When Invokr tables share a PostgreSQL schema with other application tables, a table prefix prevents name collisions. The `tbl()` function in `DbContext` applies the prefix to all table references.
 
 ### How It Works
 
@@ -354,7 +354,7 @@ The CRON tick insert uses `ON CONFLICT (job_id, idempotency_key) WHERE idempoten
 
 ## Migration Files
 
-Migrations are applied in order to the `taskexecutor` database:
+Migrations are applied in order to the `invokr_db` database:
 
 | Migration | Description |
 |-----------|-------------|
@@ -371,7 +371,7 @@ for f in migrations/20260317000000_initial.sql \
          migrations/20260318000000_multi_tenancy.sql \
          migrations/20260322000000_txn_based_pickup.sql \
          migrations/20260322000001_pg_cron.sql; do
-  docker exec -i kronos-postgres-1 psql -U kronos -d taskexecutor -v ON_ERROR_STOP=1 < "$f"
+  docker exec -i invokr-postgres-1 psql -U invokr -d invokr_db -v ON_ERROR_STOP=1 < "$f"
 done
 ```
 

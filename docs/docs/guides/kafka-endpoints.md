@@ -13,10 +13,10 @@ Kafka support is behind a compile-time feature flag. Build the worker with the `
 
 ```bash
 # Build with Kafka support
-cargo build --features kronos-worker/kafka
+cargo build --features invokr-worker/kafka
 
 # Or build the entire workspace with Kafka
-cargo build --workspace --features kronos-worker/kafka
+cargo build --workspace --features invokr-worker/kafka
 ```
 
 :::warning
@@ -137,7 +137,7 @@ Failed dispatches follow the endpoint's retry policy. See the [retry policy docu
 
 :::info Prerequisites
 - API server running at `http://localhost:8080`
-- Worker running with Kafka feature: `cargo run --features kronos-worker/kafka -p kronos-worker`
+- Worker running with Kafka feature: `cargo run --features invokr-worker/kafka -p invokr-worker`
 - Kafka running: `docker compose --profile kafka up -d`
 - Replace `<org_id>` and `<workspace_id>` with your values
 :::
@@ -205,7 +205,7 @@ curl -X POST http://localhost:8080/v1/endpoints \
       },
       "headers": {
         "ce-type": "order.{{input.event_type}}",
-        "ce-source": "kronos"
+        "ce-source": "invokr"
       },
       "acks": "all",
       "timeout_ms": 10000

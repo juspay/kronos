@@ -5,7 +5,7 @@ title: Templates
 
 # Templates
 
-The template resolution engine is the mechanism by which Kronos dynamically constructs endpoint specs at execution time. Template variables — enclosed in `{{ }}` — are resolved from four namespaces, allowing endpoint definitions to reference job input, configs, secrets, and execution metadata.
+The template resolution engine is the mechanism by which Invokr dynamically constructs endpoint specs at execution time. Template variables — enclosed in `{{ }}` — are resolved from four namespaces, allowing endpoint definitions to reference job input, configs, secrets, and execution metadata.
 
 ---
 
@@ -108,7 +108,7 @@ The template engine walks the entire JSON tree recursively. It processes:
       "{{input.order_id_2}}"
     ],
     "metadata": {
-      "source": "kronos",
+      "source": "invokr",
       "key": "{{secret.signing_key}}"
     }
   }
@@ -214,13 +214,13 @@ This order ensures that config and secret values are available before input reso
 
 ## Auto-injected idempotency header
 
-For HTTP dispatches, the worker automatically injects an `x-kronos-idempotency-key` header containing the execution's idempotency key. This allows downstream services to deduplicate retries safely:
+For HTTP dispatches, the worker automatically injects an `x-invokr-idempotency-key` header containing the execution's idempotency key. This allows downstream services to deduplicate retries safely:
 
 - For `IMMEDIATE` and `DELAYED` jobs: the client-provided `idempotency_key`
 - For `CRON` jobs: the system-generated key `cron_{job_id}_{epoch_ms}`
 
 :::info
-If you already set a header named `x-kronos-idempotency-key` (case-insensitive) in your endpoint's `headers`, the worker respects your value and does not override it.
+If you already set a header named `x-invokr-idempotency-key` (case-insensitive) in your endpoint's `headers`, the worker respects your value and does not override it.
 :::
 
 ---

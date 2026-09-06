@@ -27,17 +27,17 @@ Secrets are encrypted using AES-256-GCM (Galois/Counter Mode), which provides bo
 | Property | Value |
 |----------|-------|
 | Algorithm | AES-256-GCM |
-| Key source | `TE_ENCRYPTION_KEY` environment variable (hex string, 32 bytes = 64 hex chars) |
+| Key source | `INVOKR_ENCRYPTION_KEY` environment variable (hex string, 32 bytes = 64 hex chars) |
 | Nonce | Random 12-byte nonce per encryption |
 | Storage format | Nonce prepended to ciphertext: `nonce (12 bytes) || ciphertext || tag (16 bytes)` |
 | Decryption | Worker decrypts on cache miss, stores decrypted value in memory |
 
 :::danger
-**In production, always set `TE_ENCRYPTION_KEY` to a strong, random 32-byte key.** The default all-zeros key (`0000...0000`) provides no security. If the key is rotated, existing secrets encrypted with the old key cannot be decrypted.
+**In production, always set `INVOKR_ENCRYPTION_KEY` to a strong, random 32-byte key.** The default all-zeros key (`0000...0000`) provides no security. If the key is rotated, existing secrets encrypted with the old key cannot be decrypted.
 :::
 
 :::info
-When KMS is enabled (`TE_KMS_ENABLED=true`), `TE_ENCRYPTION_KEY` itself is expected to be a base64-encoded KMS-encrypted ciphertext, transparently decrypted at startup. See [AWS KMS Integration](../deployment/kms).
+When KMS is enabled (`INVOKR_KMS_ENABLED=true`), `INVOKR_ENCRYPTION_KEY` itself is expected to be a base64-encoded KMS-encrypted ciphertext, transparently decrypted at startup. See [AWS KMS Integration](../deployment/kms).
 :::
 
 ---
@@ -92,12 +92,12 @@ Secrets are cached in the worker process to avoid repeated decryption and databa
 | Property | Value |
 |----------|-------|
 | Cache implementation | `DashMap<String, (DecryptedSecret, Instant)>` |
-| TTL | 300 seconds (5 minutes, configurable via `TE_SECRET_CACHE_TTL_SEC`) |
+| TTL | 300 seconds (5 minutes, configurable via `INVOKR_SECRET_CACHE_TTL_SEC`) |
 | Storage | Decrypted value stored in memory |
 | Eviction | Lazy — entries are refreshed on next access after TTL expires |
 
 :::info
-Secret rotation (via `PUT /v1/secrets/{name}`) takes effect for future executions after the cache TTL expires. Due to caching, there may be a delay of up to `TE_SECRET_CACHE_TTL_SEC` (default: 300s / 5 minutes) before rotated secrets are visible to the worker.
+Secret rotation (via `PUT /v1/secrets/{name}`) takes effect for future executions after the cache TTL expires. Due to caching, there may be a delay of up to `INVOKR_SECRET_CACHE_TTL_SEC` (default: 300s / 5 minutes) before rotated secrets are visible to the worker.
 :::
 
 ---
@@ -168,7 +168,7 @@ Because secrets are referenced inline in templates, deleting a secret that is us
 | `DELETE` | `/v1/secrets/{name}` | Delete (fails if endpoints reference it) |
 
 :::note
-Secret rotation via `PUT` updates the encrypted value in the database. The old value is overwritten. Due to caching, executions may use the old value for up to `TE_SECRET_CACHE_TTL_SEC` (default: 300s) after rotation.
+Secret rotation via `PUT` updates the encrypted value in the database. The old value is overwritten. Due to caching, executions may use the old value for up to `INVOKR_SECRET_CACHE_TTL_SEC` (default: 300s) after rotation.
 :::
 
 ---
@@ -178,6 +178,6 @@ Secret rotation via `PUT` updates the encrypted value in the database. The old v
 - [Endpoints](./endpoints) — how secrets are used in specs
 - [Configs](./configs) — non-sensitive counterpart to secrets
 - [Templates](./templates) — the template resolution engine
-- [Environment Variables](../configuration/environment-variables) — `TE_ENCRYPTION_KEY`, `TE_SECRET_CACHE_TTL_SEC`
+- [Environment Variables](../configuration/environment-variables) — `INVOKR_ENCRYPTION_KEY`, `INVOKR_SECRET_CACHE_TTL_SEC`
 - [AWS KMS Integration](../deployment/kms) — encrypting sensitive variables with KMS
 - [The Three-Step Workflow](./overview) — where secrets fit in the model

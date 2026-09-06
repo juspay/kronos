@@ -5,14 +5,14 @@ title: Dashboard
 
 # Dashboard
 
-Kronos includes a web-based dashboard built with [Leptos 0.7](https://leptos.dev/) compiled to WebAssembly (WASM). The dashboard provides a visual interface for browsing organizations, workspaces, jobs, executions, and attempts.
+Invokr includes a web-based dashboard built with [Leptos 0.7](https://leptos.dev/) compiled to WebAssembly (WASM). The dashboard provides a visual interface for browsing organizations, workspaces, jobs, executions, and attempts.
 
 ## Architecture
 
-The dashboard is a WASM application that runs in the browser. When `TE_MODE=both`, the API server serves both the REST API and the dashboard from the same process — the dashboard's WASM bundle and static assets are served from the `TE_DASHBOARD_DIST_DIR` directory.
+The dashboard is a WASM application that runs in the browser. When `INVOKR_MODE=both`, the API server serves both the REST API and the dashboard from the same process — the dashboard's WASM bundle and static assets are served from the `INVOKR_DASHBOARD_DIST_DIR` directory.
 
 ```
-Browser ──→ API Server (actix-web, TE_MODE=both)
+Browser ──→ API Server (actix-web, INVOKR_MODE=both)
               ├── /v1/*          → REST API
               ├── /dashboard/*   → Dashboard WASM + assets
               └── /metrics       → Prometheus metrics
@@ -20,7 +20,7 @@ Browser ──→ API Server (actix-web, TE_MODE=both)
 
 ### Server modes
 
-The `TE_MODE` environment variable controls what the API server serves:
+The `INVOKR_MODE` environment variable controls what the API server serves:
 
 | Mode | Value | Serves |
 |------|-------|--------|
@@ -30,10 +30,10 @@ The `TE_MODE` environment variable controls what the API server serves:
 
 ```bash
 # API only (default)
-TE_MODE=api ./kronos-api
+INVOKR_MODE=api ./invokr-api
 
 # API + Dashboard
-TE_MODE=both TE_DASHBOARD_DIST_DIR=crates/dashboard/pkg ./kronos-api
+INVOKR_MODE=both INVOKR_DASHBOARD_DIST_DIR=crates/dashboard/pkg ./invokr-api
 ```
 
 ## Setup
@@ -78,10 +78,10 @@ The build process:
    cd crates/dashboard && tailwindcss -i input.css -o pkg/tailwind-output.css --minify
    ```
 
-The output is placed in `crates/dashboard/pkg/`, which is the directory you point `TE_DASHBOARD_DIST_DIR` to.
+The output is placed in `crates/dashboard/pkg/`, which is the directory you point `INVOKR_DASHBOARD_DIST_DIR` to.
 
 :::warning
-The dashboard bundle **must** be built before running the API server in `both` mode. If `TE_MODE=both` is set but `TE_DASHBOARD_DIST_DIR` points to a non-existent or empty directory, the dashboard routes will return 404.
+The dashboard bundle **must** be built before running the API server in `both` mode. If `INVOKR_MODE=both` is set but `INVOKR_DASHBOARD_DIST_DIR` points to a non-existent or empty directory, the dashboard routes will return 404.
 :::
 
 ## Running the dashboard
@@ -95,26 +95,26 @@ just dashboard
 This is equivalent to:
 
 ```bash
-TE_MODE=both TE_DASHBOARD_DIST_DIR=crates/dashboard/pkg cargo run -p kronos-api
+INVOKR_MODE=both INVOKR_DASHBOARD_DIST_DIR=crates/dashboard/pkg cargo run -p invokr-api
 ```
 
-The API server starts on port 8080, serving both the API and the dashboard. Access the dashboard at `http://localhost:8080/dashboard/` (when `TE_DASHBOARD_PATH_PREFIX=/dashboard` is set) or at the root path.
+The API server starts on port 8080, serving both the API and the dashboard. Access the dashboard at `http://localhost:8080/dashboard/` (when `INVOKR_DASHBOARD_PATH_PREFIX=/dashboard` is set) or at the root path.
 
 ### With a path prefix
 
 When running behind a reverse proxy or alongside other services, you typically want the dashboard under a path prefix:
 
 ```bash
-TE_MODE=both \
-TE_PATH_PREFIX=/kronos \
-TE_DASHBOARD_PATH_PREFIX=/dashboard \
-TE_API_BASE_URL=http://localhost:8080/kronos \
-TE_DASHBOARD_DIST_DIR=crates/dashboard/pkg \
-  cargo run -p kronos-api
+INVOKR_MODE=both \
+INVOKR_PATH_PREFIX=/invokr \
+INVOKR_DASHBOARD_PATH_PREFIX=/dashboard \
+INVOKR_API_BASE_URL=http://localhost:8080/invokr \
+INVOKR_DASHBOARD_DIST_DIR=crates/dashboard/pkg \
+  cargo run -p invokr-api
 ```
 
 This serves:
-- API at `http://localhost:8080/kronos/v1/...`
+- API at `http://localhost:8080/invokr/v1/...`
 - Dashboard at `http://localhost:8080/dashboard/`
 
 ## Path prefix configuration
@@ -123,29 +123,29 @@ The dashboard uses **compile-time** environment variables that are baked into th
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TE_DASHBOARD_PATH_PREFIX` | *(empty)* | URL prefix for dashboard routes (e.g. `/dashboard`) |
-| `TE_API_BASE_URL` | *(empty)* | Full API base URL including path prefix (e.g. `http://localhost:8080/kronos`) |
+| `INVOKR_DASHBOARD_PATH_PREFIX` | *(empty)* | URL prefix for dashboard routes (e.g. `/dashboard`) |
+| `INVOKR_API_BASE_URL` | *(empty)* | Full API base URL including path prefix (e.g. `http://localhost:8080/invokr`) |
 
 :::important
-`TE_API_BASE_URL` must include `TE_PATH_PREFIX` if it is set. For example, if `TE_PATH_PREFIX=/kronos`, then `TE_API_BASE_URL` should be `http://localhost:8080/kronos` (not `http://localhost:8080`).
+`INVOKR_API_BASE_URL` must include `INVOKR_PATH_PREFIX` if it is set. For example, if `INVOKR_PATH_PREFIX=/invokr`, then `INVOKR_API_BASE_URL` should be `http://localhost:8080/invokr` (not `http://localhost:8080`).
 :::
 
 ### Building with path prefix
 
 ```bash
-TE_DASHBOARD_PATH_PREFIX=/dashboard \
-TE_API_BASE_URL=http://localhost:8080/kronos \
+INVOKR_DASHBOARD_PATH_PREFIX=/dashboard \
+INVOKR_API_BASE_URL=http://localhost:8080/invokr \
   just dashboard-build
 ```
 
 Then run the API server:
 
 ```bash
-TE_MODE=both \
-TE_PATH_PREFIX=/kronos \
-TE_DASHBOARD_PATH_PREFIX=/dashboard \
-TE_DASHBOARD_DIST_DIR=crates/dashboard/pkg \
-  cargo run -p kronos-api
+INVOKR_MODE=both \
+INVOKR_PATH_PREFIX=/invokr \
+INVOKR_DASHBOARD_PATH_PREFIX=/dashboard \
+INVOKR_DASHBOARD_DIST_DIR=crates/dashboard/pkg \
+  cargo run -p invokr-api
 ```
 
 ### Using .env
@@ -154,9 +154,9 @@ Since the justfile has `set dotenv-load`, you can set these in `.env`:
 
 ```env
 # .env
-TE_PATH_PREFIX=/kronos
-TE_DASHBOARD_PATH_PREFIX=/dashboard
-TE_API_BASE_URL=http://localhost:8080/kronos
+INVOKR_PATH_PREFIX=/invokr
+INVOKR_DASHBOARD_PATH_PREFIX=/dashboard
+INVOKR_API_BASE_URL=http://localhost:8080/invokr
 ```
 
 ```bash
@@ -170,29 +170,29 @@ When building a Docker image with `INCLUDE_DASHBOARD=true`, the Dockerfile autom
 
 ```bash
 docker build \
-  --build-arg BINARY=kronos-api \
+  --build-arg BINARY=invokr-api \
   --build-arg INCLUDE_DASHBOARD=true \
-  -t kronos-api-with-dashboard .
+  -t invokr-api-with-dashboard .
 ```
 
-The built image sets `TE_DASHBOARD_DIST_DIR=/app/dashboard-dist`, so you only need to set `TE_MODE=both` at runtime:
+The built image sets `INVOKR_DASHBOARD_DIST_DIR=/app/dashboard-dist`, so you only need to set `INVOKR_MODE=both` at runtime:
 
 ```bash
-docker run -e TE_MODE=both -p 8080:8080 kronos-api-with-dashboard
+docker run -e INVOKR_MODE=both -p 8080:8080 invokr-api-with-dashboard
 ```
 
 For Docker builds with path prefix, pass the compile-time env vars as build args:
 
 ```dockerfile
 # In your Dockerfile or docker-compose.yml build section:
-ARG TE_DASHBOARD_PATH_PREFIX=/dashboard
-ARG TE_API_BASE_URL=http://localhost:8080/kronos
-ENV TE_DASHBOARD_PATH_PREFIX=$TE_DASHBOARD_PATH_PREFIX
-ENV TE_API_BASE_URL=$TE_API_BASE_URL
+ARG INVOKR_DASHBOARD_PATH_PREFIX=/dashboard
+ARG INVOKR_API_BASE_URL=http://localhost:8080/invokr
+ENV INVOKR_DASHBOARD_PATH_PREFIX=$INVOKR_DASHBOARD_PATH_PREFIX
+ENV INVOKR_API_BASE_URL=$INVOKR_API_BASE_URL
 ```
 
 :::note
-The `docker-compose.prod.yml` already configures the dashboard with `TE_PATH_PREFIX=/kronos`, `TE_DASHBOARD_PATH_PREFIX=/dashboard`, and `INCLUDE_DASHBOARD=true`. See [Production Deployment](./production).
+The `docker-compose.prod.yml` already configures the dashboard with `INVOKR_PATH_PREFIX=/invokr`, `INVOKR_DASHBOARD_PATH_PREFIX=/dashboard`, and `INCLUDE_DASHBOARD=true`. See [Production Deployment](./production).
 :::
 
 ## Dashboard pages
@@ -221,4 +221,4 @@ The dashboard is built with these reusable Leptos components:
 
 - [Production Deployment](./production) — running the dashboard in Docker with KMS
 - [Docker](./docker) — building images with `INCLUDE_DASHBOARD=true`
-- [Environment Variables](../configuration/environment-variables) — `TE_MODE`, `TE_DASHBOARD_PATH_PREFIX`, `TE_API_BASE_URL`
+- [Environment Variables](../configuration/environment-variables) — `INVOKR_MODE`, `INVOKR_DASHBOARD_PATH_PREFIX`, `INVOKR_API_BASE_URL`

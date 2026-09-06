@@ -5,11 +5,11 @@ title: Job Versioning
 
 # Job Versioning
 
-CRON jobs in Kronos are **immutable** — they cannot be modified in place. Instead, updating a CRON job creates a **new version** and retires the old one. This preserves a complete audit trail of all schedule changes while ensuring that in-flight executions are not disrupted.
+CRON jobs in Invokr are **immutable** — they cannot be modified in place. Instead, updating a CRON job creates a **new version** and retires the old one. This preserves a complete audit trail of all schedule changes while ensuring that in-flight executions are not disrupted.
 
 ## How versioning works
 
-When you `PUT /v1/jobs/{job_id}` to update a CRON job, Kronos performs a **retire-and-replace** operation:
+When you `PUT /v1/jobs/{job_id}` to update a CRON job, Invokr performs a **retire-and-replace** operation:
 
 1. A new job row is inserted with `version = previous_version + 1`.
 2. The new job's `previous_version_id` points to the old job.

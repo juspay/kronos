@@ -5,9 +5,9 @@ title: Introduction
 
 # Introduction
 
-**Kronos is `setTimeout` and `setInterval` as a service.**
+**Invokr is `setTimeout` and `setInterval` as a service.**
 
-It is a distributed, durable, retriable, and observable delivery engine for jobs sent to HTTP endpoints, Kafka topics, and Redis Streams — with type-safety guarantees. Built in Rust on top of PostgreSQL with the `pg_cron` extension, Kronos survives crashes, retries on failure, never fires the same job twice, and makes every execution observable.
+It is a distributed, durable, retriable, and observable delivery engine for jobs sent to HTTP endpoints, Kafka topics, and Redis Streams — with type-safety guarantees. Built in Rust on top of PostgreSQL with the `pg_cron` extension, Invokr survives crashes, retries on failure, never fires the same job twice, and makes every execution observable.
 
 ---
 
@@ -15,7 +15,7 @@ It is a distributed, durable, retriable, and observable delivery engine for jobs
 
 If you've written JavaScript, you already know the API.
 
-| What you want | JavaScript | Kronos |
+| What you want | JavaScript | Invokr |
 |---|---|---|
 | Fire now | `setTimeout(fn, 0)` | `POST /v1/jobs { trigger: IMMEDIATE }` |
 | Fire later | `setTimeout(fn, 5000)` | `POST /v1/jobs { trigger: DELAYED, run_at: "..." }` |
@@ -81,7 +81,7 @@ Except: it survives crashes, retries on failure, never fires twice, and every ex
 
 ### How scheduling works
 
-Kronos uses **PostgreSQL pg_cron** for CRON materialization and **transaction-based pickup** for all job types. No separate scheduler process is needed — the database handles all scheduling concerns.
+Invokr uses **PostgreSQL pg_cron** for CRON materialization and **transaction-based pickup** for all job types. No separate scheduler process is needed — the database handles all scheduling concerns.
 
 - **IMMEDIATE** jobs: Execution is created as `QUEUED` in the same transaction as the job. Workers pick it up directly.
 - **DELAYED** jobs: Execution is created as `PENDING` with a `run_at` timestamp. Workers pick up PENDING executions once `run_at <= now()`.
@@ -91,21 +91,21 @@ Kronos uses **PostgreSQL pg_cron** for CRON materialization and **transaction-ba
 
 ## Crates overview
 
-Kronos is organized as a Cargo workspace with the following crates:
+Invokr is organized as a Cargo workspace with the following crates:
 
 | Crate | Description |
 |-------|-------------|
-| `kronos-common` | Shared library — models, DB layer, config, tenant management, caching, metrics |
-| `kronos-api` | REST API server (actix-web). CRUD for all resources, job invocation, Prometheus metrics at `/metrics` |
-| `kronos-worker` | Execution engine. Polls DB for QUEUED/RETRYING/PENDING executions, resolves templates, dispatches to endpoints. Exposes metrics via HTTP listener |
-| `kronos-mock-server` | Test fixture — HTTP server on port 9999 for integration tests |
-| `kronos-dashboard` | Web UI — Leptos/WASM, shows jobs, executions, attempts. Excluded from workspace build |
+| `invokr-common` | Shared library — models, DB layer, config, tenant management, caching, metrics |
+| `invokr-api` | REST API server (actix-web). CRUD for all resources, job invocation, Prometheus metrics at `/metrics` |
+| `invokr-worker` | Execution engine. Polls DB for QUEUED/RETRYING/PENDING executions, resolves templates, dispatches to endpoints. Exposes metrics via HTTP listener |
+| `invokr-mock-server` | Test fixture — HTTP server on port 9999 for integration tests |
+| `invokr-dashboard` | Web UI — Leptos/WASM, shows jobs, executions, attempts. Excluded from workspace build |
 
 ---
 
 ## Multi-tenancy overview
 
-Kronos uses **schema-per-tenant** isolation. Each workspace gets its own PostgreSQL schema with isolated tables. Shared tables live in the `public` schema.
+Invokr uses **schema-per-tenant** isolation. Each workspace gets its own PostgreSQL schema with isolated tables. Shared tables live in the `public` schema.
 
 ```
 public schema:        organizations, workspaces
@@ -123,14 +123,14 @@ The schema-per-tenant model means each workspace has complete isolation — jobs
 
 ## Deployment modes
 
-Kronos runs in two deployment modes:
+Invokr runs in two deployment modes:
 
 | Mode | Description | Use case |
 |------|-------------|----------|
-| **Library mode** (embedded) | Kronos embedded directly in your Rust application process. No HTTP overhead, no separate server. | Single Rust app that needs durable scheduling |
-| **Service mode** (standalone) | Kronos runs as a standalone REST API. Multiple apps share one deployment. | Multiple apps, or decoupled operational lifecycle |
+| **Library mode** (embedded) | Invokr embedded directly in your Rust application process. No HTTP overhead, no separate server. | Single Rust app that needs durable scheduling |
+| **Service mode** (standalone) | Invokr runs as a standalone REST API. Multiple apps share one deployment. | Multiple apps, or decoupled operational lifecycle |
 
-Both modes expose the same API through the `KronosClient` trait. The [Quickstart](./quickstart) uses service mode. For library mode setup, see [Library Mode Setup](./deployment/library-mode). For the conceptual comparison, see [Dual Deployment Modes](./architecture/dual-deployment).
+Both modes expose the same API through the `InvokrClient` trait. The [Quickstart](./quickstart) uses service mode. For library mode setup, see [Library Mode Setup](./deployment/library-mode). For the conceptual comparison, see [Dual Deployment Modes](./architecture/dual-deployment).
 
 ---
 

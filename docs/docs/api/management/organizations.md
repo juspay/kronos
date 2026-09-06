@@ -6,7 +6,7 @@ title_meta: Organizations API
 
 # Organizations
 
-Organizations are the top-level tenant entity in Kronos's multi-tenant hierarchy. Every workspace belongs to an organization. Organizations live in the `public` PostgreSQL schema and are shared across all tenants.
+Organizations are the top-level tenant entity in Invokr's multi-tenant hierarchy. Every workspace belongs to an organization. Organizations live in the `public` PostgreSQL schema and are shared across all tenants.
 
 ```
 Organization (public schema)
@@ -29,7 +29,7 @@ All organization endpoints require a bearer token:
 Authorization: Bearer <api_key>
 ```
 
-The default API key for development is `dev-api-key`. Set `TE_API_KEY` in production.
+The default API key for development is `dev-api-key`. Set `INVOKR_API_KEY` in production.
 
 ## Fields
 

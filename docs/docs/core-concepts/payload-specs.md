@@ -67,7 +67,7 @@ Response (`201 Created`):
 
 ## JSON Schema support
 
-Kronos uses the `jsonschema` crate for validation. The following JSON Schema features are supported:
+Invokr uses the `jsonschema` crate for validation. The following JSON Schema features are supported:
 
 | Feature | Example |
 |---------|---------|

@@ -5,7 +5,7 @@ title: Endpoints
 
 # Endpoints
 
-An endpoint is a registered delivery target definition. It tells Kronos **where** to deliver, **how** to build the message, and **what to do on failure**. Endpoints are created once and invoked by many jobs.
+An endpoint is a registered delivery target definition. It tells Invokr **where** to deliver, **how** to build the message, and **what to do on failure**. Endpoints are created once and invoked by many jobs.
 
 ---
 
@@ -29,10 +29,10 @@ Endpoints reference payload specs and configs by name. These references are vali
 | `HTTP` | Deliver to an HTTP endpoint via `reqwest`. Supports URL, method, headers, body template, timeout, and expected status codes. | `reqwest::Client` (shared, keep-alive pool) |
 | `KAFKA` | Produce a message to a Kafka topic via `rdkafka`. Supports bootstrap servers, topic, key/value templates, headers, acks, and timeout. | `rdkafka::FutureProducer` (shared) |
 | `REDIS_STREAM` | Add an entry to a Redis Stream via `redis`. Supports Redis URL, stream name, fields template, MAXLEN trimming, and timeout. | `redis::aio::ConnectionManager` (pooled) |
-| `INTERNAL` | Kronos-internal endpoints (dogfooded). Used by the reaper for CRON sweep operations. User-created jobs with `INTERNAL` endpoints are rejected. | Internal |
+| `INTERNAL` | Invokr-internal endpoints (dogfooded). Used by the reaper for CRON sweep operations. User-created jobs with `INTERNAL` endpoints are rejected. | Internal |
 
 :::info
-Kafka and Redis Stream dispatchers are behind Cargo feature flags. Build with `cargo build --workspace --features kronos-worker/kafka` or `cargo build --workspace --features kronos-worker/redis-stream` to enable them.
+Kafka and Redis Stream dispatchers are behind Cargo feature flags. Build with `cargo build --workspace --features invokr-worker/kafka` or `cargo build --workspace --features invokr-worker/redis-stream` to enable them.
 :::
 
 ---
@@ -104,10 +104,10 @@ Deleting a payload spec or config that is referenced by an endpoint returns `409
 
 ## The INTERNAL endpoint type
 
-The `INTERNAL` endpoint type is used by Kronos itself for dogfooded operations. The primary use case is the **reaper** — a CRON sweep that retires expired CRON jobs and unschedules their pg_cron entries.
+The `INTERNAL` endpoint type is used by Invokr itself for dogfooded operations. The primary use case is the **reaper** — a CRON sweep that retires expired CRON jobs and unschedules their pg_cron entries.
 
 :::danger
-User-created jobs with `INTERNAL` type endpoints are **rejected** by the API. The `INTERNAL` type is reserved for Kronos's own operations.
+User-created jobs with `INTERNAL` type endpoints are **rejected** by the API. The `INTERNAL` type is reserved for Invokr's own operations.
 :::
 
 ---

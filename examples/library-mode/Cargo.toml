@@ -9,8 +9,8 @@ name = "library-mode-example"
 path = "src/main.rs"
 
 [dependencies]
-kronos-worker = { path = "../../crates/worker" }
-kronos-common = { path = "../../crates/common" }
+invokr-worker = { path = "../../crates/worker" }
+invokr-common = { path = "../../crates/common" }
 tokio = { workspace = true }
 sqlx = { workspace = true }
 serde_json = { workspace = true }

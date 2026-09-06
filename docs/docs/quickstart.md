@@ -5,7 +5,7 @@ title: Quickstart
 
 # Quickstart
 
-This guide walks you through setting up Kronos locally and firing your first job end-to-end. It uses **service mode** (Kronos as a standalone REST API). To embed Kronos directly in a Rust application, see [Library Mode Setup](./deployment/library-mode).
+This guide walks you through setting up Invokr locally and firing your first job end-to-end. It uses **service mode** (Invokr as a standalone REST API). To embed Invokr directly in a Rust application, see [Library Mode Setup](./deployment/library-mode).
 
 ---
 
@@ -15,7 +15,7 @@ This guide walks you through setting up Kronos locally and firing your first job
 - [Docker](https://docs.docker.com/get-docker/) (for PostgreSQL)
 
 :::tip
-If you don't have Nix, you can still run Kronos manually — see the [manual setup](#setup-manual) section below. Nix is recommended as it provides a reproducible development environment with all dependencies pre-installed.
+If you don't have Nix, you can still run Invokr manually — see the [manual setup](#setup-manual) section below. Nix is recommended as it provides a reproducible development environment with all dependencies pre-installed.
 :::
 
 ---
@@ -41,20 +41,20 @@ The API is now running at `http://localhost:8080`.
 
 ## Setup (manual) {#setup-manual}
 
-If you'd rather drive each step yourself (e.g. to run with a path prefix and the dashboard), the flow below mirrors what `just setup`/`just dev` automate. It assumes the Postgres container from `docker compose` is up and named `kronos-postgres-1`, with host port **5434** mapped to the container's `5432` (see `docker-compose.yml`).
+If you'd rather drive each step yourself (e.g. to run with a path prefix and the dashboard), the flow below mirrors what `just setup`/`just dev` automate. It assumes the Postgres container from `docker compose` is up and named `invokr-postgres-1`, with host port **5434** mapped to the container's `5432` (see `docker-compose.yml`).
 
 ```bash
 # Start PostgreSQL
 docker compose up -d postgres
 ```
 
-**1. (Re)create the database.** Connect to the default `postgres` database and drop/recreate `taskexecutor` for a clean slate:
+**1. (Re)create the database.** Connect to the default `postgres` database and drop/recreate `invokr_db` for a clean slate:
 
 ```bash
-docker exec -i kronos-postgres-1 psql -U kronos -d postgres -c \
-  "DROP DATABASE IF EXISTS taskexecutor WITH (FORCE);"
-docker exec -i kronos-postgres-1 psql -U kronos -d postgres -c \
-  "CREATE DATABASE taskexecutor;"
+docker exec -i invokr-postgres-1 psql -U invokr -d postgres -c \
+  "DROP DATABASE IF EXISTS invokr_db WITH (FORCE);"
+docker exec -i invokr-postgres-1 psql -U invokr -d postgres -c \
+  "CREATE DATABASE invokr_db;"
 ```
 
 **2. Apply migrations** in order:
@@ -65,32 +65,32 @@ for f in migrations/20260317000000_initial.sql \
          migrations/20260322000000_txn_based_pickup.sql \
          migrations/20260322000001_pg_cron.sql; do
   echo ">> applying $f"
-  docker exec -i kronos-postgres-1 psql -U kronos -d taskexecutor -v ON_ERROR_STOP=1 < "$f"
+  docker exec -i invokr-postgres-1 psql -U invokr -d invokr_db -v ON_ERROR_STOP=1 < "$f"
 done
 ```
 
 **3. Run the API server** (here in `both` mode, serving the dashboard under `/dashboard` and the API under `/api`, on port 8090):
 
 ```bash
-TE_DATABASE_URL="postgres://kronos:kronos@localhost:5434/taskexecutor" \
-TE_LISTEN_ADDR="0.0.0.0:8090" \
-TE_MODE="both" \
-TE_PATH_PREFIX="/api" \
-TE_DASHBOARD_PATH_PREFIX="/dashboard" \
-TE_DASHBOARD_DIST_DIR="crates/dashboard/pkg" \
-cargo run -p kronos-api
+INVOKR_DATABASE_URL="postgres://invokr:invokr@localhost:5434/invokr_db" \
+INVOKR_LISTEN_ADDR="0.0.0.0:8090" \
+INVOKR_MODE="both" \
+INVOKR_PATH_PREFIX="/api" \
+INVOKR_DASHBOARD_PATH_PREFIX="/dashboard" \
+INVOKR_DASHBOARD_DIST_DIR="crates/dashboard/pkg" \
+cargo run -p invokr-api
 ```
 
 :::warning
-Building the dashboard bundle first (`just dashboard-build`) is required for `TE_MODE=both` to serve `crates/dashboard/pkg`.
+Building the dashboard bundle first (`just dashboard-build`) is required for `INVOKR_MODE=both` to serve `crates/dashboard/pkg`.
 :::
 
 **4. Run the worker** in a separate shell:
 
 ```bash
-TE_DATABASE_URL="postgres://kronos:kronos@localhost:5434/taskexecutor" \
-TE_METRICS_PORT="9090" \
-cargo run -p kronos-worker
+INVOKR_DATABASE_URL="postgres://invokr:invokr@localhost:5434/invokr_db" \
+INVOKR_METRICS_PORT="9090" \
+cargo run -p invokr-worker
 ```
 
 ---
@@ -270,7 +270,7 @@ Response (`201 Created` — value is never returned):
 
 ### 3. Register an HTTP endpoint
 
-Tell Kronos where to deliver:
+Tell Invokr where to deliver:
 
 ```bash
 curl -X POST http://localhost:8080/v1/endpoints \
@@ -407,4 +407,4 @@ For local testing without an external API, use the bundled mock HTTP server (`ju
 - [Core Concepts](./core-concepts/overview) — understand the three-step workflow
 - [Jobs](./core-concepts/jobs) — trigger types and the job lifecycle
 - [Executions](./core-concepts/executions) — execution state machine and retries
-- [API Reference](./api/kronos/kronos-task-executor-api) — full API documentation
+- [API Reference](./api/invokr/invokr-api) — full API documentation

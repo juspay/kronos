@@ -9,10 +9,10 @@
 .cache-loader
 
 # Auto-generated API MDX (regenerated via `just docs-gen-api`)
-# The OpenAPI spec source is tracked at api/kronos-openapi.json
-docs/api/kronos/*.mdx
-docs/api/kronos/*.json
-docs/api/kronos/sidebar.ts
+# The OpenAPI spec source is tracked at api/invokr-openapi.json
+docs/api/invokr/*.mdx
+docs/api/invokr/*.json
+docs/api/invokr/sidebar.ts
 
 # Misc
 .DS_Store

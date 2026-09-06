@@ -39,9 +39,9 @@ The `values` field must be a JSON object. Arrays, strings, numbers, and other JS
 
 ## Caching
 
-Configs are cached in the worker using a `DashMap` with a configurable TTL (default: 60 seconds, controlled by `TE_CONFIG_CACHE_TTL_SEC`). After the TTL expires, the next request for that config triggers a fresh database read.
+Configs are cached in the worker using a `DashMap` with a configurable TTL (default: 60 seconds, controlled by `INVOKR_CONFIG_CACHE_TTL_SEC`). After the TTL expires, the next request for that config triggers a fresh database read.
 
-This means config updates may take up to `TE_CONFIG_CACHE_TTL_SEC` seconds to take effect across all workers.
+This means config updates may take up to `INVOKR_CONFIG_CACHE_TTL_SEC` seconds to take effect across all workers.
 
 ## Template usage
 
@@ -170,7 +170,7 @@ curl "http://localhost:8080/v1/configs?limit=10" \
       "name": "sms-gateway",
       "values": {
         "api_base_url": "https://sms.example.com",
-        "sender": "Kronos"
+        "sender": "Invokr"
       },
       "created_at": "2026-06-20T10:20:00Z",
       "updated_at": "2026-06-20T10:20:00Z"
@@ -289,7 +289,7 @@ curl -X PUT http://localhost:8080/v1/configs/email-service \
 | `404` | `ConfigNotFound` | Config not found |
 
 :::tip
-Config updates take effect after the worker's cache TTL expires (`TE_CONFIG_CACHE_TTL_SEC`, default 60 seconds). To force an immediate update, restart the worker.
+Config updates take effect after the worker's cache TTL expires (`INVOKR_CONFIG_CACHE_TTL_SEC`, default 60 seconds). To force an immediate update, restart the worker.
 :::
 
 ---
@@ -332,4 +332,4 @@ You cannot delete a config that is referenced by any endpoint. First update or d
 - [Organizations](./organizations) — top-level tenant entity
 - [Workspaces](./workspaces) — workspace creation and schema provisioning
 - [Template resolution](../../core-concepts/templates) — how `{{config.*}}` templates are resolved
-- [Environment Variables](../../configuration/environment-variables) — `TE_CONFIG_CACHE_TTL_SEC`
+- [Environment Variables](../../configuration/environment-variables) — `INVOKR_CONFIG_CACHE_TTL_SEC`

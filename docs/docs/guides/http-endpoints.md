@@ -5,7 +5,7 @@ title: HTTP Endpoints
 
 # HTTP Endpoints
 
-HTTP is the most common endpoint type in Kronos. An HTTP endpoint defines a target URL, HTTP method, headers, body template, timeout, and the status codes that indicate success. When a job fires, the worker resolves all templates, sends the request via `reqwest`, and records the result.
+HTTP is the most common endpoint type in Invokr. An HTTP endpoint defines a target URL, HTTP method, headers, body template, timeout, and the status codes that indicate success. When a job fires, the worker resolves all templates, sends the request via `reqwest`, and records the result.
 
 ## Endpoint spec fields
 
@@ -49,12 +49,12 @@ Templates support both **full replacement** (when the entire string is a single 
 
 ## Auto-injected idempotency header
 
-For every HTTP dispatch, the worker automatically injects an `x-kronos-idempotency-key` header containing the execution's idempotency key. This allows downstream services to deduplicate retries safely.
+For every HTTP dispatch, the worker automatically injects an `x-invokr-idempotency-key` header containing the execution's idempotency key. This allows downstream services to deduplicate retries safely.
 
 - For `IMMEDIATE` and `DELAYED` jobs, the key is the client-provided `idempotency_key`.
 - For `CRON` jobs, the key is system-generated: `cron_{job_id}_{epoch_ms}`.
 
-If you already set a header named `x-kronos-idempotency-key` (case-insensitive) in your endpoint's `headers`, the worker respects your value and does not override it.
+If you already set a header named `x-invokr-idempotency-key` (case-insensitive) in your endpoint's `headers`, the worker respects your value and does not override it.
 
 ## Timeout handling
 
@@ -272,7 +272,7 @@ For local testing without an external API, use the bundled mock HTTP server (`ju
 
 ## Using the mock server for testing
 
-The `kronos-mock-server` crate provides a test HTTP server on port 9999 with predefined endpoints:
+The `invokr-mock-server` crate provides a test HTTP server on port 9999 with predefined endpoints:
 
 | Path | Response |
 |------|----------|

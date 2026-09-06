@@ -121,10 +121,10 @@ function Features() {
 }
 
 const mentalModel = [
-  { js: 'setTimeout(fn, 0)', kronos: 'POST /v1/jobs { trigger: IMMEDIATE }', desc: 'Fire now' },
-  { js: 'setTimeout(fn, 5000)', kronos: 'POST /v1/jobs { trigger: DELAYED, run_at: "..." }', desc: 'Fire later' },
-  { js: 'setInterval(fn, 60000)', kronos: 'POST /v1/jobs { trigger: CRON, cron: "* * * * *" }', desc: 'Fire repeatedly' },
-  { js: 'clearTimeout(id)', kronos: 'POST /v1/jobs/{id}/cancel', desc: 'Cancel' },
+  { js: 'setTimeout(fn, 0)', invokr: 'POST /v1/jobs { trigger: IMMEDIATE }', desc: 'Fire now' },
+  { js: 'setTimeout(fn, 5000)', invokr: 'POST /v1/jobs { trigger: DELAYED, run_at: "..." }', desc: 'Fire later' },
+  { js: 'setInterval(fn, 60000)', invokr: 'POST /v1/jobs { trigger: CRON, cron: "* * * * *" }', desc: 'Fire repeatedly' },
+  { js: 'clearTimeout(id)', invokr: 'POST /v1/jobs/{id}/cancel', desc: 'Cancel' },
 ];
 
 function MentalModel() {
@@ -132,7 +132,7 @@ function MentalModel() {
     <section className={styles.mentalModel}>
       <div className="container">
         <Heading as="h2" className="text--center margin-bottom--lg">
-          If you know JavaScript, you know Kronos
+          If you know JavaScript, you know Invokr
         </Heading>
         <div className="row">
           {mentalModel.map((item, idx) => (
@@ -141,7 +141,7 @@ function MentalModel() {
                 <p className={styles.modelDesc}>{item.desc}</p>
                 <p className={styles.modelJS}>{item.js}</p>
                 <p className={styles.modelArrow}>&darr;</p>
-                <p className={styles.modelKronos}>{item.kronos}</p>
+                <p className={styles.modelInvokr}>{item.invokr}</p>
               </div>
             </div>
           ))}

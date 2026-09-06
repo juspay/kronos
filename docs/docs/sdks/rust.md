@@ -5,20 +5,20 @@ title: Rust SDK
 
 # Rust SDK
 
-The Rust SDK is generated from Smithy IDL models via `smithy-rs` codegen. It provides a fully typed, async client for the Kronos REST API with a fluent-builder pattern.
+The Rust SDK is generated from Smithy IDL models via `smithy-rs` codegen. It provides a fully typed, async client for the Invokr REST API with a fluent-builder pattern.
 
 ## Location and Status
 
-The generated Rust SDK lives at `crates/client/` and is published as the `kronos_sdk` crate.
+The generated Rust SDK lives at `crates/client/` and is published as the `invokr_sdk` crate.
 
 ```toml
 [dependencies]
-kronos_sdk = { git = "https://github.com/juspay/kronos.git" }
+invokr_sdk = { git = "https://github.com/juspay/invokr.git" }
 ```
 
 ### Excluded from Workspace Build
 
-The `kronos_sdk` crate is **excluded** from the Kronos workspace (`Cargo.toml` → `[workspace] exclude`) for two reasons:
+The `invokr_sdk` crate is **excluded** from the Invokr workspace (`Cargo.toml` → `[workspace] exclude`) for two reasons:
 
 1. **Different MSRV**: The SDK targets Rust 1.82, while the server crates target a different minimum version
 2. **Heavy AWS runtime stack**: The SDK pulls in the AWS smithy runtime, which the server crates don't need
@@ -29,7 +29,7 @@ Despite being generated, the `crates/client/` directory is committed to the repo
 
 ```toml
 [dependencies]
-kronos_sdk = { git = "https://github.com/juspay/kronos.git", tag = "v0.1.0" }
+invokr_sdk = { git = "https://github.com/juspay/invokr.git", tag = "v0.1.0" }
 ```
 
 :::warning
@@ -55,8 +55,8 @@ git commit
 ## Client Setup
 
 ```rust
-use kronos_sdk::Client;
-use kronos_sdk::config::Config;
+use invokr_sdk::Client;
+use invokr_sdk::config::Config;
 
 // Build the client
 let config = Config::builder()
@@ -70,9 +70,9 @@ let client = Client::from_conf(config);
 ## Usage Example
 
 ```rust
-use kronos_sdk::Client;
-use kronos_sdk::types::TriggerType;
-use kronos_sdk::operation::create_job::CreateJobInput;
+use invokr_sdk::Client;
+use invokr_sdk::types::TriggerType;
+use invokr_sdk::operation::create_job::CreateJobInput;
 
 let client = Client::from_conf(config);
 
@@ -147,11 +147,11 @@ The `smithy-build.json` configures the Rust codegen:
       "renameErrors": true,
       "enableNewSmithyRuntime": "orchestrator"
     },
-    "service": "com.kronos#KronosService",
-    "module": "kronos_sdk",
+    "service": "com.invokr#InvokrService",
+    "module": "invokr_sdk",
     "moduleVersion": "0.1.0",
     "minimumSupportedRustVersion": "1.82.0",
-    "moduleDescription": "Rust SDK for Kronos job scheduling service"
+    "moduleDescription": "Rust SDK for Invokr job scheduling service"
   }
 }
 ```
@@ -162,8 +162,8 @@ The `smithy-build.json` configures the Rust codegen:
 | `codegen.addMessageToErrors` | `true` | Include error messages in error types |
 | `codegen.renameErrors` | `true` | Rename Smithy errors to idiomatic Rust names |
 | `codegen.enableNewSmithyRuntime` | `orchestrator` | Use the new smithy orchestrator runtime |
-| `service` | `com.kronos#KronosService` | Smithy service shape |
-| `module` | `kronos_sdk` | Cargo crate name |
+| `service` | `com.invokr#InvokrService` | Smithy service shape |
+| `module` | `invokr_sdk` | Cargo crate name |
 | `minimumSupportedRustVersion` | `1.82.0` | MSRV for the generated crate |
 
 ## Related Pages

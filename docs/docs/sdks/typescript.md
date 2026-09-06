@@ -5,7 +5,7 @@ title: TypeScript SDK
 
 # TypeScript SDK
 
-The TypeScript SDK is generated from Smithy IDL models and provides a fully typed client for the Kronos REST API. It's published as the `kronos-sdk` npm package.
+The TypeScript SDK is generated from Smithy IDL models and provides a fully typed client for the Invokr REST API. It's published as the `invokr-sdk` npm package.
 
 ## Installation
 
@@ -19,16 +19,16 @@ just build-sdk
 just cli-install
 ```
 
-This produces the `kronos-sdk` package in `smithy/build/smithy/source/typescript-client-codegen/`, which is then linked into the `cli/` project.
+This produces the `invokr-sdk` package in `smithy/build/smithy/source/typescript-client-codegen/`, which is then linked into the `cli/` project.
 
 ## Client Setup
 
-Create a `KronosServiceClient` with the API endpoint and bearer token:
+Create a `InvokrServiceClient` with the API endpoint and bearer token:
 
 ```typescript
-import { KronosServiceClient, CreateJobCommand } from "kronos-sdk";
+import { InvokrServiceClient, CreateJobCommand } from "invokr-sdk";
 
-const client = new KronosServiceClient({
+const client = new InvokrServiceClient({
   endpoint: "http://localhost:8080",
   token: { token: "dev-api-key" },
 });
@@ -36,24 +36,24 @@ const client = new KronosServiceClient({
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `endpoint` | Kronos API base URL | — |
+| `endpoint` | Invokr API base URL | — |
 | `token.token` | Bearer token for authentication | — |
 
 For tenant-scoped operations, pass `org_id` and `workspace_id` with each command:
 
 ```typescript
 const tenant = {
-  org_id: process.env.KRONOS_ORG_ID!,
-  workspace_id: process.env.KRONOS_WORKSPACE_ID!,
+  org_id: process.env.INVOKR_ORG_ID!,
+  workspace_id: process.env.INVOKR_WORKSPACE_ID!,
 };
 ```
 
 ## Creating a Job
 
 ```typescript
-import { KronosServiceClient, CreateJobCommand } from "kronos-sdk";
+import { InvokrServiceClient, CreateJobCommand } from "invokr-sdk";
 
-const client = new KronosServiceClient({
+const client = new InvokrServiceClient({
   endpoint: "http://localhost:8080",
   token: { token: "dev-api-key" },
 });
@@ -94,7 +94,7 @@ console.log(response.data!.next_run_at);  // "2026-03-16T09:00:00+05:30"
 ### Create an Endpoint
 
 ```typescript
-import { CreateEndpointCommand } from "kronos-sdk";
+import { CreateEndpointCommand } from "invokr-sdk";
 
 const endpointResp = await client.send(
   new CreateEndpointCommand({
@@ -121,7 +121,7 @@ const endpointResp = await client.send(
 ### Create a Payload Spec
 
 ```typescript
-import { CreatePayloadSpecCommand } from "kronos-sdk";
+import { CreatePayloadSpecCommand } from "invokr-sdk";
 
 await client.send(
   new CreatePayloadSpecCommand({
@@ -142,7 +142,7 @@ await client.send(
 ### Get an Execution
 
 ```typescript
-import { GetExecutionCommand } from "kronos-sdk";
+import { GetExecutionCommand } from "invokr-sdk";
 
 const execResp = await client.send(
   new GetExecutionCommand({
@@ -159,7 +159,7 @@ console.log(execResp.data!.duration_ms);   // 340
 ### Cancel a Job
 
 ```typescript
-import { CancelJobCommand } from "kronos-sdk";
+import { CancelJobCommand } from "invokr-sdk";
 
 await client.send(
   new CancelJobCommand({
@@ -172,7 +172,7 @@ await client.send(
 ### List Executions for a Job
 
 ```typescript
-import { ListJobExecutionsCommand } from "kronos-sdk";
+import { ListJobExecutionsCommand } from "invokr-sdk";
 
 const execsResp = await client.send(
   new ListJobExecutionsCommand({
@@ -190,7 +190,7 @@ for (const exec of executions) {
 ### List Execution Attempts
 
 ```typescript
-import { ListExecutionAttemptsCommand } from "kronos-sdk";
+import { ListExecutionAttemptsCommand } from "invokr-sdk";
 
 const attemptsResp = await client.send(
   new ListExecutionAttemptsCommand({
@@ -207,7 +207,7 @@ for (const attempt of attempts) {
 
 ## CLI Test Scripts
 
-The `cli/src/` directory contains test scripts that exercise the full Kronos lifecycle using the TypeScript SDK:
+The `cli/src/` directory contains test scripts that exercise the full Invokr lifecycle using the TypeScript SDK:
 
 | Script | Just Recipe | Description |
 |--------|------------|-------------|
@@ -224,8 +224,8 @@ The `cli/src/` directory contains test scripts that exercise the full Kronos lif
 just dev
 
 # Set tenant environment variables
-export KRONOS_ORG_ID="<your_org_id>"
-export KRONOS_WORKSPACE_ID="<your_workspace_id>"
+export INVOKR_ORG_ID="<your_org_id>"
+export INVOKR_WORKSPACE_ID="<your_workspace_id>"
 
 # Run individual tests
 just test-immediate    # Test immediate job execution
@@ -241,11 +241,11 @@ just load-test-nw 50   # Fire-and-forget (no polling)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `KRONOS_URL` | `http://localhost:8080` | Kronos API base URL |
+| `INVOKR_URL` | `http://localhost:8080` | Invokr API base URL |
 | `MOCK_URL` | `http://localhost:9999` | Mock server base URL |
-| `KRONOS_API_KEY` | `dev-api-key` | Bearer token for API authentication |
-| `KRONOS_ORG_ID` | *(required)* | Organization ID for tenant routing |
-| `KRONOS_WORKSPACE_ID` | *(required)* | Workspace ID for tenant routing |
+| `INVOKR_API_KEY` | `dev-api-key` | Bearer token for API authentication |
+| `INVOKR_ORG_ID` | *(required)* | Organization ID for tenant routing |
+| `INVOKR_WORKSPACE_ID` | *(required)* | Workspace ID for tenant routing |
 
 ### Test Script Example (test-immediate.ts)
 
@@ -296,7 +296,7 @@ try {
 ```
 
 :::tip
-The SDK uses the AWS Smithy TypeScript runtime, which provides the same command/response pattern as the AWS SDK for JavaScript. If you're familiar with `aws-sdk` v3, the Kronos SDK will feel immediately familiar.
+The SDK uses the AWS Smithy TypeScript runtime, which provides the same command/response pattern as the AWS SDK for JavaScript. If you're familiar with `aws-sdk` v3, the Invokr SDK will feel immediately familiar.
 :::
 
 ## Related Pages
