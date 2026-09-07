@@ -555,8 +555,19 @@ pub async fn status(
         .iter()
         .find(|e| e.status == "SUCCESS" || e.status == "FAILED");
 
+    let latest_exec = execs.first();
+
     Ok(HttpResponse::Ok().json(serde_json::json!({ "data": {
         "job_id": job.job_id,
+        "job_status": job.status,
+        "latest_execution": latest_exec.map(|e| serde_json::json!({
+            "execution_id": e.execution_id,
+            "status": e.status,
+            "attempt_count": e.attempt_count,
+            "max_attempts": e.max_attempts,
+            "started_at": e.started_at,
+            "completed_at": e.completed_at,
+        })),
         "endpoint": job.endpoint,
         "endpoint_type": job.endpoint_type,
         "trigger": job.trigger_type,

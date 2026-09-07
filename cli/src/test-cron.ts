@@ -203,18 +203,23 @@ async function main() {
     );
     log(`Original job status: ${oldJobResp.data?.status} (expected: RETIRED)`);
 
+    let assertionsOk = true;
     if (oldJobResp.data?.status !== "RETIRED") {
-      log(`WARNING: Expected original job to be RETIRED, got ${oldJobResp.data?.status}`);
+      log(`FAIL: Expected original job to be RETIRED, got ${oldJobResp.data?.status}`);
+      assertionsOk = false;
     }
 
     // ── Step 6: Wait for 1 execution on the new version ──────
     log("Waiting for 1 execution on updated job...");
 
-    const newExecs = await waitForExecutions(client, newJobId, 1, 30_000);
+    // The schedule is `* * * * *`, so the next tick can be up to 60s away —
+    // a 30s budget made this assertion fail on nothing but clock alignment.
+    const newExecs = await waitForExecutions(client, newJobId, 1, 150_000);
     if (newExecs.length > 0) {
       log(`Updated job executed successfully: ${newExecs[0].status}`);
     } else {
-      log("WARNING: No execution on updated job within timeout");
+      log("FAIL: No execution on updated job within timeout");
+      assertionsOk = false;
     }
 
     // ── Step 7: Cancel the job ───────────────────────────────
@@ -231,8 +236,12 @@ async function main() {
     );
     log(`Final job status: ${statusResp.data?.job_status}`);
 
-    if (statusResp.data?.job_status !== "CANCELLED") {
-      log(`WARNING: Expected CANCELLED, got ${statusResp.data?.job_status}`);
+    // Cancelling retires the job: JobStatusEnum is ACTIVE|RETIRED and the
+    // jobs table CHECK constraint allows nothing else, so the old CANCELLED
+    // expectation could never have held.
+    if (statusResp.data?.job_status !== "RETIRED") {
+      log(`FAIL: Expected job_status RETIRED, got ${statusResp.data?.job_status}`);
+      assertionsOk = false;
     }
 
     // ── Cleanup ──────────────────────────────────────────────
@@ -240,7 +249,7 @@ async function main() {
     log("Done!");
 
     const allSucceeded = executions.every((e: any) => e.status === "SUCCESS");
-    process.exit(allSucceeded ? 0 : 1);
+    process.exit(allSucceeded && assertionsOk ? 0 : 1);
   } catch (err: any) {
     console.error("\nTest failed with error:");
     console.error(`  ${err.name}: ${err.message}`);

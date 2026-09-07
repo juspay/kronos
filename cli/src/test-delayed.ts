@@ -67,15 +67,19 @@ async function main() {
     jobId = jobResp.data!.job_id!;
     log(`Job created: ${jobId} (status: ${jobResp.data?.status})`);
 
-    // ── Step 3: Verify initial state is PENDING ────────────────
+    // ── Step 3: Verify the job is live and not yet run ──────────
+    // A *job* is only ever ACTIVE or RETIRED; PENDING is an execution status,
+    // so the job stays ACTIVE while its execution waits for run_at.
     const statusResp = await client.send(
       new GetJobStatusCommand({ ...tenant, job_id: jobId }),
     );
     const initialStatus = statusResp.data?.job_status;
     log(`Initial job status: ${initialStatus}`);
 
-    if (initialStatus !== "PENDING") {
-      log(`WARNING: Expected PENDING status, got ${initialStatus}`);
+    let initialOk = true;
+    if (initialStatus !== "ACTIVE") {
+      log(`FAIL: Expected ACTIVE job status, got ${initialStatus}`);
+      initialOk = false;
     }
 
     // ── Step 4: Wait for delayed_promoter to promote & execute ─
@@ -91,13 +95,15 @@ async function main() {
     }
 
     // ── Step 5: Print results ──────────────────────────────────
-    await printExecutionResult(client, jobId, finalExecution);
+    const statusOk = await printExecutionResult(client, jobId, finalExecution);
 
     // ── Cleanup ────────────────────────────────────────────────
     await cleanup(client, jobId, endpointName);
     log("Done!");
 
-    process.exit(finalExecution.status === "SUCCESS" ? 0 : 1);
+    process.exit(
+      finalExecution.status === "SUCCESS" && statusOk && initialOk ? 0 : 1,
+    );
   } catch (err: any) {
     console.error("\nTest failed with error:");
     console.error(`  ${err.name}: ${err.message}`);
