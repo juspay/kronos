@@ -312,7 +312,7 @@ CREATE INDEX idx_executions_pickup
 This is a **partial index** — it only indexes rows in actionable statuses. The `run_at ASC` ordering ensures the oldest actionable execution is claimed first (FIFO within each status group).
 
 :::warning
-The original version of this index (from the initial migration) only covered `QUEUED` and `RETRYING`. The `20260322000000_txn_based_pickup.sql` migration dropped and recreated it to include `PENDING`, enabling transaction-based pickup for delayed jobs.
+Including `PENDING` is what enables transaction-based pickup for delayed jobs. It used to be added by the `20260322000000_txn_based_pickup.sql` migration, back when `executions` was a single global table; that migration is now a no-op and this index ships as part of the per-workspace `workspace_v1.sql` template.
 :::
 
 ### idx_jobs_idempotency (Job Dedup)
@@ -360,7 +360,7 @@ Migrations are applied in order to the `invokr_db` database:
 |-----------|-------------|
 | `20260317000000_initial.sql` | Initial schema: all core tables (single-tenant), indexes, region tables |
 | `20260318000000_multi_tenancy.sql` | Adds `public.organizations` and `public.workspaces` tables |
-| `20260322000000_txn_based_pickup.sql` | Drops and recreates `idx_executions_pickup` to include `PENDING` status |
+| `20260322000000_txn_based_pickup.sql` | Superseded — no-op. Widened `idx_executions_pickup` back when `executions` was global; `workspace_v1.sql` now creates it per workspace |
 | `20260322000001_pg_cron.sql` | Installs pg_cron extension, migrates existing CRON jobs to pg_cron |
 | `workspace_v1.sql` | Template applied per-workspace at creation time (not a migration) |
 

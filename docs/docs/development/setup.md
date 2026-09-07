@@ -219,7 +219,7 @@ Applies all four migration files in order:
 
 1. `20260317000000_initial.sql` — Base schema
 2. `20260318000000_multi_tenancy.sql` — Multi-tenancy (organizations, workspaces, schema-per-tenant)
-3. `20260322000000_txn_based_pickup.sql` — Transaction-based job pickup
+3. `20260322000000_txn_based_pickup.sql` — Superseded, no-op (see the schema docs)
 4. `20260322000001_pg_cron.sql` — pg_cron integration
 
 ### Reset the database

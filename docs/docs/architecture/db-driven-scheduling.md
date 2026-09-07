@@ -103,7 +103,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_executions_pickup
 ```
 
 :::note
-The original index (from the initial migration) only covered `QUEUED` and `RETRYING`. The `20260322000000_txn_based_pickup.sql` migration dropped and recreated it to include `PENDING`, enabling workers to pick up delayed jobs directly without a promoter loop.
+Including `PENDING` is what lets workers pick up delayed jobs directly, without a promoter loop. It used to be added by the `20260322000000_txn_based_pickup.sql` migration, back when `executions` was a single global table; that migration is now a no-op and the widened index is created per workspace by `workspace_v1.sql`.
 :::
 
 ### SELECT FOR UPDATE SKIP LOCKED

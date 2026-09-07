@@ -212,6 +212,20 @@ async function main() {
     }
     console.log("═".repeat(60) + "\n");
 
+    // GetJobStatus is declared with a @required job_status, and the job just
+    // ran, so the server owes us both the status and the execution summary.
+    let statusOk = true;
+    if (statusResp.data?.job_status !== "ACTIVE") {
+      log(`FAIL: expected job_status ACTIVE, got ${statusResp.data?.job_status}`);
+      statusOk = false;
+    }
+    if (statusResp.data?.latest_execution?.execution_id !== finalExecution.execution_id) {
+      log(
+        `FAIL: expected latest_execution ${finalExecution.execution_id}, got ${statusResp.data?.latest_execution?.execution_id}`,
+      );
+      statusOk = false;
+    }
+
     // ── Cleanup ────────────────────────────────────────────────
     log("Cleaning up...");
     try {
@@ -226,7 +240,7 @@ async function main() {
     }
     log("Done!");
 
-    process.exit(finalExecution.status === "SUCCESS" ? 0 : 1);
+    process.exit(finalExecution.status === "SUCCESS" && statusOk ? 0 : 1);
   } catch (err: any) {
     console.error("\nTest failed with error:");
     console.error(`  ${err.name}: ${err.message}`);
