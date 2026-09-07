@@ -12,8 +12,7 @@
 //! the execution to complete (or Ctrl+C), then shuts down gracefully.
 
 use invokr_common::tenant::SchemaProvider;
-use invokr_worker::{JobTrigger, InvokrClient, InvokrLibraryClient, WorkerConfig};
-use std::future::Future;
+use invokr_worker::{InvokrClient, InvokrLibraryClient, JobTrigger, WorkerConfig};
 use std::time::Duration;
 
 const DEFAULT_DATABASE_URL: &str = "postgresql://invokr:invokr@localhost:5434/invokr_db";
@@ -33,8 +32,8 @@ const ENCRYPTION_KEY: &str = "00000000000000000000000000000000000000000000000000
 struct StaticSchemaProvider;
 
 impl SchemaProvider for StaticSchemaProvider {
-    fn get_active_schemas(&self) -> impl Future<Output = Result<Vec<String>, sqlx::Error>> + Send {
-        async { Ok(vec![SCHEMA_NAME.to_string()]) }
+    async fn get_active_schemas(&self) -> Result<Vec<String>, sqlx::Error> {
+        Ok(vec![SCHEMA_NAME.to_string()])
     }
 }
 

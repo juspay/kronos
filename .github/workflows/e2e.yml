@@ -112,6 +112,9 @@ jobs:
         # in the previous step, which the lockfile cannot resolve on its own.
         run: cd cli && npm install
 
+      - name: Typecheck CLI suites against the generated SDK
+        run: cd cli && npx tsc --noEmit
+
       # ── Infrastructure ───────────────────────────────────────────────
 
       - name: Start PostgreSQL

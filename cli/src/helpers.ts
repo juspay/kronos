@@ -110,7 +110,7 @@ export async function printExecutionResult(
   client: InvokrServiceClient,
   jobId: string,
   execution: any,
-) {
+): Promise<boolean> {
   console.log("\n" + "═".repeat(60));
   console.log("  EXECUTION RESULT");
   console.log("═".repeat(60));
@@ -165,6 +165,19 @@ export async function printExecutionResult(
     );
   }
   console.log("═".repeat(60) + "\n");
+
+  let ok = true;
+  if (statusResp.data?.job_status !== "ACTIVE") {
+    log(`FAIL: expected job_status ACTIVE, got ${statusResp.data?.job_status}`);
+    ok = false;
+  }
+  if (statusResp.data?.latest_execution?.execution_id !== execution.execution_id) {
+    log(
+      `FAIL: expected latest_execution ${execution.execution_id}, got ${statusResp.data?.latest_execution?.execution_id}`,
+    );
+    ok = false;
+  }
+  return ok;
 }
 
 export async function cleanup(

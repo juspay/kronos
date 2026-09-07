@@ -3,6 +3,7 @@ name: Conventional Commits
 on:
   pull_request:
     branches: [main]
+    types: [opened, edited, synchronize, reopened]
 
 permissions:
   contents: read
@@ -22,7 +23,45 @@ jobs:
           crate: cocogitto
           version: "6.2.0"
 
+      # PRs here are squash-merged, so every commit below collapses into one
+      # commit whose subject is the PR title. That title — not the commit list —
+      # is what `cog bump --auto` reads on main to choose the next version, so a
+      # non-conventional title silently costs a release bump.
+      - name: Verify PR title
+        shell: bash
+        # The title is untrusted, contributor-supplied text. It is passed through
+        # the environment and quoted rather than spliced in with `${{ }}`, which
+        # would inject it into this script verbatim.
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -uo pipefail
+
+          # `cog verify` accepts "Merge branch ..." / "Merge pull request ..."
+          # by design — it reports "Merge commit was ignored" and exits 0. A
+          # squashed PR is never a merge commit, so without this guard such a
+          # title would sail through and land the exact unclassifiable subject
+          # this check exists to prevent.
+          if [[ "$PR_TITLE" == Merge\ * ]]; then
+            echo "::error::PR title must not start with 'Merge': $PR_TITLE"
+            echo "Squash-merging turns this title into a normal commit, which cog would then skip."
+            exit 1
+          fi
+
+          if cog verify "$PR_TITLE" >/dev/null 2>&1; then
+            echo "ok    PR title: $PR_TITLE"
+          else
+            echo "::error::PR title is not a conventional commit: $PR_TITLE"
+            echo "This repository squash-merges, so the PR title becomes the commit on main."
+            exit 1
+          fi
+
+      # Runs even when the title check failed, so a contributor sees every
+      # problem in one go instead of fixing them one CI round at a time.
+      # `!cancelled()` rather than `always()`: no reason to keep going once
+      # someone has cancelled the run.
       - name: Verify commit messages
+        if: ${{ !cancelled() }}
         shell: bash
         run: |
           set -uo pipefail
@@ -41,15 +80,19 @@ jobs:
             fi
           done < <(git rev-list --no-merges "$base..$head")
 
-          if [ "$failed" -ne 0 ]; then
-            cat <<'HELP'
+          exit "$failed"
 
-          Commit messages must look like:
+      - name: Explain the convention
+        if: failure()
+        shell: bash
+        run: |
+          cat <<'HELP'
+
+          The PR title and every commit must look like:
 
             feat(worker): add exponential retry backoff     -> minor bump
             fix(api): handle async status code              -> patch bump
             feat(common)!: rename job_id to task_id         -> major bump
             chore: bump dependencies                        -> no bump
           HELP
-            exit 1
-          fi
+          exit 1

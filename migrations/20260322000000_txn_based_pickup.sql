@@ -1,11 +1,21 @@
 -- Migration: Transaction-based job pickup
--- Workers now pick up PENDING jobs directly (no Delayed Promoter needed).
--- Update the pickup index to include PENDING status.
-
--- Drop old index that only covered QUEUED and RETRYING
-DROP INDEX IF EXISTS idx_executions_pickup;
-
--- Create new index including PENDING for direct pickup by workers
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_executions_pickup
-    ON executions (status, run_at ASC)
-    WHERE status IN ('QUEUED', 'RETRYING', 'PENDING');
+--
+-- SUPERSEDED — intentionally a no-op.
+--
+-- This migration used to widen the global `idx_executions_pickup` index to
+-- cover PENDING, so workers could pick up delayed jobs without a promoter
+-- loop. It ran against a public `executions` table.
+--
+-- `fix: isolate workspaces — drop public data tables (#47)` removed that
+-- table: `executions` now only exists inside per-workspace tenant schemas,
+-- created from crates/common/migrations/workspace_v1.sql, which already
+-- builds the widened index itself:
+--
+--     CREATE INDEX IF NOT EXISTS idx_{p}executions_pickup
+--         ON {p}executions (status, run_at ASC)
+--         WHERE status IN ('QUEUED', 'RETRYING', 'PENDING');
+--
+-- Left in place (rather than deleted) because the filename is referenced by
+-- the justfile, scripts/docker-prod.sh, the README and the docs site, and
+-- migrations are applied by glob with `ON_ERROR_STOP=1` — the previous
+-- contents aborted every fresh-database setup at this file.
