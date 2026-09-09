@@ -658,10 +658,40 @@ just dashboard          # Run dashboard dev server (port 3000)
 just dashboard-build    # Build WASM dashboard
 just dashboard-setup    # Install dashboard build tools
 
+# Documentation (Docusaurus)
+just docs-install       # Install docs dependencies (first-time setup)
+just docs-gen-api       # Regenerate API reference from the OpenAPI spec
+just docs-dev           # Docs dev server, hot reload (port 3000)
+just docs-build         # Build the docs site for production
+just docs-serve         # Serve the production build locally
+
 # Infrastructure
 just infra-up           # Start all infra (DB + Kafka + Redis)
 just infra-down         # Stop all infra
 ```
+
+### Documentation site
+
+The docs live in `docs/` as a Docusaurus site. The API reference is generated
+from the Smithy model rather than written by hand: `docs/api/invokr-openapi.json`
+is the tracked spec, and the pages built from it land in `docs/docs/api/invokr/`
+(gitignored, regenerated on demand). To run the site locally:
+
+```bash
+just docs-install       # First time only
+just docs-gen-api       # Refresh the API reference from the OpenAPI spec
+just docs-dev           # http://localhost:3000
+```
+
+`docs-gen-api` copies `smithy/build/smithy/source/openapi/InvokrService.openapi.json`,
+which is only produced by a full `just smithy-build`. If it fails with
+`cp: cannot stat ... No such file or directory`, run `just smithy-build` first —
+a build driven by a partial `smithy-build` config (as CI uses) does not emit the
+`openapi` plugin's output.
+
+Docusaurus defaults to port 3000, the same port as `just dashboard`. Stop the
+dashboard first, or start the docs on another port with
+`cd docs && npm start -- --port 3001`.
 
 ### Project structure
 

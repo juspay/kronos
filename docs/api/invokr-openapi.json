@@ -852,6 +852,15 @@
                         }
                     },
                     {
+                        "name": "job_id",
+                        "in": "query",
+                        "description": "Exact-match job id filter.",
+                        "schema": {
+                            "type": "string",
+                            "description": "Exact-match job id filter."
+                        }
+                    },
+                    {
                         "name": "endpoint",
                         "in": "query",
                         "schema": {
@@ -861,15 +870,57 @@
                     {
                         "name": "trigger_type",
                         "in": "query",
+                        "style": "form",
                         "schema": {
-                            "$ref": "#/components/schemas/TriggerTypeEnum"
-                        }
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/components/schemas/TriggerTypeEnum"
+                            }
+                        },
+                        "explode": true
                     },
                     {
                         "name": "status",
                         "in": "query",
+                        "style": "form",
                         "schema": {
-                            "$ref": "#/components/schemas/JobStatusEnum"
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/components/schemas/JobStatusEnum"
+                            }
+                        },
+                        "explode": true
+                    },
+                    {
+                        "name": "endpoint_type",
+                        "in": "query",
+                        "style": "form",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/components/schemas/EndpointTypeEnum"
+                            }
+                        },
+                        "explode": true
+                    },
+                    {
+                        "name": "created_after",
+                        "in": "query",
+                        "description": "Inclusive lower bound on `created_at` (RFC-3339).",
+                        "schema": {
+                            "type": "string",
+                            "description": "Inclusive lower bound on `created_at` (RFC-3339).",
+                            "format": "date-time"
+                        }
+                    },
+                    {
+                        "name": "created_before",
+                        "in": "query",
+                        "description": "Inclusive upper bound on `created_at` (RFC-3339).",
+                        "schema": {
+                            "type": "string",
+                            "description": "Inclusive upper bound on `created_at` (RFC-3339).",
+                            "format": "date-time"
                         }
                     },
                     {
@@ -2279,7 +2330,8 @@
                 "enum": [
                     "HTTP",
                     "KAFKA",
-                    "REDIS_STREAM"
+                    "REDIS_STREAM",
+                    "INTERNAL"
                 ]
             },
             "ErrorDetail": {
