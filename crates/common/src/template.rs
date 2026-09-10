@@ -221,7 +221,7 @@ mod tests {
         execution.insert("workspace_id".into(), serde_json::json!("ws_1"));
         execution.insert(
             "callback_url_success".into(),
-            serde_json::json!("https://kronos.example/v1/callbacks/org_1/ws_1/executions/exec_abc/complete"),
+            serde_json::json!("https://invokr.example/v1/callbacks/org_1/ws_1/executions/exec_abc/complete"),
         );
         let template = serde_json::json!({
             "on_success": "{{execution.callback_url_success}}",
@@ -235,7 +235,7 @@ mod tests {
             &execution,
         ).unwrap();
         assert_eq!(out["on_success"].as_str().unwrap(),
-                   "https://kronos.example/v1/callbacks/org_1/ws_1/executions/exec_abc/complete");
+                   "https://invokr.example/v1/callbacks/org_1/ws_1/executions/exec_abc/complete");
         assert_eq!(out["org"].as_str().unwrap(), "org_1");
     }
 }

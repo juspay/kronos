@@ -130,7 +130,7 @@ pub async fn update(
     body: web::Json<UpdateEndpoint>,
 ) -> Result<HttpResponse, AppError> {
     if let Some(spec) = &body.spec {
-        if let Err(msg) = kronos_common::models::endpoint::validate_async_block(spec) {
+        if let Err(msg) = invokr_common::models::endpoint::validate_async_block(spec) {
             return Err(AppError::InvalidRequest(msg));
         }
     }

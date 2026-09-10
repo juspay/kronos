@@ -59,7 +59,7 @@ pub async fn create(
         .unwrap_or(retry_policy.max_attempts);
 
     let endpoint_async = ep.get_async_config().map(|c| (c.max_wait_ms, c.max_polls));
-    let bounds = match kronos_common::models::job::resolve_async_bounds(
+    let bounds = match invokr_common::models::job::resolve_async_bounds(
         body.async_overrides.as_ref(),
         endpoint_async,
     ) {

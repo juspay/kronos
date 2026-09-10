@@ -39,7 +39,7 @@ pub fn parse_retry_after(header: Option<&str>) -> Option<i64> {
     None
 }
 
-use kronos_common::models::PollClassification;
+use invokr_common::models::PollClassification;
 
 pub fn classify(
     status_code: Option<u16>,
@@ -151,8 +151,8 @@ mod tests {
 }
 
 use chrono::{Duration, Utc};
-use kronos_common::models::endpoint::PollConfig;
-use kronos_common::{db, db::DbContext, metrics as m, secrets};
+use invokr_common::models::endpoint::PollConfig;
+use invokr_common::{db, db::DbContext, metrics as m, secrets};
 use std::collections::HashMap;
 
 use crate::backoff;
@@ -162,7 +162,7 @@ pub async fn process_poll(
     ctx: &PipelineContext,
     db: &mut DbContext<'_>,
     schema_name: &str,
-    exec: &kronos_common::db::executions::ClaimedExecution,
+    exec: &invokr_common::db::executions::ClaimedExecution,
 ) {
     let execution_id = &exec.execution_id;
     let attempt_count = exec.attempt_count;
@@ -268,7 +268,7 @@ pub async fn process_poll(
 
             metrics::counter!(m::POLLS_TOTAL, "classification" => cls.as_str().to_string())
                 .increment(1);
-            metrics::histogram!(kronos_common::metrics::POLL_DURATION_SECONDS)
+            metrics::histogram!(invokr_common::metrics::POLL_DURATION_SECONDS)
                 .record(duration_ms as f64 / 1000.0);
 
             match cls {
@@ -280,7 +280,7 @@ pub async fn process_poll(
                         "terminator" => "poll",
                         "status" => "SUCCESS",
                     ).increment(1);
-                    metrics::gauge!(kronos_common::metrics::EXECUTIONS_WAITING).decrement(1.0);
+                    metrics::gauge!(invokr_common::metrics::EXECUTIONS_WAITING).decrement(1.0);
                     log_execution(db, execution_id, attempt_count, "INFO",
                         &format!("Poll #{poll_number} → {status_code} success after {duration_ms}ms")).await;
                 }
@@ -292,7 +292,7 @@ pub async fn process_poll(
                         "terminator" => "poll",
                         "status" => "FAILED",
                     ).increment(1);
-                    metrics::gauge!(kronos_common::metrics::EXECUTIONS_WAITING).decrement(1.0);
+                    metrics::gauge!(invokr_common::metrics::EXECUTIONS_WAITING).decrement(1.0);
                     log_execution(db, execution_id, attempt_count, "WARN",
                         &format!("Poll #{poll_number} → {status_code} terminal failure; re-dispatch in {backoff_ms}ms")).await;
                 }
@@ -321,7 +321,7 @@ pub async fn process_poll(
                 None, None, PollClassification::TRANSIENT_ERROR, Some(&err),
             ).await;
             metrics::counter!(m::POLLS_TOTAL, "classification" => "TRANSIENT_ERROR").increment(1);
-            metrics::histogram!(kronos_common::metrics::POLL_DURATION_SECONDS)
+            metrics::histogram!(invokr_common::metrics::POLL_DURATION_SECONDS)
                 .record(duration_ms as f64 / 1000.0);
             if transient_cap_reached(db, &poll_cfg, execution_id).await {
                 redispatch(db, &endpoint, execution_id, attempt_count,
@@ -346,7 +346,7 @@ pub async fn process_poll(
 async fn finish_timeout(
     ctx: &PipelineContext,
     db: &mut DbContext<'_>,
-    exec: &kronos_common::db::executions::ClaimedExecution,
+    exec: &invokr_common::db::executions::ClaimedExecution,
     poll_url: &str,
     reason: &str,
 ) {
@@ -380,7 +380,7 @@ async fn finish_timeout(
 async fn send_stop_delete(
     ctx: &PipelineContext,
     db: &mut DbContext<'_>,
-    endpoint: &kronos_common::models::Endpoint,
+    endpoint: &invokr_common::models::Endpoint,
     poll_url: &str,
     execution_id: &str,
 ) {
@@ -422,7 +422,7 @@ async fn transient_cap_reached(
 /// which re-dispatches or fails depending on `max_attempts`.
 async fn redispatch(
     db: &mut DbContext<'_>,
-    endpoint: &kronos_common::models::Endpoint,
+    endpoint: &invokr_common::models::Endpoint,
     execution_id: &str,
     attempt_count: i64,
     context: &str,
@@ -440,7 +440,7 @@ async fn redispatch(
 /// from there, capped at `max_delay_ms`. Callers apply `Retry-After` in
 /// preference to this when the destination sent one.
 fn poll_backoff(poll_cfg: &PollConfig, poll_number: i32) -> i64 {
-    kronos_common::backoff::compute_backoff_ms(
+    invokr_common::backoff::compute_backoff_ms(
         &poll_cfg.backoff,
         poll_cfg.initial_delay_ms,
         poll_cfg.max_delay_ms,
@@ -463,7 +463,7 @@ async fn log_execution(
     level: &str,
     message: &str,
 ) {
-    let _ = kronos_common::db::execution_logs::insert(
+    let _ = invokr_common::db::execution_logs::insert(
         db, execution_id, attempt_number, level, message
     ).await;
 }

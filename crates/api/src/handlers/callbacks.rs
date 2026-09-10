@@ -1,5 +1,5 @@
 use actix_web::{web, HttpResponse};
-use kronos_common::{
+use invokr_common::{
     db::{self, scoped, DbContext},
     metrics as m,
 };
@@ -173,7 +173,7 @@ pub async fn fail(
         Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
     };
     let retry_policy = endpoint.get_retry_policy();
-    let backoff_ms = kronos_common::backoff::compute_backoff(&retry_policy, exec.attempt_count);
+    let backoff_ms = invokr_common::backoff::compute_backoff(&retry_policy, exec.attempt_count);
 
     let applied = match db::executions::retry_from_long_running(&mut db, &execution_id, backoff_ms, &body.error).await {
         Ok(rows) => rows > 0,

@@ -19,12 +19,12 @@ pub struct PipelineContext {
     pub secret_cache: SecretCache,
     pub encryption_key: String,
     pub table_prefix: String,
-    /// Base URL for the Kronos API (e.g. "https://kronos.example"). Used to
+    /// Base URL for the Invokr API (e.g. "https://invokr.example"). Used to
     /// construct callback URLs embedded in long-running-job dispatch bodies.
     /// Empty string means callback URLs will also be empty (template resolves
     /// to empty strings, which is debuggable).
     pub api_base_url: String,
-    /// URL path prefix for the API (e.g. "" or "/kronos"). Matches
+    /// URL path prefix for the API (e.g. "" or "/invokr"). Matches
     /// `AppConfig::server::path_prefix`.
     pub path_prefix: String,
 }
@@ -113,7 +113,7 @@ pub async fn process_execution(
         HashMap::new()
     };
 
-    let secret_values = match kronos_common::secrets::load(
+    let secret_values = match invokr_common::secrets::load(
         db,
         &ctx.encryption_key,
         &endpoint.spec,
@@ -350,7 +350,7 @@ pub async fn process_execution(
                                 effective_max_polls,
                             )
                             .await;
-                            metrics::gauge!(kronos_common::metrics::EXECUTIONS_WAITING,
+                            metrics::gauge!(invokr_common::metrics::EXECUTIONS_WAITING,
                                 "schema" => schema_name.to_string(),
                             )
                             .increment(1.0);

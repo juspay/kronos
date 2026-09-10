@@ -112,16 +112,16 @@ pub(crate) async fn send_cancel_delete(
     poll_url: String,
     execution_id: String,
 ) -> Result<(), String> {
-    let mut tx = kronos_common::db::scoped::scoped_transaction(&pool, &schema)
+    let mut tx = invokr_common::db::scoped::scoped_transaction(&pool, &schema)
         .await
         .map_err(|e| e.to_string())?;
-    let mut db = kronos_common::db::DbContext::new(&mut *tx, &prefix);
-    let endpoint = kronos_common::db::endpoints::get(&mut db, &endpoint_name)
+    let mut db = invokr_common::db::DbContext::new(&mut *tx, &prefix);
+    let endpoint = invokr_common::db::endpoints::get(&mut db, &endpoint_name)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "endpoint not found".to_string())?;
     let secret_values =
-        kronos_common::secrets::load(&mut db, &encryption_key, &endpoint.spec, None)
+        invokr_common::secrets::load(&mut db, &encryption_key, &endpoint.spec, None)
             .await
             .map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
@@ -142,16 +142,16 @@ pub(crate) async fn send_cancel_delete(
     }
     let result = req.send().await;
 
-    let mut tx = kronos_common::db::scoped::scoped_transaction(&pool, &schema)
+    let mut tx = invokr_common::db::scoped::scoped_transaction(&pool, &schema)
         .await
         .map_err(|e| e.to_string())?;
-    let mut db = kronos_common::db::DbContext::new(&mut *tx, &prefix);
+    let mut db = invokr_common::db::DbContext::new(&mut *tx, &prefix);
     let line = match &result {
         Ok(r) => format!("Cancel DELETE to {poll_url} → {}", r.status().as_u16()),
         Err(e) => format!("Cancel DELETE to {poll_url} → error: {e}"),
     };
     let _ =
-        kronos_common::db::execution_logs::insert(&mut db, &execution_id, 0, "INFO", &line).await;
+        invokr_common::db::execution_logs::insert(&mut db, &execution_id, 0, "INFO", &line).await;
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -199,7 +199,7 @@ pub async fn list_polls(
     path: web::Path<String>,
 ) -> Result<HttpResponse, AppError> {
     let prefix = state.prefix();
-    let mut conn = kronos_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
+    let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
     let mut db = DbContext::new(&mut *conn, prefix);
