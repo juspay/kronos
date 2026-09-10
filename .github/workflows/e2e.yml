@@ -132,9 +132,13 @@ jobs:
 
       - name: Apply migrations
         run: |
+          # Files carrying `-- invokr:scope=tenant` are per-workspace DDL
+          # templated with `{p}`; they are applied per workspace schema by
+          # `just db-migrate-tenant`, never to `public`.
           # Glob order is lexicographic, which matches the datestamped
           # filename order the justfile applies them in.
           for f in migrations/*.sql; do
+            grep -q '^-- invokr:scope=tenant' "$f" && continue
             echo "==> $f"
             docker compose exec -T postgres \
               psql -v ON_ERROR_STOP=1 -U invokr -d invokr_db < "$f"
