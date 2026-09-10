@@ -2,6 +2,7 @@ use crate::db::{tbl, DbContext};
 use crate::models::PollClassification;
 use chrono::{DateTime, Utc};
 
+#[allow(clippy::too_many_arguments)]
 pub async fn insert(
     db: &mut DbContext<'_>,
     execution_id: &str,

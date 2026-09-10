@@ -199,10 +199,10 @@ pub fn resolve_async_bounds(
     let wait = o.max_wait_ms.unwrap_or(ep_wait);
     let polls = o.max_polls.unwrap_or(ep_polls);
 
-    if wait < 1 || wait > 30 * 24 * 3600 * 1000 {
+    if !(1..=30 * 24 * 3600 * 1000).contains(&wait) {
         return Err("async_overrides.max_wait_ms out of range (1 .. 30d)".into());
     }
-    if polls < 1 || polls > 100_000 {
+    if !(1..=100_000).contains(&polls) {
         return Err("async_overrides.max_polls out of range (1 .. 100000)".into());
     }
     Ok(Some((wait, polls)))

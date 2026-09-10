@@ -50,7 +50,7 @@ pub async fn complete(
         Ok(tx) => tx,
         Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
     };
-    let mut db = DbContext::new(&mut *tx, state.prefix());
+    let mut db = DbContext::new(&mut tx, state.prefix());
 
     match db::executions::get(&mut db, &execution_id).await {
         Ok(Some(e)) if !callback_enabled(&mut db, &e.endpoint).await => {
@@ -150,7 +150,7 @@ pub async fn fail(
         Ok(tx) => tx,
         Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
     };
-    let mut db = DbContext::new(&mut *tx, state.prefix());
+    let mut db = DbContext::new(&mut tx, state.prefix());
 
     let exec = match db::executions::get(&mut db, &execution_id).await {
         Ok(Some(e)) => e,

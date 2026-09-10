@@ -13,6 +13,7 @@ pub struct CreateJobResult {
     pub execution_created_at: DateTime<Utc>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn create_immediate(
     db: &mut DbContext<'_>,
     endpoint: &str,
@@ -64,6 +65,7 @@ pub async fn create_immediate(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn create_delayed(
     db: &mut DbContext<'_>,
     endpoint: &str,

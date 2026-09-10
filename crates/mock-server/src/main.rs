@@ -10,11 +10,17 @@ struct AppState {
     request_count: Arc<AtomicU64>,
 }
 
+/// One scripted response: `(status_code, body_json, retry_after_seconds)`.
+type ScriptedResponse = (u16, serde_json::Value, Option<u64>);
+
+/// Per-id queue of responses to serve in order.
+type ScriptQueues = HashMap<String, Vec<ScriptedResponse>>;
+
 #[derive(Clone, Default)]
 struct AsyncState {
-    /// Per-id: queue of (status_code, body_json, retry_after_seconds) responses to serve in order.
+    /// Per-id: queue of responses to serve in order.
     /// When the queue has only one entry left, that entry is repeated forever.
-    scripts: Arc<Mutex<HashMap<String, Vec<(u16, serde_json::Value, Option<u64>)>>>>,
+    scripts: Arc<Mutex<ScriptQueues>>,
     /// Per-id: count of DELETE calls observed.
     cancels: Arc<Mutex<HashMap<String, u32>>>,
     /// Counter to mint new ids.

@@ -102,6 +102,7 @@ pub async fn cancel(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn send_cancel_delete(
     pool: PgPool,
     prefix: String,
@@ -115,7 +116,7 @@ pub(crate) async fn send_cancel_delete(
     let mut tx = invokr_common::db::scoped::scoped_transaction(&pool, &schema)
         .await
         .map_err(|e| e.to_string())?;
-    let mut db = invokr_common::db::DbContext::new(&mut *tx, &prefix);
+    let mut db = invokr_common::db::DbContext::new(&mut tx, &prefix);
     let endpoint = invokr_common::db::endpoints::get(&mut db, &endpoint_name)
         .await
         .map_err(|e| e.to_string())?
@@ -145,7 +146,7 @@ pub(crate) async fn send_cancel_delete(
     let mut tx = invokr_common::db::scoped::scoped_transaction(&pool, &schema)
         .await
         .map_err(|e| e.to_string())?;
-    let mut db = invokr_common::db::DbContext::new(&mut *tx, &prefix);
+    let mut db = invokr_common::db::DbContext::new(&mut tx, &prefix);
     let line = match &result {
         Ok(r) => format!("Cancel DELETE to {poll_url} → {}", r.status().as_u16()),
         Err(e) => format!("Cancel DELETE to {poll_url} → error: {e}"),
@@ -202,7 +203,7 @@ pub async fn list_polls(
     let mut conn = invokr_common::db::scoped::scoped_connection(&state.pool, &ws.0.schema_name)
         .await
         .map_err(AppError::from)?;
-    let mut db = DbContext::new(&mut *conn, prefix);
+    let mut db = DbContext::new(&mut conn, prefix);
     let execution_id = path.into_inner();
     let _ = db::executions::get(&mut db, &execution_id)
         .await?

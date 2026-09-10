@@ -242,6 +242,7 @@ pub async fn cancel_pending_for_job(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn transition_to_waiting(
     db: &mut DbContext<'_>,
     execution_id: &str,
