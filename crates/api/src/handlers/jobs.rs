@@ -533,7 +533,14 @@ pub async fn cancel(
                 let exec_id = c.execution_id.clone();
                 tokio::spawn(async move {
                     if let Err(e) = crate::handlers::executions::send_cancel_delete(
-                        pool, prefix, schema, key, client, endpoint_name, poll_url, exec_id,
+                        pool,
+                        prefix,
+                        schema,
+                        key,
+                        client,
+                        endpoint_name,
+                        poll_url,
+                        exec_id,
                     )
                     .await
                     {

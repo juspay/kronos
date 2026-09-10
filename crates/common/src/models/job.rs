@@ -221,33 +221,48 @@ mod async_overrides_tests {
 
     #[test]
     fn rejects_overrides_when_endpoint_not_async() {
-        let o = AsyncOverrides { max_wait_ms: Some(60_000), max_polls: None };
+        let o = AsyncOverrides {
+            max_wait_ms: Some(60_000),
+            max_polls: None,
+        };
         assert!(resolve(Some(&o), None).is_err());
     }
 
     #[test]
     fn falls_back_to_endpoint_defaults() {
-        let o = AsyncOverrides { max_wait_ms: None, max_polls: None };
+        let o = AsyncOverrides {
+            max_wait_ms: None,
+            max_polls: None,
+        };
         let got = resolve(Some(&o), Some((60_000, 100))).unwrap();
         assert_eq!(got, Some((60_000, 100)));
     }
 
     #[test]
     fn applies_partial_override() {
-        let o = AsyncOverrides { max_wait_ms: Some(120_000), max_polls: None };
+        let o = AsyncOverrides {
+            max_wait_ms: Some(120_000),
+            max_polls: None,
+        };
         let got = resolve(Some(&o), Some((60_000, 100))).unwrap();
         assert_eq!(got, Some((120_000, 100)));
     }
 
     #[test]
     fn out_of_range_override_rejected() {
-        let o = AsyncOverrides { max_wait_ms: Some(0), max_polls: None };
+        let o = AsyncOverrides {
+            max_wait_ms: Some(0),
+            max_polls: None,
+        };
         assert!(resolve(Some(&o), Some((60_000, 100))).is_err());
     }
 
     #[test]
     fn returns_endpoint_defaults_without_overrides() {
-        assert_eq!(resolve(None, Some((60_000, 100))).unwrap(), Some((60_000, 100)));
+        assert_eq!(
+            resolve(None, Some((60_000, 100))).unwrap(),
+            Some((60_000, 100))
+        );
     }
 
     #[test]
@@ -257,7 +272,10 @@ mod async_overrides_tests {
 
     #[test]
     fn out_of_range_polls_rejected() {
-        let o = AsyncOverrides { max_wait_ms: None, max_polls: Some(100_001) };
+        let o = AsyncOverrides {
+            max_wait_ms: None,
+            max_polls: Some(100_001),
+        };
         assert!(resolve(Some(&o), Some((60_000, 100))).is_err());
     }
 }

@@ -78,7 +78,9 @@ pub async fn dispatch(
                 .headers()
                 .iter()
                 .filter_map(|(k, v)| {
-                    v.to_str().ok().map(|s| (k.as_str().to_ascii_lowercase(), s.to_string()))
+                    v.to_str()
+                        .ok()
+                        .map(|s| (k.as_str().to_ascii_lowercase(), s.to_string()))
                 })
                 .collect();
             let body = response.text().await.unwrap_or_default();
@@ -273,7 +275,11 @@ mod tests {
         let result = dispatch(&client, &async_spec(), "test-http-async-success", &[202]).await;
 
         match result {
-            DispatchResult::Success { status_code, headers, .. } => {
+            DispatchResult::Success {
+                status_code,
+                headers,
+                ..
+            } => {
                 assert_eq!(status_code, 202);
                 assert!(
                     headers.contains_key("location"),

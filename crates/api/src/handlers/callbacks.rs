@@ -13,9 +13,7 @@ use crate::router::AppState;
 /// true. A missing endpoint or async block counts as disabled.
 async fn callback_enabled(db: &mut DbContext<'_>, endpoint: &str) -> bool {
     match db::endpoints::get(db, endpoint).await {
-        Ok(Some(ep)) => ep
-            .get_async_config()
-            .is_some_and(|c| c.callback),
+        Ok(Some(ep)) => ep.get_async_config().is_some_and(|c| c.callback),
         _ => false,
     }
 }
@@ -63,16 +61,22 @@ pub async fn complete(
         _ => {}
     }
 
-    let rows_affected =
-        match db::executions::complete_success_from_long_running(&mut db, &execution_id, &body.output)
-            .await
-        {
-            Ok(n) => n,
-            Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
-        };
+    let rows_affected = match db::executions::complete_success_from_long_running(
+        &mut db,
+        &execution_id,
+        &body.output,
+    )
+    .await
+    {
+        Ok(n) => n,
+        Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
+    };
 
     if rows_affected == 0 {
-        let current = db::executions::get(&mut db, &execution_id).await.ok().flatten();
+        let current = db::executions::get(&mut db, &execution_id)
+            .await
+            .ok()
+            .flatten();
         return match current {
             None => HttpResponse::NotFound().finish(),
             Some(e) if matches!(e.status.as_str(), "SUCCESS" | "FAILED" | "CANCELLED") => {
@@ -101,7 +105,10 @@ pub async fn complete(
         "Callback received: complete",
     )
     .await;
-    let row = db::executions::get(&mut db, &execution_id).await.ok().flatten();
+    let row = db::executions::get(&mut db, &execution_id)
+        .await
+        .ok()
+        .flatten();
     let _ = tx.commit().await;
     match row {
         Some(exec) => HttpResponse::Ok().json(serde_json::json!({ "data": {
@@ -175,7 +182,14 @@ pub async fn fail(
     let retry_policy = endpoint.get_retry_policy();
     let backoff_ms = invokr_common::backoff::compute_backoff(&retry_policy, exec.attempt_count);
 
-    let applied = match db::executions::retry_from_long_running(&mut db, &execution_id, backoff_ms, &body.error).await {
+    let applied = match db::executions::retry_from_long_running(
+        &mut db,
+        &execution_id,
+        backoff_ms,
+        &body.error,
+    )
+    .await
+    {
         Ok(rows) => rows > 0,
         Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
     };
@@ -184,7 +198,10 @@ pub async fn fail(
         // Race-lost: another path finalized this row between our get() and our UPDATE.
         metrics::counter!(m::CALLBACKS_RECEIVED_TOTAL, "kind" => "fail", "result" => "race_lost")
             .increment(1);
-        let current = db::executions::get(&mut db, &execution_id).await.ok().flatten();
+        let current = db::executions::get(&mut db, &execution_id)
+            .await
+            .ok()
+            .flatten();
         let _ = tx.commit().await;
         return match current {
             None => HttpResponse::NotFound().finish(),
@@ -217,7 +234,10 @@ pub async fn fail(
 
     // Re-fetch after the body has been consumed (body is still in scope via `body.error` reference)
     let _ = &body.error; // ensure body is held until here
-    let row = db::executions::get(&mut db, &execution_id).await.ok().flatten();
+    let row = db::executions::get(&mut db, &execution_id)
+        .await
+        .ok()
+        .flatten();
     let _ = tx.commit().await;
     match row {
         Some(exec) => HttpResponse::Ok().json(serde_json::json!({ "data": {

@@ -209,7 +209,8 @@ async fn claim_and_process<S: SchemaProvider>(
             other => {
                 tracing::error!(execution_id = %exec.execution_id,
                     "Unexpected claim_status {}; failing safe", other);
-                let _ = invokr_common::db::executions::complete_failed(&mut db, &exec.execution_id).await;
+                let _ = invokr_common::db::executions::complete_failed(&mut db, &exec.execution_id)
+                    .await;
             }
         }
 
@@ -228,4 +229,3 @@ async fn claim_and_process<S: SchemaProvider>(
 
     false
 }
-

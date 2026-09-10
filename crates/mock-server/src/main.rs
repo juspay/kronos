@@ -166,10 +166,7 @@ async fn async_start(
 }
 
 /// Poll the status of an async job, consuming scripted responses in order.
-async fn async_status(
-    state: web::Data<AsyncState>,
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn async_status(state: web::Data<AsyncState>, path: web::Path<String>) -> HttpResponse {
     let id = path.into_inner();
     let mut scripts = state.scripts.lock().unwrap();
     let Some(script) = scripts.get_mut(&id) else {
@@ -188,20 +185,14 @@ async fn async_status(
 }
 
 /// Cancel an async job (count DELETEs per id).
-async fn async_cancel(
-    state: web::Data<AsyncState>,
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn async_cancel(state: web::Data<AsyncState>, path: web::Path<String>) -> HttpResponse {
     let id = path.into_inner();
     *state.cancels.lock().unwrap().entry(id).or_insert(0) += 1;
     HttpResponse::NoContent().finish()
 }
 
 /// Inspect an async job: returns cancel count and remaining scripted responses.
-async fn async_inspect(
-    state: web::Data<AsyncState>,
-    path: web::Path<String>,
-) -> HttpResponse {
+async fn async_inspect(state: web::Data<AsyncState>, path: web::Path<String>) -> HttpResponse {
     let id = path.into_inner();
     let cancels = *state.cancels.lock().unwrap().get(&id).unwrap_or(&0);
     let remaining = state
@@ -211,7 +202,8 @@ async fn async_inspect(
         .get(&id)
         .map(|v| v.len())
         .unwrap_or(0);
-    HttpResponse::Ok().json(serde_json::json!({"cancels": cancels, "remaining_responses": remaining}))
+    HttpResponse::Ok()
+        .json(serde_json::json!({"cancels": cancels, "remaining_responses": remaining}))
 }
 
 /// Health check.

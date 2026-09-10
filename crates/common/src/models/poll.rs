@@ -42,7 +42,13 @@ mod tests {
     fn classification_strings() {
         assert_eq!(PollClassification::SUCCESS.as_str(), "SUCCESS");
         assert_eq!(PollClassification::PENDING.as_str(), "PENDING");
-        assert_eq!(PollClassification::TERMINAL_FAILURE.as_str(), "TERMINAL_FAILURE");
-        assert_eq!(PollClassification::TRANSIENT_ERROR.as_str(), "TRANSIENT_ERROR");
+        assert_eq!(
+            PollClassification::TERMINAL_FAILURE.as_str(),
+            "TERMINAL_FAILURE"
+        );
+        assert_eq!(
+            PollClassification::TRANSIENT_ERROR.as_str(),
+            "TRANSIENT_ERROR"
+        );
     }
 }

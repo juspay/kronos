@@ -54,23 +54,30 @@ mod tests {
     #[test]
     fn shapes_scale_as_documented() {
         let cases = [
-            ("fixed", 9, 750..=1250),          // flat
-            ("linear", 4, 3000..=5000),        // 1000 * 4
-            ("exponential", 3, 3000..=5000),   // 1000 * 2^2
-            ("nonsense", 3, 3000..=5000),      // unknown → exponential
+            ("fixed", 9, 750..=1250),        // flat
+            ("linear", 4, 3000..=5000),      // 1000 * 4
+            ("exponential", 3, 3000..=5000), // 1000 * 2^2
+            ("nonsense", 3, 3000..=5000),    // unknown → exponential
         ];
         for (shape, attempt, expected) in cases {
             let d = compute_backoff_ms(shape, 1000, 60_000, attempt);
             assert!(expected.contains(&d), "{shape} attempt {attempt} gave {d}");
         }
-        assert_eq!(compute_backoff_ms("exponential", 1000, 5_000, 30), 5_000, "clamp");
+        assert_eq!(
+            compute_backoff_ms("exponential", 1000, 5_000, 30),
+            5_000,
+            "clamp"
+        );
     }
 
     /// `max_polls` permits 100_000 polls; the previous `2_i64.pow(attempt - 1)`
     /// overflowed and panicked past 63. Keep the math saturating.
     #[test]
     fn long_sequence_saturates_instead_of_panicking() {
-        assert_eq!(compute_backoff_ms("exponential", 1000, 60_000, 100_000), 60_000);
+        assert_eq!(
+            compute_backoff_ms("exponential", 1000, 60_000, 100_000),
+            60_000
+        );
         assert_eq!(compute_backoff_ms("linear", 1000, 60_000, i64::MAX), 60_000);
     }
 }

@@ -10,7 +10,10 @@ pub fn resolve_relative_url(base: &str, location: &str) -> String {
     let Ok(base_url) = url::Url::parse(base) else {
         return location.to_string();
     };
-    base_url.join(location).map(|u| u.to_string()).unwrap_or_else(|_| location.to_string())
+    base_url
+        .join(location)
+        .map(|u| u.to_string())
+        .unwrap_or_else(|_| location.to_string())
 }
 
 /// Parse a Retry-After header value (seconds-as-integer or HTTP-date) into milliseconds.
@@ -29,9 +32,7 @@ pub fn parse_retry_after(header: Option<&str>) -> Option<i64> {
         s
     };
     let canonical = no_wd.replace("GMT", "+0000");
-    if let Ok(when) =
-        chrono::DateTime::parse_from_str(&canonical, "%d %b %Y %H:%M:%S %z")
-    {
+    if let Ok(when) = chrono::DateTime::parse_from_str(&canonical, "%d %b %Y %H:%M:%S %z") {
         let now = chrono::Utc::now();
         let delta = when.signed_duration_since(now).num_milliseconds();
         return Some(delta.max(0));
@@ -182,7 +183,11 @@ pub async fn process_poll(
 
     // Bound check — pre-network
     if exec.poll_count > max_polls || Utc::now() > deadline {
-        let reason = if exec.poll_count > max_polls { "max_polls" } else { "max_wait_ms" };
+        let reason = if exec.poll_count > max_polls {
+            "max_polls"
+        } else {
+            "max_wait_ms"
+        };
         finish_timeout(ctx, db, exec, &poll_url, reason).await;
         return;
     }
@@ -210,7 +215,14 @@ pub async fn process_poll(
         return;
     };
 
-    let secret_values = match secrets::load(db, &ctx.encryption_key, &endpoint.spec, Some(&ctx.secret_cache)).await {
+    let secret_values = match secrets::load(
+        db,
+        &ctx.encryption_key,
+        &endpoint.spec,
+        Some(&ctx.secret_cache),
+    )
+    .await
+    {
         Ok(v) => v,
         Err(e) => {
             tracing::error!(execution_id, "Secret resolution failed for poll: {}", e);
@@ -234,7 +246,11 @@ pub async fn process_poll(
             }
         }
     }
-    let timeout_ms = endpoint.spec.get("timeout_ms").and_then(|v| v.as_u64()).unwrap_or(5000);
+    let timeout_ms = endpoint
+        .spec
+        .get("timeout_ms")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(5000);
     req = req.timeout(std::time::Duration::from_millis(timeout_ms));
 
     let started = std::time::Instant::now();
@@ -248,7 +264,10 @@ pub async fn process_poll(
         Ok(response) => {
             let status_code = response.status().as_u16();
             let retry_after_ms = parse_retry_after(
-                response.headers().get("retry-after").and_then(|v| v.to_str().ok())
+                response
+                    .headers()
+                    .get("retry-after")
+                    .and_then(|v| v.to_str().ok()),
             );
             let body = response.text().await.unwrap_or_default();
             let parsed_body = serde_json::from_str::<serde_json::Value>(&body)
@@ -262,9 +281,17 @@ pub async fn process_poll(
             );
 
             let _ = db::polls::insert(
-                db, execution_id, poll_number, polled_at, Some(duration_ms),
-                Some(status_code as i32), retry_after_ms, cls, None,
-            ).await;
+                db,
+                execution_id,
+                poll_number,
+                polled_at,
+                Some(duration_ms),
+                Some(status_code as i32),
+                retry_after_ms,
+                cls,
+                None,
+            )
+            .await;
 
             metrics::counter!(m::POLLS_TOTAL, "classification" => cls.as_str().to_string())
                 .increment(1);
@@ -274,15 +301,27 @@ pub async fn process_poll(
             match cls {
                 PollClassification::SUCCESS => {
                     let _ = db::executions::complete_success_from_long_running(
-                        db, execution_id, &parsed_body
-                    ).await;
+                        db,
+                        execution_id,
+                        &parsed_body,
+                    )
+                    .await;
                     metrics::counter!(m::LONG_RUNNING_COMPLETED_TOTAL,
                         "terminator" => "poll",
                         "status" => "SUCCESS",
-                    ).increment(1);
+                    )
+                    .increment(1);
                     metrics::gauge!(invokr_common::metrics::EXECUTIONS_WAITING).decrement(1.0);
-                    log_execution(db, execution_id, attempt_count, "INFO",
-                        &format!("Poll #{poll_number} → {status_code} success after {duration_ms}ms")).await;
+                    log_execution(
+                        db,
+                        execution_id,
+                        attempt_count,
+                        "INFO",
+                        &format!(
+                            "Poll #{poll_number} → {status_code} success after {duration_ms}ms"
+                        ),
+                    )
+                    .await;
                 }
                 PollClassification::TERMINAL_FAILURE => {
                     let retry_policy = endpoint.get_retry_policy();
@@ -291,7 +330,8 @@ pub async fn process_poll(
                     metrics::counter!(m::LONG_RUNNING_COMPLETED_TOTAL,
                         "terminator" => "poll",
                         "status" => "FAILED",
-                    ).increment(1);
+                    )
+                    .increment(1);
                     metrics::gauge!(invokr_common::metrics::EXECUTIONS_WAITING).decrement(1.0);
                     log_execution(db, execution_id, attempt_count, "WARN",
                         &format!("Poll #{poll_number} → {status_code} terminal failure; re-dispatch in {backoff_ms}ms")).await;
@@ -299,40 +339,78 @@ pub async fn process_poll(
                 PollClassification::TRANSIENT_ERROR
                     if transient_cap_reached(db, &poll_cfg, execution_id).await =>
                 {
-                    redispatch(db, &endpoint, execution_id, attempt_count,
-                        &format!("Poll #{poll_number} → {status_code}")).await;
+                    redispatch(
+                        db,
+                        &endpoint,
+                        execution_id,
+                        attempt_count,
+                        &format!("Poll #{poll_number} → {status_code}"),
+                    )
+                    .await;
                 }
                 PollClassification::PENDING | PollClassification::TRANSIENT_ERROR => {
                     // Retry-After from the destination wins; otherwise back off
                     // per the endpoint's poll spec.
                     let delay_ms =
                         retry_after_ms.unwrap_or_else(|| poll_backoff(&poll_cfg, poll_number));
-                    let next = std::cmp::min(deadline, Utc::now() + Duration::milliseconds(delay_ms));
-                    let _ = db::executions::transition_back_to_waiting(db, execution_id, next).await;
-                    log_execution(db, execution_id, attempt_count, "INFO",
-                        &format!("Poll #{poll_number} → {status_code} ({}); next poll in {}ms", cls.as_str(), delay_ms)).await;
+                    let next =
+                        std::cmp::min(deadline, Utc::now() + Duration::milliseconds(delay_ms));
+                    let _ =
+                        db::executions::transition_back_to_waiting(db, execution_id, next).await;
+                    log_execution(
+                        db,
+                        execution_id,
+                        attempt_count,
+                        "INFO",
+                        &format!(
+                            "Poll #{poll_number} → {status_code} ({}); next poll in {}ms",
+                            cls.as_str(),
+                            delay_ms
+                        ),
+                    )
+                    .await;
                 }
             }
         }
         Err(e) => {
             let err = serde_json::json!({"type":"TRANSPORT_ERROR","message":e.to_string()});
             let _ = db::polls::insert(
-                db, execution_id, poll_number, polled_at, Some(duration_ms),
-                None, None, PollClassification::TRANSIENT_ERROR, Some(&err),
-            ).await;
+                db,
+                execution_id,
+                poll_number,
+                polled_at,
+                Some(duration_ms),
+                None,
+                None,
+                PollClassification::TRANSIENT_ERROR,
+                Some(&err),
+            )
+            .await;
             metrics::counter!(m::POLLS_TOTAL, "classification" => "TRANSIENT_ERROR").increment(1);
             metrics::histogram!(invokr_common::metrics::POLL_DURATION_SECONDS)
                 .record(duration_ms as f64 / 1000.0);
             if transient_cap_reached(db, &poll_cfg, execution_id).await {
-                redispatch(db, &endpoint, execution_id, attempt_count,
-                    &format!("Poll #{poll_number} transport error")).await;
+                redispatch(
+                    db,
+                    &endpoint,
+                    execution_id,
+                    attempt_count,
+                    &format!("Poll #{poll_number} transport error"),
+                )
+                .await;
                 return;
             }
             let delay_ms = poll_backoff(&poll_cfg, poll_number);
             let next = std::cmp::min(deadline, Utc::now() + Duration::milliseconds(delay_ms));
             let _ = db::executions::transition_back_to_waiting(db, execution_id, next).await;
-            log_execution(db, execution_id, attempt_count, "WARN",
-                &format!("Poll #{poll_number} transport error; next poll in {delay_ms}ms")).await;
+            log_execution(
+                db,
+                execution_id,
+                attempt_count,
+                "WARN",
+                &format!("Poll #{poll_number} transport error; next poll in {delay_ms}ms"),
+            )
+            .await;
         }
     }
 }
@@ -384,11 +462,18 @@ async fn send_stop_delete(
     poll_url: &str,
     execution_id: &str,
 ) {
-    let secret_values =
-        secrets::load(db, &ctx.encryption_key, &endpoint.spec, Some(&ctx.secret_cache))
-            .await
-            .unwrap_or_default();
-    let mut req = ctx.http_client.delete(poll_url).timeout(std::time::Duration::from_secs(5));
+    let secret_values = secrets::load(
+        db,
+        &ctx.encryption_key,
+        &endpoint.spec,
+        Some(&ctx.secret_cache),
+    )
+    .await
+    .unwrap_or_default();
+    let mut req = ctx
+        .http_client
+        .delete(poll_url)
+        .timeout(std::time::Duration::from_secs(5));
     if let Some(headers) = endpoint.spec.get("headers").and_then(|v| v.as_object()) {
         for (k, v) in headers {
             if let Some(s) = v.as_str() {
@@ -429,8 +514,14 @@ async fn redispatch(
 ) {
     let backoff_ms = backoff::compute_backoff(&endpoint.get_retry_policy(), attempt_count);
     let _ = db::executions::retry_from_poll(db, execution_id, backoff_ms).await;
-    log_execution(db, execution_id, attempt_count, "WARN",
-        &format!("{context}; too many consecutive errors, re-dispatch in {backoff_ms}ms")).await;
+    log_execution(
+        db,
+        execution_id,
+        attempt_count,
+        "WARN",
+        &format!("{context}; too many consecutive errors, re-dispatch in {backoff_ms}ms"),
+    )
+    .await;
 }
 
 /// Delay before the next poll, from the endpoint's `async.poll` spec.
@@ -463,7 +554,7 @@ async fn log_execution(
     level: &str,
     message: &str,
 ) {
-    let _ = invokr_common::db::execution_logs::insert(
-        db, execution_id, attempt_number, level, message
-    ).await;
+    let _ =
+        invokr_common::db::execution_logs::insert(db, execution_id, attempt_number, level, message)
+            .await;
 }

@@ -206,7 +206,11 @@ pub fn validate_async_block(spec: &serde_json::Value) -> Result<(), String> {
     let expected: std::collections::HashSet<u16> = spec
         .get("expected_status_codes")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_u64().map(|n| n as u16)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_u64().map(|n| n as u16))
+                .collect()
+        })
         .unwrap_or_default();
     let initial: std::collections::HashSet<u16> = cfg.status_codes.iter().copied().collect();
     if !expected.is_disjoint(&initial) {

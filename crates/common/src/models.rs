@@ -12,7 +12,6 @@ pub mod secret;
 pub mod workspace;
 
 pub use attempt::{Attempt, AttemptStatus};
-pub use poll::{Poll, PollClassification};
 pub use config::Config;
 pub use endpoint::{Endpoint, EndpointType, RetryPolicy};
 pub use execution::{Execution, ExecutionStatus};
@@ -21,5 +20,6 @@ pub use job::{Job, JobStatus, TriggerType};
 pub use organization::Organization;
 pub use payload_spec::PayloadSpec;
 pub use pg_cron_expr::PgCronExpr;
+pub use poll::{Poll, PollClassification};
 pub use secret::Secret;
 pub use workspace::Workspace;

@@ -1,6 +1,6 @@
 use sqlx::PgPool;
-use std::future::Future;
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -66,9 +66,7 @@ pub fn build_schema_name(org_id: &str, workspace_slug: &str) -> String {
 /// returned future is usable inside the spawned worker task; implementors
 /// can simply write `async fn get_active_schemas(&self)`.
 pub trait SchemaProvider: Send + Sync + 'static {
-    fn get_active_schemas(
-        &self,
-    ) -> impl Future<Output = Result<Vec<String>, sqlx::Error>> + Send;
+    fn get_active_schemas(&self) -> impl Future<Output = Result<Vec<String>, sqlx::Error>> + Send;
     /// Returns the `(org_id, workspace_id)` pair for the given schema name,
     /// or `None` if the schema is not known to this provider.
     fn get_org_ws(
