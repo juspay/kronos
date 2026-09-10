@@ -176,7 +176,8 @@ jobs:
       - name: Wait for PostgreSQL
         run: |
           for _ in $(seq 1 60); do
-            if docker compose exec -T postgres pg_isready -U invokr -d invokr_db > /dev/null 2>&1; then
+            if docker compose exec -T -e PGPASSWORD=invokr postgres \
+                 psql -h 127.0.0.1 -U invokr -d invokr_db -c 'SELECT 1' > /dev/null 2>&1; then
               echo "postgres ready"; exit 0
             fi
             sleep 1

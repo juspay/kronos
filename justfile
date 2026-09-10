@@ -26,9 +26,21 @@ init-env:
 
 # Start PostgreSQL
 db-up:
+    #!/usr/bin/env bash
+    set -euo pipefail
     docker compose up -d postgres
-    @echo "Waiting for PostgreSQL to be ready..."
-    @sleep 3
+    echo "Waiting for PostgreSQL to be ready..."
+    for _ in $(seq 1 60); do
+        if docker compose exec -T -e PGPASSWORD=invokr postgres \
+             psql -h 127.0.0.1 -U invokr -d invokr_db -c 'SELECT 1' > /dev/null 2>&1; then
+            echo "postgres ready"
+            exit 0
+        fi
+        sleep 1
+    done
+    echo "postgres failed to start" >&2
+    docker compose logs postgres
+    exit 1
 
 # Stop PostgreSQL
 db-down:
